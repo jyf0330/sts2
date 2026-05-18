@@ -11,7 +11,19 @@ from sts2_env.core.enums import OrbType, PowerId, ValueProp
 from sts2_env.orbs.base import OrbInstance
 
 if TYPE_CHECKING:
+    from sts2_env.core.creature import Creature
     from sts2_env.core.combat import CombatState
+
+
+def _gain_unpowered_block(owner: Creature, amount: int, combat: CombatState) -> int:
+    before = owner.block
+    owner.gain_block(amount, unpowered=True)
+    gained = owner.block - before
+    if gained > 0:
+        from sts2_env.core.hooks import fire_after_block_gained
+
+        fire_after_block_gained(owner, gained, combat)
+    return gained
 
 
 # ---------------------------------------------------------------------------
@@ -80,12 +92,12 @@ class FrostOrb(OrbInstance):
     def on_passive(self, combat: CombatState) -> None:
         value = self.get_passive_value(combat)
         if value > 0:
-            combat.player.gain_block(value)
+            _gain_unpowered_block(combat.player, value, combat)
 
     def on_evoke(self, combat: CombatState) -> None:
         value = self.get_evoke_value(combat)
         if value > 0:
-            combat.player.gain_block(value)
+            _gain_unpowered_block(combat.player, value, combat)
 
 
 # ---------------------------------------------------------------------------

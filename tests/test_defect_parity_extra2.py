@@ -141,6 +141,32 @@ class TestDefectParityExtra2:
         assert len(combat.orb_queue.orbs) == 2
         assert all(orb.orb_type == OrbType.FROST for orb in combat.orb_queue.orbs)
 
+    def test_frost_orb_passive_block_triggers_after_block_gained_hooks(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        start_hp = enemy.current_hp
+        combat.channel_orb(combat.player, "FROST")
+        combat.player.apply_power(PowerId.JUGGERNAUT, 5)
+        combat.player.block = 0
+
+        combat.orb_queue.trigger_before_turn_end(combat)
+
+        assert combat.player.block == 2
+        assert enemy.current_hp == start_hp - 5
+
+    def test_frost_orb_evoke_block_triggers_after_block_gained_hooks(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        start_hp = enemy.current_hp
+        combat.channel_orb(combat.player, "FROST")
+        combat.player.apply_power(PowerId.JUGGERNAUT, 5)
+        combat.player.block = 0
+
+        combat.orb_queue.evoke_front(combat)
+
+        assert combat.player.block == 5
+        assert enemy.current_hp == start_hp - 5
+
     def test_multi_cast_uses_x_energy_for_repeated_front_evoke(self):
         """Matches MultiCast.cs: evoke front orb X times and spend all energy."""
         combat = _make_combat()
