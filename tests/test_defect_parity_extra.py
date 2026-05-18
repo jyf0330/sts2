@@ -106,6 +106,21 @@ class TestDefectParityExtra:
         assert star_cost in combat.discard_pile
         assert star_x in combat.discard_pile
 
+    def test_scrape_does_not_discard_existing_hand_cards_after_damage_ends_combat(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = 7
+        kept = make_strike_defect()
+        kept.cost = 1
+        combat.hand = [make_scrape(), kept]
+        combat.draw_pile = []
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+        assert combat.is_over
+        assert kept in combat.hand
+        assert kept not in combat.discard_pile
+
     def test_loop_triggers_first_orb_passive_again_on_next_turn_start(self):
         """Matches Loop.cs + LoopPower: first orb passive triggers extra times each turn."""
         combat = _make_combat()

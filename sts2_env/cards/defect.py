@@ -557,6 +557,8 @@ def scrape(card: CardInstance, combat: CombatState, target: Creature | None) -> 
     assert target is not None
     dmg = calculate_damage(card.base_damage, _owner(card, combat), target, ValueProp.MOVE, combat)
     apply_damage(target, dmg, ValueProp.MOVE, combat, _owner(card, combat))
+    if combat.is_over:
+        return
     draw = card.effect_vars.get("cards", 4)
     combat._draw_cards(draw)
     to_discard = [
