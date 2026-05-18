@@ -524,6 +524,18 @@ class TestFixedRotation:
         assert combat.player_won is False
         assert creature.block == 0
 
+    def test_act1_attack_buff_move_does_not_apply_power_after_killing_player(self):
+        creature, ai = create_cubex_construct(Rng(11))
+        combat = _make_combat(121)
+        combat.add_enemy(creature, ai)
+        combat.player.current_hp = 7
+
+        ai.states["REPEATER_MOVE"].perform(combat)
+
+        assert combat.is_over
+        assert combat.player_won is False
+        assert creature.get_power_amount(PowerId.STRENGTH) == 0
+
     def test_cubex_initial_room_setup_triggers_after_block_gained_hook(self):
         combat = _make_combat(121)
         creature, ai = create_cubex_construct(Rng(121))

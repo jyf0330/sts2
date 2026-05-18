@@ -77,11 +77,11 @@ def create_cubex_construct(rng: Rng) -> tuple[Creature, MonsterAI]:
     expel_dmg = 5
 
     def charge_up(combat: CombatState) -> None:
-        creature.apply_power(PowerId.STRENGTH, 2)
+        combat.apply_power_to(creature, PowerId.STRENGTH, 2, applier=creature)
 
     def repeater(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, blast_dmg)
-        creature.apply_power(PowerId.STRENGTH, 2)
+        combat.apply_power_to(creature, PowerId.STRENGTH, 2, applier=creature)
 
     def expel_blast(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, expel_dmg, hits=2)
