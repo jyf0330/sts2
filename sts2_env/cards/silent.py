@@ -193,10 +193,7 @@ def leading_strike(card: CardInstance, combat: CombatState, target: Creature | N
 def piercing_wail(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     loss = card.effect_vars.get("strength_loss", 6)
     for enemy in combat.hittable_enemies:
-        prev = enemy.get_power_amount(PowerId.PIERCING_WAIL)
         combat.apply_power_to(enemy, PowerId.PIERCING_WAIL, loss)
-        if enemy.get_power_amount(PowerId.PIERCING_WAIL) > prev:
-            combat.apply_power_to(enemy, PowerId.STRENGTH, -loss)
 
 
 @register_effect(CardId.POISONED_STAB)

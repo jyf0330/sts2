@@ -718,7 +718,6 @@ class ReptileTrinket(RelicInstance):
     ) -> None:
         if getattr(potion, "owner", owner) is not owner or combat.is_over:
             return
-        owner.apply_power(PowerId.STRENGTH, self.STRENGTH)
         owner.apply_power(PowerId.REPTILE_TRINKET, self.STRENGTH)
 
 

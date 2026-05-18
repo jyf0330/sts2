@@ -192,6 +192,19 @@ class ReptileTrinketPower(PowerInstance):
     def __init__(self, amount: int):
         super().__init__(PowerId.REPTILE_TRINKET, amount)
 
+    def after_power_amount_changed(
+        self,
+        owner: Creature,
+        target: Creature,
+        power_id: PowerId,
+        amount: int,
+        applier: Creature | None,
+        source: object | None,
+        combat: CombatState,
+    ) -> None:
+        if owner is target and power_id == self.power_id and amount != 0:
+            owner.apply_power(PowerId.STRENGTH, amount, applier=applier, source=source)
+
     def after_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         if side == owner.side:
             owner.apply_power(PowerId.STRENGTH, -self.amount)

@@ -98,24 +98,17 @@ def catastrophe(card: CardInstance, combat: CombatState, target: Creature | None
 def coordinate_card(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     strength = card.effect_vars.get("strength", 5)
     resolved_target = target if target is not None else _owner(card, combat)
-    previous = resolved_target.get_power_amount(PowerId.COORDINATE)
     if target is not None:
         combat.apply_power_to(target, PowerId.COORDINATE, strength)
     else:
         combat.apply_power_to(resolved_target, PowerId.COORDINATE, strength)
-    if resolved_target.get_power_amount(PowerId.COORDINATE) > previous:
-        combat.apply_power_to(resolved_target, PowerId.STRENGTH, strength)
 
 
 @register_effect(CardId.DARK_SHACKLES)
 def dark_shackles(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
     strength_loss = card.effect_vars.get("strength_loss", 9)
-    previous = target.get_power_amount(PowerId.DARK_SHACKLES)
     combat.apply_power_to(target, PowerId.DARK_SHACKLES, strength_loss)
-    applied = target.get_power_amount(PowerId.DARK_SHACKLES) - previous
-    if applied > 0:
-        target.apply_power(PowerId.STRENGTH, -applied, applier=_owner(card, combat), source=card)
 
 
 @register_effect(CardId.DISCOVERY)
