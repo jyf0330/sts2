@@ -11,8 +11,10 @@ from sts2_env.cards.ironclad import (
     make_feel_no_pain,
     make_fiend_fire,
     make_inflame,
+    make_juggernaut,
     make_perfected_strike,
     make_pommel_strike,
+    make_rage,
     make_rampage,
     make_twin_strike,
 )
@@ -159,6 +161,26 @@ class TestIroncladParityExtra2:
 
         combat.exhaust_card(strike)
         assert combat.player.block == 3
+
+    def test_power_block_gains_trigger_after_block_gained_hooks(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.max_hp = 50
+        enemy.current_hp = 50
+        combat.hand = [make_feel_no_pain(), make_juggernaut(), make_rage(), make_strike_ironclad()]
+        combat.energy = 4
+
+        assert combat.play_card(0)
+        assert combat.play_card(0)
+        assert combat.play_card(0)
+        assert combat.play_card(0, 0)
+
+        assert combat.player.block == 3
+        assert enemy.current_hp == 50 - 6 - 5
+
+        combat.exhaust_card(combat.discard_pile[0])
+        assert combat.player.block == 6
+        assert enemy.current_hp == 50 - 6 - 10
 
     def test_fiend_fire_exhausts_hand_for_hits_and_triggers_feel_no_pain_per_exhaust(self):
         """Matches FiendFire.cs with exhaust hooks: exhaust all hand cards, one hit each, hooks fire."""

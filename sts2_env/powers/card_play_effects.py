@@ -28,6 +28,17 @@ if TYPE_CHECKING:
     from sts2_env.core.combat import CombatState
 
 
+def _gain_unpowered_block(owner: Creature, amount: int, combat: CombatState) -> int:
+    before = owner.block
+    owner.gain_block(amount, unpowered=True)
+    gained = owner.block - before
+    if gained > 0:
+        from sts2_env.core.hooks import fire_after_block_gained
+
+        fire_after_block_gained(owner, gained, combat)
+    return gained
+
+
 # ---------------------------------------------------------------------------
 # CorruptionPower
 # ---------------------------------------------------------------------------
@@ -159,7 +170,7 @@ class FeelNoPainPower(PowerInstance):
     def after_card_exhausted(
         self, owner: Creature, card: object, combat: CombatState
     ) -> None:
-        owner.gain_block(self.amount)
+        _gain_unpowered_block(owner, self.amount, combat)
 
 
 # ---------------------------------------------------------------------------
@@ -185,7 +196,7 @@ class RagePower(PowerInstance):
         self, owner: Creature, card: object, combat: CombatState
     ) -> None:
         if getattr(card, "owner", None) is owner and getattr(card, "card_type", None) == CardType.ATTACK:
-            owner.gain_block(self.amount)
+            _gain_unpowered_block(owner, self.amount, combat)
 
     def after_turn_end(
         self, owner: Creature, side: CombatSide, combat: CombatState
@@ -223,7 +234,7 @@ class AfterimagePower(PowerInstance):
     ) -> None:
         amount = self._amounts_for_played_cards.pop(id(card), 0)
         if amount > 0:
-            owner.gain_block(amount)
+            _gain_unpowered_block(owner, amount, combat)
 
 
 # ---------------------------------------------------------------------------
