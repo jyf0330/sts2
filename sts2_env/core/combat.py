@@ -2228,6 +2228,8 @@ class CombatState:
         owner: Creature | None = None,
     ) -> None:
         """Pause combat resolution until a card selection is made."""
+        if self.is_over:
+            return
         owner = owner or self.player
 
         if not allow_skip and len(cards) <= 1:
@@ -2259,6 +2261,8 @@ class CombatState:
         owner: Creature | None = None,
     ) -> None:
         """Pause combat resolution until multiple cards are selected and confirmed."""
+        if self.is_over:
+            return
         if max_count is None:
             max_count = min_count
         owner = owner or self.player

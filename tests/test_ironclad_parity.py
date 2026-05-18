@@ -14,6 +14,7 @@ from sts2_env.cards.ironclad import (
 )
 from sts2_env.cards.ironclad_basic import make_bash, make_defend_ironclad, make_strike_ironclad
 from sts2_env.core.combat import CombatState
+from sts2_env.core.enums import PowerId
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle
 
@@ -48,6 +49,19 @@ class TestIroncladParity:
         assert combat.pending_choice is None
         assert strike.upgraded is True
         assert defend.upgraded is True
+
+    def test_armaments_does_not_upgrade_after_block_ends_combat(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = 5
+        strike = make_strike_ironclad()
+        combat.player.apply_power(PowerId.JUGGERNAUT, 5)
+        combat.hand = [make_armaments(), strike]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.is_over
+        assert strike.upgraded is False
 
     def test_burning_pact_exhausts_selected_card_then_draws(self):
         """Matches BurningPact.cs: select one hand card to exhaust, then draw the configured amount."""
