@@ -14,12 +14,14 @@ from sts2_env.cards.ironclad import (
     make_hemokinesis,
     make_inflame,
     make_juggernaut,
+    make_mangle,
     make_offering,
     make_rupture,
     make_second_wind,
     make_shrug_it_off,
     make_strike_ironclad,
 )
+import sts2_env.cards.registry as card_registry
 from sts2_env.core.combat import CombatState
 from sts2_env.core.enums import PowerId
 from sts2_env.core.rng import Rng
@@ -77,6 +79,25 @@ class TestIroncladParityExtra3:
         assert combat.player.block == 5
         assert defend in combat.exhaust_pile
         assert defend not in combat.discard_pile
+
+    def test_havoc_moves_top_draw_card_to_play_before_autoplaying(self, monkeypatch):
+        """Matches AutoPlayFromDrawPile: selected cards move to Play before AutoPlay."""
+        combat = _make_combat()
+        probe = make_mangle()
+
+        def record_autoplay_pile_state(card, combat_state, target) -> None:
+            card.combat_vars["was_in_draw_during_play"] = card in combat_state.draw_pile
+            card.combat_vars["was_in_play_during_play"] = card in combat_state.play_pile
+
+        monkeypatch.setitem(card_registry._CARD_EFFECTS, probe.card_id, record_autoplay_pile_state)  # noqa: SLF001
+        combat.hand = [make_havoc()]
+        combat.draw_pile = [probe]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert probe.combat_vars["was_in_draw_during_play"] is False
+        assert probe.combat_vars["was_in_play_during_play"] is True
+        assert probe in combat.exhaust_pile
 
     def test_shrug_it_off_gains_block_then_draws_one_card(self):
         """Matches ShrugItOff.cs: gain 8 block and draw 1."""

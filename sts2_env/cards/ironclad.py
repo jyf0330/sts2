@@ -345,17 +345,7 @@ def make_cinder(upgraded: bool = False) -> CardInstance:
 # --- Havoc ---
 @register_effect(CardId.HAVOC)
 def havoc(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    # Auto-play top draw card and force-exhaust it.
-    owner = _owner(card, combat)
-    state = combat.combat_player_state_for(owner)
-    if state is None:
-        return
-    combat._shuffle_if_needed(owner)
-    if not state.draw:
-        return
-    top_card = state.draw.pop(0)
-    top_card.owner = owner
-    combat.auto_play_card(top_card, force_exhaust=True)
+    combat.auto_play_from_draw(_owner(card, combat), 1, force_exhaust=True)
 
 
 def make_havoc(upgraded: bool = False) -> CardInstance:

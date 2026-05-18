@@ -3037,7 +3037,7 @@ class CombatState:
         """End the player's turn immediately after the current play resolves."""
         self._end_turn_after_play = True
 
-    def auto_play_from_draw(self, owner: Creature, count: int) -> None:
+    def auto_play_from_draw(self, owner: Creature, count: int, *, force_exhaust: bool = False) -> None:
         state = self.combat_player_state_for(owner)
         if state is None or count <= 0 or self.is_over:
             return
@@ -3055,7 +3055,7 @@ class CombatState:
         for card in cards:
             if self.is_over:
                 break
-            self.auto_play_card(card)
+            self.auto_play_card(card, force_exhaust=force_exhaust)
             if self.pending_choice is not None:
                 break
 
