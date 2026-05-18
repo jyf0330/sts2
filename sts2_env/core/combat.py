@@ -629,6 +629,8 @@ class CombatState:
         creature.combat_state = self
         self.enemies.append(creature)
         self.enemy_ais[creature.combat_id] = ai
+        if creature.monster_id == "GAS_BOMB":
+            self.apply_power_to(creature, PowerId.MINION, 1, applier=creature)
         if creature.monster_id == "ZAPBOT":
             self.apply_power_to(creature, PowerId.HIGH_VOLTAGE, 2, applier=creature)
         if self._combat_started:

@@ -499,7 +499,6 @@ def create_gas_bomb(rng: Rng) -> tuple[Creature, MonsterAI]:
             follow_up_id="EXPLODE_MOVE",
         ),
     }
-    creature.apply_power(PowerId.MINION, 1)
     return creature, MonsterAI(states, "EXPLODE_MOVE")
 
 

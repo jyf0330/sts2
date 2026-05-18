@@ -2169,6 +2169,7 @@ class TestFixedRotation:
         assert fog_effect_combat.player.current_hp == 62
 
         bomb, bomb_ai = create_gas_bomb(Rng(74))
+        assert bomb.get_power_amount(PowerId.MINION) == 0
         bomb_combat = _make_combat(74)
         bomb_combat.add_enemy(bomb, bomb_ai)
         assert bomb.max_hp == 10
