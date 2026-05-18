@@ -538,7 +538,7 @@ class PaperPhrog(RelicInstance):
         props: ValueProp,
         card: object | None = None,
     ) -> float:
-        if dealer is not owner or target is owner or not props.is_powered():
+        if dealer is not owner or target is None or target is owner or not props.is_powered():
             return 1.0
         if target.get_power_amount(PowerId.VULNERABLE) <= 0:
             return 1.0

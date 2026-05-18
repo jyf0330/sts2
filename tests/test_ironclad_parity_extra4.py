@@ -54,6 +54,7 @@ from sts2_env.core.enums import CardId, CombatSide, PowerId, ValueProp
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle
 from sts2_env.powers.base import PowerInstance
+from sts2_env.relics.registry import create_relic_by_name
 from sts2_env.run.run_state import PlayerState
 
 
@@ -261,6 +262,37 @@ class TestIroncladParityExtra4:
         assert combat.hand == [defend]
         assert strike in combat.exhaust_pile
         assert thrash.base_damage == 10
+
+    def test_thrash_absorbed_damage_ignores_target_vulnerable_and_paper_phrog(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.max_hp = 100
+        enemy.current_hp = 100
+        enemy.apply_power(PowerId.VULNERABLE, 1, applier=combat.player)
+        combat.current_player_state.relics.append(create_relic_by_name("PaperPhrog"))
+        thrash = make_thrash()
+        strike = make_strike_ironclad()
+        combat.hand = [thrash, strike]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+        assert enemy.current_hp == 86
+        assert thrash.base_damage == 10
+
+    def test_thrash_absorbed_damage_keeps_owner_strength(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.max_hp = 100
+        enemy.current_hp = 100
+        combat.player.apply_power(PowerId.STRENGTH, 2)
+        thrash = make_thrash()
+        strike = make_strike_ironclad()
+        combat.hand = [thrash, strike]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+        assert enemy.current_hp == 88
+        assert thrash.base_damage == 12
 
     def test_body_slam_uses_current_block_as_damage(self):
         combat = _make_combat()

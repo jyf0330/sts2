@@ -12,6 +12,7 @@ from sts2_env.core.enums import (
     CardId, CardTag, CardType, TargetType, CardRarity, ValueProp, PowerId, CombatSide,
 )
 from sts2_env.core.damage import calculate_damage, apply_damage, calculate_block
+from sts2_env.core.hooks import modify_damage
 from sts2_env.core.creature import Creature
 from sts2_env.core.combat import CombatState
 from sts2_env.core.constants import MAX_HAND_SIZE
@@ -50,6 +51,19 @@ def _deal_damage_all_enemies(
     for enemy in list(combat.hittable_enemies):
         damage = calculate_damage(card.base_damage, owner, enemy, ValueProp.MOVE, combat)
         apply_damage(enemy, damage, ValueProp.MOVE, combat, owner)
+
+
+def _calculate_untargeted_card_damage(
+    card: CardInstance,
+    owner: Creature,
+    combat: CombatState,
+) -> int:
+    previous_card_source = combat._active_card_source
+    combat._active_card_source = card
+    try:
+        return modify_damage(card.base_damage or 0, owner, None, ValueProp.MOVE, combat, card_source=card)
+    finally:
+        combat._active_card_source = previous_card_source
 
 
 def _gain_block(card: CardInstance, combat: CombatState) -> None:
@@ -2126,13 +2140,7 @@ def thrash(card: CardInstance, combat: CombatState, target: Creature | None) -> 
     attacks = [hand_card for hand_card in combat.hand if hand_card.card_type == CardType.ATTACK]
     if attacks:
         exhausted = combat.combat_card_selection_rng.choice(attacks)
-        bonus = exhausted.base_damage or 0
-        previous_card_source = combat._active_card_source
-        combat._active_card_source = exhausted
-        try:
-            bonus = calculate_damage(bonus, owner, target, ValueProp.MOVE, combat)
-        finally:
-            combat._active_card_source = previous_card_source
+        bonus = _calculate_untargeted_card_damage(exhausted, owner, combat)
         card.base_damage = (card.base_damage or 0) + bonus
         combat.exhaust_card(exhausted)
 
