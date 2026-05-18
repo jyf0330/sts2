@@ -1162,8 +1162,10 @@ def create_knowledge_demon(rng: Rng) -> tuple[Creature, MonsterAI]:
 
     def ponder(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, ponder_dmg)
+        if combat.is_over:
+            return
         creature.heal(ponder_heal)
-        creature.apply_power(PowerId.STRENGTH, ponder_str)
+        combat.apply_power_to(creature, PowerId.STRENGTH, ponder_str, applier=creature)
 
     # After Ponder: if curse_counter < 3, go back to CURSE_OF_KNOWLEDGE; else SLAP
     curse_check = ConditionalBranchState("CurseOfKnowledgeBranch")

@@ -958,6 +958,17 @@ class TestFixedRotation:
         assert knowledge_ai.current_move.state_id == "CURSE_OF_KNOWLEDGE_MOVE"
         assert {"SLAP_MOVE", "KNOWLEDGE_OVERWHELMING_MOVE", "PONDER_MOVE"}.issubset(knowledge_ai.states)
 
+        lethal_knowledge, lethal_knowledge_ai = create_knowledge_demon(Rng(142))
+        lethal_knowledge.current_hp = 100
+        lethal_combat = _make_combat(142)
+        lethal_combat.add_enemy(lethal_knowledge, lethal_knowledge_ai)
+        lethal_combat.player.current_hp = 11
+        lethal_knowledge_ai.states["PONDER_MOVE"].perform(lethal_combat)
+        assert lethal_combat.is_over
+        assert lethal_combat.player_won is False
+        assert lethal_knowledge.current_hp == 100
+        assert lethal_knowledge.get_power_amount(PowerId.STRENGTH) == 0
+
         crusher, crusher_ai = create_crusher(Rng(43))
         assert crusher_ai.current_move.state_id == "THRASH_MOVE"
         assert _run_ai(crusher_ai, Rng(43), 5) == [
