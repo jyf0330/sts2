@@ -40,6 +40,7 @@ from sts2_env.cards.ironclad import (
     make_molten_fist,
     make_pacts_end,
     make_pillage,
+    make_setup_strike,
     make_spite,
     make_stomp,
     make_sword_boomerang,
@@ -152,6 +153,24 @@ class TestIroncladParityExtra4:
         assert combat.play_card(0)
         assert combat.is_over
         assert combat.player.block == 0
+
+    def test_setup_strike_grants_temporary_strength_until_turn_end(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.max_hp = 100
+        enemy.current_hp = 100
+        combat.hand = [make_setup_strike(upgraded=True)]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+        assert enemy.current_hp == 91
+        assert combat.player.get_power_amount(PowerId.SETUP_STRIKE) == 3
+        assert combat.player.get_power_amount(PowerId.STRENGTH) == 3
+
+        combat.player.powers[PowerId.SETUP_STRIKE].after_turn_end(combat.player, CombatSide.PLAYER, combat)
+
+        assert combat.player.get_power_amount(PowerId.SETUP_STRIKE) == 0
+        assert combat.player.get_power_amount(PowerId.STRENGTH) == 0
 
     def test_demonic_shield_does_not_gain_block_after_self_damage_ends_combat(self):
         combat = _make_combat()
