@@ -611,6 +611,25 @@ class TestIroncladParityExtra4:
         assert combat.play_card(0)
         assert combat.energy == 2
 
+    def test_brand_still_gains_strength_when_selection_returns_none(self):
+        combat = _make_combat()
+        strike = make_strike_ironclad()
+        combat.hand = [make_brand(), strike]
+        combat.energy = 1
+        starting_hp = combat.player.current_hp
+
+        assert combat.play_card(0)
+        assert combat.pending_choice is not None
+
+        resolver = combat.pending_choice.resolver
+        combat.pending_choice = None
+        resolver([])
+        combat._resume_pending_play()  # noqa: SLF001
+
+        assert combat.player.current_hp == starting_hp - 1
+        assert strike in combat.hand
+        assert combat.player.powers[PowerId.STRENGTH].amount == 1
+
     def test_pacts_end_requires_three_exhausted_cards(self):
         combat = _make_combat()
         card = make_pacts_end()

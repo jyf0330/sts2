@@ -1607,9 +1607,8 @@ def brand(card: CardInstance, combat: CombatState, target: Creature | None) -> N
         return
 
     def _resolver(selected):
-        if selected is None:
-            return
-        combat.exhaust_card(selected)
+        if selected is not None:
+            combat.exhaust_card(selected)
         combat.apply_power_to(_owner(card, combat), PowerId.STRENGTH, card.effect_vars.get("strength", 1))
 
     combat.request_card_choice(
