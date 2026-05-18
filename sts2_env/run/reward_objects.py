@@ -478,15 +478,28 @@ class LoseGoldReward(Reward):
 class RemoveCardReward(Reward):
     count: int = 1
     cards: list[CardInstance] | None = None
+    require_manual_confirmation: bool = False
 
-    def __init__(self, player_id: int, count: int = 1, cards: list[CardInstance] | None = None):
+    def __init__(
+        self,
+        player_id: int,
+        count: int = 1,
+        cards: list[CardInstance] | None = None,
+        *,
+        require_manual_confirmation: bool = False,
+    ):
         super().__init__(player_id=player_id, reward_type=RewardType.REMOVE_CARD, rewards_set_index=4, skippable=False)
         self.count = count
         self.cards = cards
+        self.require_manual_confirmation = require_manual_confirmation
 
     def select(self, run_manager: RunManager, **_: object) -> dict:
         player = run_manager.run_state.get_player(self.player_id)
-        removed = player.remove_cards_from_deck(self.count, cards=self.cards)
+        removed = player.remove_cards_from_deck(
+            self.count,
+            cards=self.cards,
+            require_manual_confirmation=self.require_manual_confirmation,
+        )
         if run_manager.run_state.pending_choice is not None:
             return {
                 "description": f"Choose {self.count} card(s) to remove.",
@@ -502,15 +515,28 @@ class RemoveCardReward(Reward):
 class UpgradeCardsReward(Reward):
     count: int = 1
     cards: list[CardInstance] | None = None
+    require_manual_confirmation: bool = False
 
-    def __init__(self, player_id: int, count: int = 1, cards: list[CardInstance] | None = None):
+    def __init__(
+        self,
+        player_id: int,
+        count: int = 1,
+        cards: list[CardInstance] | None = None,
+        *,
+        require_manual_confirmation: bool = False,
+    ):
         super().__init__(player_id=player_id, reward_type=RewardType.UPGRADE_CARD, rewards_set_index=4, skippable=False)
         self.count = count
         self.cards = cards
+        self.require_manual_confirmation = require_manual_confirmation
 
     def select(self, run_manager: RunManager, **_: object) -> dict:
         player = run_manager.run_state.get_player(self.player_id)
-        upgraded = player.upgrade_selected_cards(self.count, cards=self.cards)
+        upgraded = player.upgrade_selected_cards(
+            self.count,
+            cards=self.cards,
+            require_manual_confirmation=self.require_manual_confirmation,
+        )
         if run_manager.run_state.pending_choice is not None:
             return {
                 "description": f"Choose {self.count} card(s) to upgrade.",
@@ -553,7 +579,14 @@ class TransformCardsReward(Reward):
         if self.mapping is not None:
             candidates = list(self.cards or [])
             required = min(self.count, len(candidates))
-            if required > 0 and player.request_deck_choice(
+            if required > 0 and player._can_auto_resolve_deck_choice(
+                candidates,
+                allow_skip=False,
+                min_count=required,
+                max_count=required,
+            ):
+                transformed = player.transform_specific_cards_with_mapping(candidates[:required], self.mapping or {})
+            elif required > 0 and player.request_deck_choice(
                 prompt=f"Choose {required} card(s) to transform",
                 cards=candidates,
                 resolver=lambda selected: player.transform_specific_cards_with_mapping(selected, self.mapping or {}),
@@ -565,7 +598,8 @@ class TransformCardsReward(Reward):
                     "description": f"Choose {required} card(s) to transform.",
                     "pending_choice": True,
                 }
-            transformed = player.transform_specific_cards_with_mapping(candidates[:required], self.mapping)
+            else:
+                transformed = player.transform_specific_cards_with_mapping(candidates[:required], self.mapping)
         else:
             transformed = (
                 player.transform_and_upgrade_cards(self.count, cards=self.cards, rng=transform_rng)
@@ -619,6 +653,7 @@ class EnchantCardsReward(Reward):
     amount: int = 1
     count: int = 1
     cards: list[CardInstance] | None = None
+    min_count: int | None = None
 
     def __init__(
         self,
@@ -627,19 +662,28 @@ class EnchantCardsReward(Reward):
         amount: int = 1,
         count: int = 1,
         cards: list[CardInstance] | None = None,
+        *,
+        min_count: int | None = None,
     ):
         super().__init__(player_id=player_id, reward_type=RewardType.ENCHANT_CARD, rewards_set_index=4, skippable=False)
         self.enchantment = enchantment
         self.amount = amount
         self.count = count
         self.cards = cards
+        self.min_count = min_count
 
     def select(self, run_manager: RunManager, **_: object) -> dict:
         player = run_manager.run_state.get_player(self.player_id)
-        enchanted = player.enchant_selected_cards(self.enchantment, self.amount, self.count, cards=self.cards)
+        enchanted = player.enchant_selected_cards(
+            self.enchantment,
+            self.amount,
+            self.count,
+            cards=self.cards,
+            min_count=self.min_count,
+        )
         if run_manager.run_state.pending_choice is not None:
             return {
-                "description": f"Choose up to {self.count} card(s) to enchant with {self.enchantment}.",
+                "description": f"Choose {self.count} card(s) to enchant with {self.enchantment}.",
                 "pending_choice": True,
             }
         return {

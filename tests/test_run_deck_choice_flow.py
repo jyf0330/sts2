@@ -57,7 +57,7 @@ def test_shop_remove_card_uses_run_level_deck_choice_and_resumes_shop():
     assert not any(action["action"] == "remove_card" for action in mgr.get_available_actions())
 
 
-def test_treasure_relic_with_deck_choice_pauses_then_returns_to_map():
+def test_treasure_relic_with_single_required_deck_choice_still_pauses_when_multiple_cards():
     mgr = RunManager(seed=802, character_id="Ironclad")
     starting_deck = len(mgr.run_state.player.deck)
     mgr._phase = RunManager.PHASE_TREASURE
@@ -80,7 +80,7 @@ def test_treasure_relic_with_deck_choice_pauses_then_returns_to_map():
     assert len(mgr.run_state.player.deck) == starting_deck - 1
 
 
-def test_manager_context_enables_interactive_relic_obtain_choices():
+def test_manager_context_requires_full_enchant_choice_before_confirm():
     mgr = RunManager(seed=803, character_id="Ironclad")
 
     assert mgr.run_state.enable_deck_choice_requests is True
@@ -89,11 +89,15 @@ def test_manager_context_enables_interactive_relic_obtain_choices():
     assert any(action["action"] == "choose" for action in mgr.get_available_actions())
 
     mgr.take_action({"action": "choose", "index": 0})
+    assert mgr.take_action({"action": "confirm_choice"})["success"] is False
+    assert mgr.run_state.pending_choice is not None
+    mgr.take_action({"action": "choose", "index": 1})
+    mgr.take_action({"action": "choose", "index": 2})
     final = mgr.take_action({"action": "confirm_choice"})
 
     assert final["phase"] == RunManager.PHASE_MAP_CHOICE
     assert mgr.run_state.pending_choice is None
-    assert sum(1 for card in mgr.run_state.player.deck if card.has_enchantment("Swift")) == 1
+    assert sum(1 for card in mgr.run_state.player.deck if card.has_enchantment("Swift")) == 3
 
 
 def test_remove_card_reward_uses_run_level_deck_choice():
@@ -169,8 +173,7 @@ def test_enchant_cards_reward_uses_run_level_deck_choice():
 
     assert result["pending_choice"] is True
     assert mgr.run_state.pending_choice is not None
-    mgr.take_action({"action": "choose", "index": 0})
-    final = mgr.take_action({"action": "confirm_choice"})
+    final = mgr.take_action({"action": "choose", "index": 0})
     assert final["finished"] is True
     assert mgr.run_state.pending_choice is None
     assert any(card.has_enchantment("Swift") for card in mgr.run_state.player.deck)
@@ -395,12 +398,8 @@ def test_treasure_leafy_poultice_transforms_one_strike_and_one_defend_without_ch
 
     result = mgr._do_treasure_collect()
 
-    assert result["phase"] == RunManager.PHASE_CARD_REWARD
-    assert mgr.run_state.pending_choice is not None
-    mgr.take_action({"action": "choose", "index": 0})
-    mgr.take_action({"action": "choose", "index": 1})
-    final = mgr.take_action({"action": "confirm_choice"})
-    assert final["phase"] == RunManager.PHASE_MAP_CHOICE
+    assert result["phase"] == RunManager.PHASE_MAP_CHOICE
+    assert mgr.run_state.pending_choice is None
     assert sum(
         1 for card in mgr.run_state.player.deck
         if card.rarity.name == "BASIC" and ("STRIKE" in card.card_id.name or "DEFEND" in card.card_id.name)
@@ -473,10 +472,8 @@ def test_treasure_archaic_tooth_routes_mapping_transform_through_reward_chain():
 
     result = mgr._do_treasure_collect()
 
-    assert result["phase"] == RunManager.PHASE_CARD_REWARD
-    assert mgr.run_state.pending_choice is not None
-    final = mgr.take_action({"action": "choose", "index": 0})
-    assert final["phase"] == RunManager.PHASE_MAP_CHOICE
+    assert result["phase"] == RunManager.PHASE_MAP_CHOICE
+    assert mgr.run_state.pending_choice is None
     assert any(card.card_id.name == "BREAK" for card in mgr.run_state.player.deck)
 
 
@@ -493,8 +490,8 @@ def test_archaic_tooth_setup_attrs_deferred_path_queues_supported_transform_rewa
     reward = mgr.run_state.pending_rewards.pop(0)
     assert isinstance(reward, TransformCardsReward)
     result = reward.select(mgr)
-    assert result["pending_choice"] is True
-    assert mgr.run_state.resolve_pending_choice(0)
+    assert result["transformed"] == 1
+    assert mgr.run_state.pending_choice is None
     assert any(card.card_id == CardId.BREAK for card in mgr.run_state.player.deck)
 
 
@@ -567,16 +564,8 @@ def test_treasure_pandoras_box_transforms_all_basic_strike_defends_without_choic
 
     result = mgr._do_treasure_collect()
 
-    assert result["phase"] == RunManager.PHASE_CARD_REWARD
-    assert mgr.run_state.pending_choice is not None
-    basic_count = sum(
-        1 for card in mgr.run_state.player.deck
-        if card.rarity.name == "BASIC" and ("STRIKE" in card.card_id.name or "DEFEND" in card.card_id.name)
-    )
-    for idx in range(basic_count):
-        mgr.take_action({"action": "choose", "index": idx})
-    final = mgr.take_action({"action": "confirm_choice"})
-    assert final["phase"] == RunManager.PHASE_MAP_CHOICE
+    assert result["phase"] == RunManager.PHASE_MAP_CHOICE
+    assert mgr.run_state.pending_choice is None
     assert sum(
         1 for card in mgr.run_state.player.deck
         if card.rarity.name == "BASIC" and ("STRIKE" in card.card_id.name or "DEFEND" in card.card_id.name)
@@ -661,11 +650,14 @@ def test_shop_buy_relic_with_multi_choice_resumes_shop_after_confirm():
     assert mgr.run_state.pending_choice is not None
 
     mgr.take_action({"action": "choose", "index": 0})
+    assert mgr.take_action({"action": "confirm_choice"})["success"] is False
+    mgr.take_action({"action": "choose", "index": 1})
+    mgr.take_action({"action": "choose", "index": 2})
     final = mgr.take_action({"action": "confirm_choice"})
 
     assert final["phase"] == RunManager.PHASE_SHOP
     assert mgr.run_state.pending_choice is None
-    assert sum(1 for card in mgr.run_state.player.deck if card.has_enchantment("Swift")) == 1
+    assert sum(1 for card in mgr.run_state.player.deck if card.has_enchantment("Swift")) == 3
 
 
 def test_boss_relic_pick_with_deck_choice_resumes_to_next_act_after_confirm():
@@ -680,6 +672,9 @@ def test_boss_relic_pick_with_deck_choice_resumes_to_next_act_after_confirm():
     assert mgr.run_state.pending_choice is not None
 
     mgr.take_action({"action": "choose", "index": 0})
+    assert mgr.take_action({"action": "confirm_choice"})["success"] is False
+    mgr.take_action({"action": "choose", "index": 1})
+    mgr.take_action({"action": "choose", "index": 2})
     final = mgr.take_action({"action": "confirm_choice"})
 
     assert final["phase"] == RunManager.PHASE_MAP_CHOICE
@@ -781,9 +776,9 @@ def test_event_grave_of_the_forgotten_confront_routes_to_enchant_reward_chain():
 
     result = mgr._do_event_choice({"option_id": "confront"})
 
-    assert result["phase"] == RunManager.PHASE_CARD_REWARD
-    assert isinstance(mgr._current_reward, EnchantCardsReward)
-    assert mgr.run_state.pending_choice is not None
+    assert result["phase"] == RunManager.PHASE_MAP_CHOICE
+    assert mgr._current_reward is None
+    assert mgr.run_state.pending_choice is None
     assert any(card.card_id.name == "DECAY" for card in mgr.run_state.player.deck)
 
 

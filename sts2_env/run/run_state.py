@@ -114,6 +114,7 @@ class PlayerState:
         allow_skip: bool = False,
         min_count: int = 1,
         max_count: int = 1,
+        require_manual_confirmation: bool = False,
     ) -> bool:
         if (
             self.run_state is None
@@ -123,6 +124,15 @@ class PlayerState:
             return False
         if not cards:
             return False
+        if self._can_auto_resolve_deck_choice(
+            cards,
+            allow_skip=allow_skip,
+            min_count=min_count,
+            max_count=max_count,
+            require_manual_confirmation=require_manual_confirmation,
+        ):
+            resolver(list(cards))
+            return True
         self.run_state.pending_choice = PendingCardChoice(
             prompt=prompt,
             options=[CardChoiceOption(card=card, source_pile="deck") for card in cards],
@@ -132,6 +142,25 @@ class PlayerState:
             max_choices=max_count,
         )
         return True
+
+    def _can_auto_resolve_deck_choice(
+        self,
+        cards: list[CardInstance],
+        *,
+        allow_skip: bool,
+        min_count: int,
+        max_count: int,
+        require_manual_confirmation: bool = False,
+    ) -> bool:
+        return (
+            self.run_state is not None
+            and self.run_state.pending_choice is None
+            and getattr(self.run_state, "enable_deck_choice_requests", False)
+            and not require_manual_confirmation
+            and not allow_skip
+            and min_count == max_count
+            and len(cards) <= min_count
+        )
 
     def heal(self, amount: int) -> int:
         before = self.current_hp
@@ -368,15 +397,28 @@ class PlayerState:
         count: int,
         *,
         cards: list[CardInstance] | None = None,
+        min_count: int | None = None,
     ) -> int:
         candidates = list(cards) if cards is not None else [card for card in self.deck if can_enchant_card(card, enchantment)]
+        max_count = min(count, len(candidates))
+        required = min_count if min_count is not None else max_count
+        allow_skip = required == 0
+        if count > 0 and candidates and self._can_auto_resolve_deck_choice(
+            candidates,
+            allow_skip=allow_skip,
+            min_count=required,
+            max_count=max_count,
+        ):
+            for card in candidates[:max_count]:
+                card.add_enchantment(enchantment, amount)
+            return max_count
         if count > 0 and candidates and self.request_deck_choice(
-            prompt=f"Choose up to {count} cards to enchant with {enchantment}",
+            prompt=f"Choose {count} cards to enchant with {enchantment}",
             cards=candidates,
             resolver=lambda selected: [card.add_enchantment(enchantment, amount) for card in selected],
-            allow_skip=True,
-            min_count=0,
-            max_count=min(count, len(candidates)),
+            allow_skip=allow_skip,
+            min_count=required,
+            max_count=max_count,
         ):
             return 0
         enchanted = 0
@@ -487,11 +529,19 @@ class PlayerState:
 
     def duplicate_card_from_deck(self, *, cards: list[CardInstance] | None = None) -> bool:
         candidates = list(cards) if cards is not None else self.duplicable_deck_cards()
+        if candidates and self._can_auto_resolve_deck_choice(
+            candidates,
+            allow_skip=False,
+            min_count=1,
+            max_count=1,
+        ):
+            self.add_card_instance_to_deck(candidates[0].clone(20_000_000 + len(self.deck)))
+            return True
         if candidates and self.request_deck_choice(
             prompt="Choose a card to duplicate",
             cards=candidates,
             resolver=lambda selected: selected and self.add_card_instance_to_deck(selected[0].clone(20_000_000 + len(self.deck))),
-            allow_skip=True,
+            allow_skip=False,
         ):
             return True
         if not candidates:
@@ -505,9 +555,27 @@ class PlayerState:
         self.add_card_instance_to_deck(self.deck[-1].clone(20_000_000 + len(self.deck)), source=source)
         return True
 
-    def upgrade_selected_cards(self, count: int, *, cards: list[CardInstance] | None = None) -> int:
+    def upgrade_selected_cards(
+        self,
+        count: int,
+        *,
+        cards: list[CardInstance] | None = None,
+        require_manual_confirmation: bool = False,
+    ) -> int:
         candidates = list(cards) if cards is not None else self.upgradable_deck_cards()
         required = min(count, len(candidates))
+        if required > 0 and self._can_auto_resolve_deck_choice(
+            candidates,
+            allow_skip=False,
+            min_count=required,
+            max_count=required,
+            require_manual_confirmation=require_manual_confirmation,
+        ):
+            upgraded = 0
+            for card in candidates:
+                if self.upgrade_card_instance(card) is not None and card.upgraded:
+                    upgraded += 1
+            return upgraded
         if required > 0 and self.request_deck_choice(
             prompt=f"Choose {min(count, len(candidates))} cards to upgrade",
             cards=candidates,
@@ -533,9 +601,25 @@ class PlayerState:
         self.deck.extend(clones)
         return len(clones)
 
-    def remove_cards_from_deck(self, count: int, *, cards: list[CardInstance] | None = None) -> int:
+    def remove_cards_from_deck(
+        self,
+        count: int,
+        *,
+        cards: list[CardInstance] | None = None,
+        require_manual_confirmation: bool = False,
+    ) -> int:
         candidates = list(cards) if cards is not None else self.removable_deck_cards()
         required = min(count, len(candidates))
+        if required > 0 and self._can_auto_resolve_deck_choice(
+            candidates,
+            allow_skip=False,
+            min_count=required,
+            max_count=required,
+            require_manual_confirmation=require_manual_confirmation,
+        ):
+            selected_ids = {id(card) for card in candidates[:required]}
+            self.deck = [card for card in self.deck if id(card) not in selected_ids]
+            return required
         if required > 0 and self.request_deck_choice(
             prompt=f"Choose {min(count, len(candidates))} cards to remove",
             cards=candidates,
@@ -565,6 +649,13 @@ class PlayerState:
     ) -> int:
         candidates = list(cards) if cards is not None else self.transformable_deck_cards()
         required = min(count, len(candidates))
+        if required > 0 and self._can_auto_resolve_deck_choice(
+            candidates,
+            allow_skip=False,
+            min_count=required,
+            max_count=required,
+        ):
+            return self._transform_selected_cards(candidates[:required], rng=rng)
         if required > 0 and self.request_deck_choice(
             prompt=f"Choose {min(count, len(candidates))} cards to transform",
             cards=candidates,
@@ -641,6 +732,20 @@ class PlayerState:
             return 0
         candidates = list(cards) if cards is not None else list(self.deck)
         required = min_count if min_count is not None else min(count, len(candidates))
+        max_count = min(count, len(candidates))
+        allow_skip = min_count == 0
+        if count > 0 and candidates and self._can_auto_resolve_deck_choice(
+            candidates,
+            allow_skip=allow_skip,
+            min_count=required,
+            max_count=max_count,
+        ):
+            return self._transform_selected_cards_to(
+                candidates[:max_count],
+                card_id,
+                preserve_upgrades=preserve_upgrades,
+                preserve_enchantments=preserve_enchantments,
+            )
         if count > 0 and candidates and self.request_deck_choice(
             prompt=f"Choose {min(count, len(candidates))} cards to transform into {name}",
             cards=candidates,
@@ -650,9 +755,9 @@ class PlayerState:
                 preserve_upgrades=preserve_upgrades,
                 preserve_enchantments=preserve_enchantments,
             ),
-            allow_skip=min_count == 0,
+            allow_skip=allow_skip,
             min_count=required,
-            max_count=min(count, len(candidates)),
+            max_count=max_count,
         ):
             return 0
         transformed = 0
@@ -675,6 +780,13 @@ class PlayerState:
     ) -> int:
         candidates = list(cards) if cards is not None else self.transformable_deck_cards()
         required = min(count, len(candidates))
+        if required > 0 and self._can_auto_resolve_deck_choice(
+            candidates,
+            allow_skip=False,
+            min_count=required,
+            max_count=required,
+        ):
+            return self._transform_and_upgrade_selected(candidates[:required], rng=rng)
         if required > 0 and self.request_deck_choice(
             prompt=f"Choose {min(count, len(candidates))} cards to transform and upgrade",
             cards=candidates,
@@ -974,6 +1086,7 @@ class PlayerState:
         count: int = 1,
         *,
         cards: list[CardInstance] | None = None,
+        min_count: int | None = None,
     ) -> None:
         from sts2_env.run.reward_objects import EnchantCardsReward
 
@@ -984,6 +1097,7 @@ class PlayerState:
                 amount=amount,
                 count=count,
                 cards=cards,
+                min_count=min_count,
             )
         )
 

@@ -363,9 +363,9 @@ class GnarledHammer(RelicInstance):
     def after_obtained(self, owner: Creature) -> None:
         candidates = [card for card in owner.deck if can_enchant_card(card, "Sharp")]
         if getattr(owner.run_state, "defer_followup_rewards", False):
-            owner.offer_enchant_cards_reward("Sharp", self.SHARP, self.CARDS, cards=candidates)
+            owner.offer_enchant_cards_reward("Sharp", self.SHARP, self.CARDS, cards=candidates, min_count=0)
             return
-        owner.enchant_selected_cards("Sharp", self.SHARP, self.CARDS, cards=candidates)
+        owner.enchant_selected_cards("Sharp", self.SHARP, self.CARDS, cards=candidates, min_count=0)
 
 
 @register_relic
@@ -379,9 +379,9 @@ class Kifuda(RelicInstance):
     def after_obtained(self, owner: Creature) -> None:
         candidates = [card for card in owner.deck if can_enchant_card(card, "Adroit")]
         if getattr(owner.run_state, "defer_followup_rewards", False):
-            owner.offer_enchant_cards_reward("Adroit", 3, self.CARDS, cards=candidates)
+            owner.offer_enchant_cards_reward("Adroit", 3, self.CARDS, cards=candidates, min_count=0)
             return
-        owner.enchant_selected_cards("Adroit", 3, self.CARDS, cards=candidates)
+        owner.enchant_selected_cards("Adroit", 3, self.CARDS, cards=candidates, min_count=0)
 
 
 @register_relic
@@ -2673,11 +2673,11 @@ class PaelsTooth(RelicInstance):
         candidates = owner.upgradable_deck_cards()
         max_count = min(self.CARDS, len(candidates))
         if max_count > 0 and owner.request_deck_choice(
-            prompt=f"Choose up to {max_count} cards for Pael's Tooth",
+            prompt=f"Choose {max_count} cards for Pael's Tooth",
             cards=candidates,
             resolver=lambda selected: self._store_and_remove_cards(owner, selected),
-            allow_skip=True,
-            min_count=0,
+            allow_skip=False,
+            min_count=max_count,
             max_count=max_count,
         ):
             return

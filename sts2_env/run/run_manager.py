@@ -1542,7 +1542,7 @@ class RunManager:
                 and removable
             ):
                 gold_spent = player.lose_gold(inv.removal_cost)
-                reward = RemoveCardReward(player.player_id, count=1)
+                reward = RemoveCardReward(player.player_id, count=1, cards=removable, require_manual_confirmation=True)
                 info = reward.select(self)
 
                 def _finalize_removal_purchase() -> None:

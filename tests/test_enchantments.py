@@ -163,8 +163,7 @@ def test_relic_reward_can_pause_for_run_level_card_choice():
     actions = mgr.get_available_actions()
     assert any(action["action"] == "choose" for action in actions)
 
-    mgr.take_action({"action": "choose", "index": 0})
-    final = mgr.take_action({"action": "confirm_choice"})
+    final = mgr.take_action({"action": "choose", "index": 0})
     assert final["success"] is True
     assert any(card.has_enchantment("Clone") for card in mgr.run_state.player.deck)
 

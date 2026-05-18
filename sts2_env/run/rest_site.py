@@ -85,6 +85,7 @@ class SmithOption(RestSiteOption):
                 cards=candidates,
                 resolver=lambda selected: [player.upgrade_card_instance(card) for card in selected],
                 allow_skip=False,
+                require_manual_confirmation=True,
             ):
                 return "Choose a card to upgrade"
         return "No card upgraded"
@@ -158,6 +159,7 @@ class CookOption(RestSiteOption):
                 allow_skip=False,
                 min_count=2,
                 max_count=2,
+                require_manual_confirmation=True,
             ):
                 return "Choose 2 cards to remove"
         return "Cook cancelled"

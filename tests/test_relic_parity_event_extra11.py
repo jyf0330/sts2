@@ -336,12 +336,12 @@ class TestRelicParityEventExtra11:
         assert run_state.pending_choice is not None
         assert len(run_state.player.deck) == starting_deck
 
-        assert run_state.resolve_pending_choice(0)
-        assert run_state.resolve_pending_choice(1)
+        for index in range(5):
+            assert run_state.resolve_pending_choice(index)
         assert run_state.resolve_pending_choice(None)
 
         assert run_state.pending_choice is None
-        assert len(run_state.player.deck) == starting_deck - 2
+        assert len(run_state.player.deck) == starting_deck - 5
 
     def test_paels_legion_doubles_block_then_enters_two_turn_cooldown(self):
         combat = _make_combat(["PaelsLegion"], seed=998)
