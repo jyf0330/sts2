@@ -767,7 +767,7 @@ def mad_science_effect(card: CardInstance, combat: CombatState, target: Creature
                 combat.combat_card_generation_rng,
                 1,
                 distinct=True,
-                generation_context="modifier",
+                generation_context="combat",
             )
             if generated:
                 generated[0].set_combat_cost(0)

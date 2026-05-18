@@ -32,7 +32,7 @@ from sts2_env.cards.status import (
     make_void,
 )
 from sts2_env.core.combat import CombatState
-from sts2_env.core.enums import PowerId
+from sts2_env.core.enums import CardId, CardType, PowerId, TargetType
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle
 from sts2_env.powers.base import PowerInstance
@@ -63,6 +63,14 @@ class _CannotHitPower(PowerInstance):
 
     def should_allow_hitting(self, owner, combat):
         return False
+
+
+class _FirstRng:
+    def sample(self, lst, k):
+        return list(lst)[:k]
+
+    def choice(self, lst):
+        return list(lst)[0]
 
 
 class TestStatusParityExtra:
@@ -141,6 +149,24 @@ class TestStatusParityExtra:
         assert enemy.get_power_amount(PowerId.WEAK) == 2
         assert enemy.get_power_amount(PowerId.VULNERABLE) == 2
         assert drawn in combat.hand
+
+    def test_mad_science_chaos_uses_combat_generation_pool(self):
+        combat = _make_combat()
+        card = make_mad_science()
+        card.card_type = CardType.SKILL
+        card.target_type = TargetType.SELF
+        card.base_damage = None
+        card.base_block = 8
+        card.effect_vars["rider"] = 6
+        combat.hand = [card]
+        combat.energy = 1
+        combat.rng = _FirstRng()
+
+        assert combat.play_card(0)
+
+        generated = next(hand_card for hand_card in combat.hand if hand_card is not card)
+        assert generated.card_id is not CardId.STRIKE_IRONCLAD
+        assert generated.cost == 0
 
     def test_toxic_deals_turn_end_in_hand_damage_but_playing_it_exhausts_safely(self):
         combat = _make_combat()
