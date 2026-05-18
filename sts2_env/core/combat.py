@@ -136,6 +136,7 @@ class CombatState:
         self._exhaust_events_this_turn: list[CardInstance] = []
         self._discard_events_this_turn: list[CardInstance] = []
         self._stars_gained_this_turn: list[tuple[Creature, int]] = []
+        self._power_events_this_turn: list[tuple[Creature, PowerId, int, Creature | None]] = []
         self._generated_cards_combat: list[tuple[Creature, bool]] = []
         self._active_card_source: object | None = None
         self._active_card_target: Creature | None = None
@@ -720,6 +721,7 @@ class CombatState:
         self._exhaust_events_this_turn = []
         self._discard_events_this_turn = []
         self._stars_gained_this_turn = []
+        self._power_events_this_turn = []
         self._generated_cards_combat = []
         self._played_cards_this_turn = []
         self._played_cards_combat = []
@@ -753,6 +755,7 @@ class CombatState:
         self._exhaust_events_this_turn = []
         self._discard_events_this_turn = []
         self._stars_gained_this_turn = []
+        self._power_events_this_turn = []
         self._played_cards_this_turn = []
         self._after_energy_reset_owners_this_turn = set()
 
@@ -1941,6 +1944,7 @@ class CombatState:
                     source,
                     self,
                 )
+        self._power_events_this_turn.append((target, power_id, amount, applier))
 
     def request_retain(self, owner: Creature, count: int) -> None:
         if self.combat_player_state_for(owner) is not None and count > 0:
@@ -2160,6 +2164,20 @@ class CombatState:
 
     def count_stars_gained_this_turn(self, owner: Creature) -> int:
         return sum(amount for logged_owner, amount in self._stars_gained_this_turn if logged_owner is owner)
+
+    def was_power_applied_this_turn(
+        self,
+        power_id: PowerId,
+        *,
+        applier: Creature | None = None,
+        target: Creature | None = None,
+    ) -> bool:
+        return any(
+            logged_power_id == power_id
+            and (applier is None or logged_applier is applier)
+            and (target is None or logged_target is target)
+            for logged_target, logged_power_id, _, logged_applier in self._power_events_this_turn
+        )
 
     def should_owner_death_trigger_fatal(self, target: Creature) -> bool:
         return all(

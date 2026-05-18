@@ -406,7 +406,12 @@ def deathbringer(card: CardInstance, combat: CombatState, target: Creature | Non
 
 @register_effect(CardId.DEATHS_DOOR)
 def deaths_door(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    _gain_block(card, combat)
+    repeats = 1
+    owner = _owner(card, combat)
+    if combat.was_power_applied_this_turn(PowerId.DOOM, applier=owner):
+        repeats += card.effect_vars.get("repeat", 2)
+    for _ in range(repeats):
+        _gain_block(card, combat)
 
 
 @register_effect(CardId.DEBILITATE_CARD)

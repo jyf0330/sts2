@@ -10,6 +10,7 @@ from sts2_env.cards.necrobinder import (
     make_bodyguard,
     make_call_of_the_void,
     make_deathbringer,
+    make_deaths_door,
     make_defend_necrobinder,
     make_end_of_days,
     make_fear,
@@ -113,6 +114,26 @@ class TestNecrobinderParityExtra4:
         for enemy in combat.enemies:
             assert enemy.get_power_amount(PowerId.DOOM) == 21
             assert enemy.get_power_amount(PowerId.WEAK) == 1
+
+    def test_deaths_door_repeats_after_owner_applies_doom_this_turn(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        combat.apply_power_to(enemy, PowerId.DOOM, 1, applier=combat.player)
+        combat.hand = [make_deaths_door()]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.player.block == 18
+
+    def test_deaths_door_does_not_repeat_for_non_owner_doom_applier(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        combat.apply_power_to(combat.player, PowerId.DOOM, 1, applier=enemy)
+        combat.hand = [make_deaths_door()]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.player.block == 6
 
     def test_negative_pulse_debuffs_only_hittable_enemies(self):
         combat = _make_combat(extra_enemies=1)
