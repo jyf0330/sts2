@@ -669,8 +669,9 @@ def accelerant(card: CardInstance, combat: CombatState, target: Creature | None)
 
 @register_effect(CardId.ADRENALINE)
 def adrenaline(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
+    owner = _owner(card, combat)
+    combat.gain_energy(owner, card.effect_vars.get("energy", 1))
     combat._draw_cards(card.effect_vars.get("cards", 2))
-    combat.energy += card.effect_vars.get("energy", 1)
 
 
 @register_effect(CardId.AFTERIMAGE_CARD)

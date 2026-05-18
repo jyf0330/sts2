@@ -7,6 +7,7 @@ from sts2_env.cards.ironclad_basic import make_strike_ironclad
 from sts2_env.cards.status import (
     make_bad_luck,
     make_beckon,
+    make_brightest_flame,
     make_burn,
     make_debris,
     make_debt,
@@ -14,6 +15,7 @@ from sts2_env.cards.status import (
     make_doubt,
     make_enthralled,
     make_exterminate,
+    make_fuel,
     make_frantic_escape,
     make_infection,
     make_mad_science,
@@ -88,6 +90,30 @@ class TestStatusParityExtra:
 
         assert combat.energy == 2
         assert void in combat.hand
+
+    def test_fuel_gains_energy_before_drawing_void(self):
+        """Matches Fuel.cs: gain energy before Draw, so drawn Void removes one."""
+        combat = _make_combat()
+        combat.hand = [make_fuel()]
+        combat.draw_pile = [make_void()]
+        combat.energy = 0
+
+        assert combat.play_card(0)
+
+        assert combat.energy == 0
+
+    def test_brightest_flame_gains_energy_before_drawing_void(self):
+        """Matches BrightestFlame.cs: gain energy before Draw, so drawn Void removes one."""
+        combat = _make_combat()
+        max_hp_before = combat.player.max_hp
+        combat.hand = [make_brightest_flame()]
+        combat.draw_pile = [make_void()]
+        combat.energy = 0
+
+        assert combat.play_card(0)
+
+        assert combat.energy == 1
+        assert combat.player.max_hp == max_hp_before - 1
 
     def test_infection_deals_turn_end_in_hand_damage_then_discards(self):
         combat = _make_combat()

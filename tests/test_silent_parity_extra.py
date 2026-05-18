@@ -3,6 +3,7 @@
 import sts2_env.powers  # noqa: F401
 
 from sts2_env.cards.silent import (
+    make_adrenaline,
     make_backstab,
     make_blade_dance,
     make_burst,
@@ -11,6 +12,7 @@ from sts2_env.cards.silent import (
     make_strike_silent,
     make_wraith_form,
 )
+from sts2_env.cards.status import make_void
 from sts2_env.core.combat import CombatState
 from sts2_env.core.enums import CardId, PowerId
 from sts2_env.core.rng import Rng
@@ -93,6 +95,17 @@ class TestSilentParityExtra:
         assert combat.play_card(0)
         assert combat.player.block == 3
         assert skill in combat.hand
+
+    def test_adrenaline_gains_energy_before_drawing_void(self):
+        """Matches Adrenaline.cs: gain energy before Draw, so drawn Void removes one."""
+        combat = _make_combat()
+        combat.hand = [make_adrenaline()]
+        combat.draw_pile = [make_void()]
+        combat.energy = 0
+
+        assert combat.play_card(0)
+
+        assert combat.energy == 0
 
     def test_wraith_form_applies_intangible_and_wraith_form_power_then_drains_dex_each_turn(self):
         """Matches WraithForm.cs + WraithFormPower: apply both powers, then lose Dexterity each turn."""

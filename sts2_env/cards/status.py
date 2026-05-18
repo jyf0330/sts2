@@ -423,8 +423,8 @@ def brightest_flame_effect(card: CardInstance, combat: CombatState, target: Crea
     owner = _owner(card, combat)
     cards = card.effect_vars.get("cards", 2)
     energy = card.effect_vars.get("energy", 2)
-    combat._draw_cards_for_creature(owner, cards)
     combat.gain_energy(owner, energy)
+    combat._draw_cards_for_creature(owner, cards)
     combat.lose_max_hp(owner, card.effect_vars.get("max_hp_loss", 1))
 
 
@@ -952,8 +952,9 @@ def make_toric_toughness(upgraded: bool = False) -> CardInstance:
 def fuel_effect(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     cards = card.effect_vars.get("cards", 1)
     energy = card.effect_vars.get("energy", 1)
+    owner = _owner(card, combat)
+    combat.gain_energy(owner, energy)
     combat._draw_cards(cards)
-    combat.energy += energy
 
 
 def make_fuel(upgraded: bool = False) -> CardInstance:
