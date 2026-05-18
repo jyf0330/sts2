@@ -581,7 +581,7 @@ def create_living_shield(rng: Rng, get_ally_count=None) -> tuple[Creature, Monst
 
     def smash(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, smash_dmg)
-        creature.apply_power(PowerId.STRENGTH, enrage_str)
+        combat.apply_power_to(creature, PowerId.STRENGTH, enrage_str, applier=creature)
 
     # Default ally count checker: count alive teammates excluding self
     def _default_ally_count() -> int:

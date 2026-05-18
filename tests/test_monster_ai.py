@@ -119,6 +119,7 @@ from sts2_env.monsters.act3 import (
     create_frog_knight,
     create_globe_head,
     create_guardbot,
+    create_living_shield,
     create_magi_knight,
     create_mecha_knight,
     create_noisebot,
@@ -1587,6 +1588,15 @@ class TestFixedRotation:
         shield_ai.current_move.perform(combat)
         assert combat.player.current_hp == 64
         assert shield.get_power_amount(PowerId.STRENGTH) == 3
+
+        lethal_combat = _make_combat(143)
+        lethal_shield, lethal_shield_ai = create_living_shield(Rng(143), get_ally_count=lambda: 0)
+        lethal_combat.add_enemy(lethal_shield, lethal_shield_ai)
+        lethal_combat.player.current_hp = 16
+        lethal_shield_ai.states["SMASH_MOVE"].perform(lethal_combat)
+        assert lethal_combat.is_over
+        assert lethal_combat.player_won is False
+        assert lethal_shield.get_power_amount(PowerId.STRENGTH) == 0
 
     def test_doormaker_boss_starts_with_door_and_spawns_doormaker_after_door_death(self):
         combat = _make_combat(45)
