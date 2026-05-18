@@ -8,7 +8,7 @@ import pytest
 import sts2_env.powers  # noqa: F401
 from sts2_env.cards.silent import create_silent_starter_deck
 from sts2_env.core.combat import CombatState
-from sts2_env.core.enums import CombatSide, PowerId, PotionRarity, PotionUsageType, PotionTargetType
+from sts2_env.core.enums import CardId, CombatSide, PowerId, PotionRarity, PotionUsageType, PotionTargetType
 from sts2_env.core.hooks import fire_after_turn_end
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle
@@ -23,6 +23,14 @@ from sts2_env.potions.base import (
     roll_random_potion_model,
 )
 import sts2_env.potions.all  # noqa: F401 -- register all potions
+
+
+class _FirstRng:
+    def sample(self, lst, k):
+        return list(lst)[:k]
+
+    def choice(self, lst):
+        return list(lst)[0]
 
 
 def _make_silent_combat(
@@ -217,6 +225,17 @@ class TestPotionInstance:
         assert combat.use_potion(0, target_index=0)
         assert enemy.get_power_amount(PowerId.DOOM) == 33
         assert player.block == 3
+
+    def test_attack_potion_uses_combat_generation_pool(self):
+        combat = _make_silent_combat()
+        combat.potions = [create_potion("AttackPotion"), None, None]
+        combat.rng = _FirstRng()
+
+        assert combat.use_potion(0)
+        assert combat.pending_choice is not None
+
+        generated_ids = {option.card.card_id for option in combat.pending_choice.options}
+        assert CardId.STRIKE_SILENT not in generated_ids
 
     def test_powdered_demise_uses_owner_applier_for_sleight_of_flesh(self):
         combat = _make_silent_combat()
