@@ -60,10 +60,10 @@ def _deal_damage_all(card: CardInstance, combat: CombatState) -> None:
         apply_damage(enemy, damage, ValueProp.MOVE, combat, owner)
 
 
-def _gain_block(card: CardInstance, combat: CombatState) -> None:
+def _gain_block(card: CardInstance, combat: CombatState) -> int:
     owner = _owner(card, combat)
     block = calculate_block(card.base_block, owner, ValueProp.MOVE, combat, card_source=card)
-    _gain_resolved_block(owner, block, combat)
+    return _gain_resolved_block(owner, block, combat)
 
 
 def _gain_resolved_block(creature: Creature, block: int, combat: CombatState) -> int:
@@ -930,9 +930,13 @@ def make_stack(upgraded: bool = False) -> CardInstance:
 
 @register_effect(CardId.TORIC_TOUGHNESS)
 def toric_toughness_effect(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    _gain_block(card, combat)
+    gained = _gain_block(card, combat)
     turns = card.effect_vars.get("turns", 2)
-    combat.apply_power_to(_owner(card, combat), PowerId.TORIC_TOUGHNESS, turns)
+    owner = _owner(card, combat)
+    combat.apply_power_to(owner, PowerId.TORIC_TOUGHNESS, turns)
+    power = owner.powers.get(PowerId.TORIC_TOUGHNESS)
+    if power is not None:
+        power.set_block(gained)
 
 
 def make_toric_toughness(upgraded: bool = False) -> CardInstance:

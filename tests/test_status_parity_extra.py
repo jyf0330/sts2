@@ -30,6 +30,7 @@ from sts2_env.cards.status import (
     make_spore_mind,
     make_sweeping_gaze,
     make_toxic,
+    make_toric_toughness,
     make_void,
 )
 from sts2_env.core.combat import CombatState
@@ -75,6 +76,16 @@ class _FirstRng:
 
 
 class TestStatusParityExtra:
+    def test_toric_toughness_stores_actual_block_gained(self):
+        combat = _make_combat()
+        combat.player.apply_power(PowerId.DEXTERITY, 2)
+        combat.hand = [make_toric_toughness()]
+        combat.energy = 2
+
+        assert combat.play_card(0)
+        power = combat.player.powers[PowerId.TORIC_TOUGHNESS]
+        assert power._block_value == 7  # noqa: SLF001
+
     def test_burn_deals_turn_end_in_hand_damage_then_discards(self):
         """Matches Burn.cs: in-hand turn-end burn deals 2 and follows turn cleanup."""
         combat = _make_combat()
