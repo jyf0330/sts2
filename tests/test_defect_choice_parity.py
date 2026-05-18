@@ -111,6 +111,20 @@ class TestDefectChoiceParity:
         assert strike in combat.hand
         assert draw_status in combat.draw_pile
 
+    def test_compact_does_not_transform_status_cards_after_block_ends_combat(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = 5
+        status = make_dazed()
+        combat.player.apply_power(PowerId.JUGGERNAUT, 5)
+        combat.hand = [make_compact(), status]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.is_over
+        assert status in combat.hand
+        assert all(card.card_id != CardId.FUEL for card in combat.hand)
+
     def test_white_noise_generates_free_power_card_in_hand(self):
         """Matches WhiteNoise.cs: generate one combat-distinct Power card and set it free this turn."""
         combat = _make_combat()

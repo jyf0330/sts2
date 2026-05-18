@@ -2481,7 +2481,7 @@ class CombatState:
         return card
 
     def transform_card(self, old_card: CardInstance | None, new_card: CardInstance | None) -> CardInstance | None:
-        if old_card is None or new_card is None:
+        if old_card is None or new_card is None or (self._combat_started and self.is_over):
             return None
 
         target_pile = None
@@ -2550,6 +2550,8 @@ class CombatState:
     def channel_orb(self, owner: Creature, orb_type: str) -> None:
         from sts2_env.core.enums import OrbType
 
+        if self._combat_started and self.is_over:
+            return
         state = self.combat_player_state_for(owner)
         orb_queue = getattr(state, "orb_queue", None)
         if orb_queue is not None:

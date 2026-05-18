@@ -141,6 +141,18 @@ class TestDefectParityExtra2:
         assert len(combat.orb_queue.orbs) == 2
         assert all(orb.orb_type == OrbType.FROST for orb in combat.orb_queue.orbs)
 
+    def test_glacier_does_not_channel_after_block_ends_combat(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = 5
+        combat.player.apply_power(PowerId.JUGGERNAUT, 5)
+        combat.hand = [make_glacier()]
+        combat.energy = 2
+
+        assert combat.play_card(0)
+        assert combat.is_over
+        assert len(combat.orb_queue.orbs) == 0
+
     def test_frost_orb_passive_block_triggers_after_block_gained_hooks(self):
         combat = _make_combat()
         enemy = combat.enemies[0]
