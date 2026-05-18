@@ -417,13 +417,18 @@ def splash(card: CardInstance, combat: CombatState, target: Creature | None) -> 
     for generated_card in generated:
         if card.upgraded:
             combat.upgrade_card(generated_card)
-        generated_card.set_temporary_free_this_turn()
+
+    def _resolver(selected: CardInstance | None) -> None:
+        if selected is None:
+            return
+        selected.set_temporary_free_this_turn()
+        combat.move_card_to_hand(selected)
 
     combat.request_card_choice(
         prompt="Choose one upgraded free attack",
         cards=generated,
         source_pile="generated",
-        resolver=combat.move_card_to_hand,
+        resolver=_resolver,
         allow_skip=True,
     )
 

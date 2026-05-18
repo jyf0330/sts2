@@ -190,6 +190,35 @@ class TestGeneratedChoiceParity:
         assert selected in combat.hand
         assert selected.cost == 0
 
+    def test_splash_makes_only_selected_generated_attack_free(self):
+        """Matches Splash.cs: SetToFreeThisTurn runs after choosing the generated card."""
+        combat = _make_combat(create_ironclad_starter_deck(), "Ironclad")
+        splash = create_card(CardId.SPLASH)
+        combat.hand = [splash]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.pending_choice is not None
+        generated = [option.card for option in combat.pending_choice.options]
+        original_costs = [card.cost for card in generated]
+        selected_index = next(index for index, cost in enumerate(original_costs) if cost > 0)
+
+        selected = generated[selected_index]
+        unselected = [
+            card
+            for index, card in enumerate(generated)
+            if index != selected_index
+        ]
+        unselected_original_costs = [
+            cost
+            for index, cost in enumerate(original_costs)
+            if index != selected_index
+        ]
+        assert combat.resolve_pending_choice(selected_index)
+        assert selected in combat.hand
+        assert selected.cost == 0
+        assert [card.cost for card in unselected] == unselected_original_costs
+
 
 class TestMultiChoiceParity:
     def test_purity_allows_multi_select_and_exhausts_only_confirmed_cards(self):
