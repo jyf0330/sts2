@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sts2_env.core.enums import CombatSide, PowerId, PowerType
+from sts2_env.core.enums import CombatSide, PowerId, PowerStackType, PowerType
 from sts2_env.core.constants import BLOCK_CAP
 
 if TYPE_CHECKING:
@@ -24,13 +24,24 @@ def get_power_class(power_id: PowerId) -> type | None:
     return _POWER_CLASSES.get(power_id)
 
 
+def _power_type_for_amount(cls: type, amount: int) -> PowerType:
+    power_type = getattr(cls, "power_type", PowerType.BUFF)
+    allow_negative = getattr(cls, "allow_negative", False)
+    stack_type = getattr(cls, "stack_type", None)
+    if stack_type == PowerStackType.COUNTER and allow_negative and amount < 0:
+        return PowerType.DEBUFF
+    if not allow_negative and power_type == PowerType.DEBUFF and amount < 0:
+        return PowerType.BUFF
+    return power_type
+
+
 class Creature:
     """A combat entity (player or monster) with HP, Block, and Powers."""
 
     __slots__ = (
         "max_hp", "current_hp", "block", "powers", "side",
         "is_player", "monster_id", "combat_id", "stars",
-        "is_pet", "pet_owner", "is_osty", "owner", "combat_state", "escaped",
+        "is_pet", "pet_owner", "is_osty", "owner", "combat_state", "escaped", "_death_processed",
     )
 
     def __init__(
@@ -57,6 +68,7 @@ class Creature:
         self.owner: Creature | None = None
         self.combat_state = None
         self.escaped: bool = False
+        self._death_processed: bool = False
 
     @property
     def is_alive(self) -> bool:
@@ -88,12 +100,16 @@ class Creature:
         self.block -= blocked
         return blocked
 
-    def lose_hp(self, amount: int) -> int:
+    def lose_hp(self, amount: int, fire_hooks: bool = True) -> int:
         """Lose HP, returns actual HP lost."""
         if amount <= 0:
             return 0
         actual = min(amount, self.current_hp)
         self.current_hp = max(0, self.current_hp - amount)
+        if fire_hooks and actual > 0 and self.combat_state is not None and not self.combat_state.is_over:
+            from sts2_env.core.hooks import fire_after_current_hp_changed
+
+            fire_after_current_hp_changed(self, -actual, self.combat_state)
         return actual
 
     def heal(self, amount: int) -> int:
@@ -102,7 +118,12 @@ class Creature:
             return 0
         before = self.current_hp
         self.current_hp = min(self.current_hp + amount, self.max_hp)
-        return self.current_hp - before
+        healed = self.current_hp - before
+        if healed > 0 and self.combat_state is not None and not self.combat_state.is_over:
+            from sts2_env.core.hooks import fire_after_current_hp_changed
+
+            fire_after_current_hp_changed(self, healed, self.combat_state)
+        return healed
 
     def clear_block(self, combat: object | None = None) -> None:
         """Clear block unless a power prevents it (Barricade).
@@ -111,8 +132,14 @@ class Creature:
         Otherwise falls back to checking only own powers.
         """
         if combat is not None:
-            from sts2_env.core.hooks import should_clear_block
-            if not should_clear_block(self, combat):
+            from sts2_env.core.hooks import (
+                block_clear_preventer,
+                fire_after_preventing_block_clear,
+            )
+
+            preventer = block_clear_preventer(self, combat)
+            if preventer is not None:
+                fire_after_preventing_block_clear(preventer, self, combat)
                 return
         else:
             for p in self.powers.values():
@@ -137,13 +164,61 @@ class Creature:
         source: object | None = None,
     ) -> None:
         """Apply or stack a power. Handles Artifact blocking for debuffs."""
+        combat = self.combat_state or getattr(applier, "combat_state", None)
+        original_amount = amount
+        if combat is not None:
+            from sts2_env.core.hooks import (
+                fire_after_modifying_power_amount_given,
+                fire_after_modifying_power_amount_received,
+                modify_power_amount_given,
+                modify_power_amount_received,
+            )
+
+            if applier is not None:
+                amount = int(modify_power_amount_given(
+                    power_id,
+                    amount,
+                    applier,
+                    self,
+                    source,
+                    combat,
+                ))
+                if amount != original_amount:
+                    fire_after_modifying_power_amount_given(
+                        power_id,
+                        original_amount,
+                        amount,
+                        applier,
+                        self,
+                        source,
+                        combat,
+                    )
+            received_original_amount = amount
+            amount = int(modify_power_amount_received(
+                power_id,
+                amount,
+                self,
+                applier,
+                source,
+                combat,
+            ))
+            if amount != received_original_amount:
+                fire_after_modifying_power_amount_received(
+                    power_id,
+                    received_original_amount,
+                    amount,
+                    self,
+                    applier,
+                    source,
+                    combat,
+                )
         if amount == 0:
             return
 
         cls = get_power_class(power_id)
         is_debuff = False
         if cls is not None:
-            is_debuff = getattr(cls, 'power_type', PowerType.BUFF) == PowerType.DEBUFF
+            is_debuff = _power_type_for_amount(cls, amount) == PowerType.DEBUFF and getattr(cls, "is_visible", True)
 
         # Artifact blocks debuffs
         if is_debuff:
@@ -156,6 +231,8 @@ class Creature:
         existing = self.powers.get(power_id)
         applied_delta = 0
         if existing is not None:
+            if getattr(existing, "applier", None) is None:
+                existing.applier = applier
             existing.amount += amount
             applied_delta = amount
             if existing.amount == 0 and not existing.allow_negative:
@@ -163,6 +240,7 @@ class Creature:
         else:
             if cls is not None:
                 power = cls(amount)
+                power.applier = applier
                 self.powers[power_id] = power
                 applied_delta = amount
 
@@ -182,12 +260,24 @@ class Creature:
             del self.powers[power_id]
 
     def gain_max_hp(self, amount: int) -> None:
+        before = self.current_hp
         self.max_hp += amount
         self.current_hp = min(self.current_hp + amount, self.max_hp)
+        delta = self.current_hp - before
+        if delta != 0 and self.combat_state is not None and not self.combat_state.is_over:
+            from sts2_env.core.hooks import fire_after_current_hp_changed
+
+            fire_after_current_hp_changed(self, delta, self.combat_state)
 
     def lose_max_hp(self, amount: int) -> None:
+        before = self.current_hp
         self.max_hp = max(1, self.max_hp - amount)
         self.current_hp = min(self.current_hp, self.max_hp)
+        delta = self.current_hp - before
+        if delta != 0 and self.combat_state is not None and not self.combat_state.is_over:
+            from sts2_env.core.hooks import fire_after_current_hp_changed
+
+            fire_after_current_hp_changed(self, delta, self.combat_state)
 
     def gain_gold(self, amount: int) -> int:
         combat = self.combat_state
@@ -227,12 +317,15 @@ class Creature:
             return player_state.procure_potion(potion_id)
         return False
 
-    def upgrade_random_cards(self, card_type: object | None, count: int) -> int:
+    def upgrade_random_cards(self, card_type: object | None, count: int, rng: object | None = None) -> int:
         combat = self.combat_state
         state = getattr(combat, "combat_player_state_for", lambda *_: None)(self) if combat is not None else None
         if state is not None:
             candidates = [card for card in state.starting_deck if not card.upgraded and (card_type is None or card.card_type == card_type)]
-            getattr(combat, "rng", None).shuffle(candidates)
+            candidates.sort(key=lambda card: (card.card_id.name, card.upgraded))
+            selected_rng = rng or getattr(combat, "combat_card_selection_rng", None) or getattr(combat, "rng", None)
+            if selected_rng is not None:
+                selected_rng.shuffle(candidates)
             upgraded = 0
             for card in candidates[:count]:
                 if getattr(combat, "upgrade_card", None) is not None:
@@ -242,7 +335,7 @@ class Creature:
         run_state = getattr(self, "run_state", None)
         player_state = getattr(run_state, "player", None)
         if player_state is not None and hasattr(player_state, "upgrade_random_cards"):
-            return player_state.upgrade_random_cards(card_type, count)
+            return player_state.upgrade_random_cards(card_type, count, rng=rng)
         return 0
 
     def transform_relic(self, current_relic: object, new_relic_id: object) -> bool:

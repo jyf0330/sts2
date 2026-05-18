@@ -20,7 +20,7 @@ from sts2_env.monsters.intents import (
 from sts2_env.monsters.state_machine import (
     ConditionalBranchState, MonsterAI, MonsterState, MoveState, RandomBranchState,
 )
-from sts2_env.cards.status import make_dazed, make_slimed, make_parasite
+from sts2_env.cards.status import make_dazed, make_infection, make_slimed
 
 if TYPE_CHECKING:
     from sts2_env.core.combat import CombatState
@@ -56,7 +56,7 @@ def _gain_block(creature: Creature, amount: int) -> None:
 # ========================================================================
 
 # ---- CubexConstruct (HP 65 / 70 asc) ----
-# CHARGE_UP -> REPEATER -> REPEATER_2 -> EXPEL_BLAST -> REPEATER (loop)
+# CHARGE_UP_MOVE -> REPEATER_MOVE -> REPEATER_MOVE_2 -> EXPEL_BLAST -> REPEATER_MOVE (loop)
 
 def create_cubex_construct(rng: Rng) -> tuple[Creature, MonsterAI]:
     hp = 65
@@ -79,18 +79,33 @@ def create_cubex_construct(rng: Rng) -> tuple[Creature, MonsterAI]:
         _gain_block(creature, 15)
 
     states: dict[str, MonsterState] = {
-        "CHARGE_UP": MoveState("CHARGE_UP", charge_up, [buff_intent()], follow_up_id="REPEATER"),
-        "REPEATER": MoveState("REPEATER", repeater, [attack_intent(blast_dmg), buff_intent()], follow_up_id="REPEATER_2"),
-        "REPEATER_2": MoveState("REPEATER_2", repeater, [attack_intent(blast_dmg), buff_intent()], follow_up_id="EXPEL_BLAST"),
-        "EXPEL_BLAST": MoveState("EXPEL_BLAST", expel_blast, [multi_attack_intent(expel_dmg, 2)], follow_up_id="REPEATER"),
-        "SUBMERGE": MoveState("SUBMERGE", submerge, [defend_intent()], follow_up_id="CHARGE_UP"),
+        "CHARGE_UP_MOVE": MoveState("CHARGE_UP_MOVE", charge_up, [buff_intent()], follow_up_id="REPEATER_MOVE"),
+        "REPEATER_MOVE": MoveState(
+            "REPEATER_MOVE",
+            repeater,
+            [attack_intent(blast_dmg), buff_intent()],
+            follow_up_id="REPEATER_MOVE_2",
+        ),
+        "REPEATER_MOVE_2": MoveState(
+            "REPEATER_MOVE_2",
+            repeater,
+            [attack_intent(blast_dmg), buff_intent()],
+            follow_up_id="EXPEL_BLAST",
+        ),
+        "EXPEL_BLAST": MoveState(
+            "EXPEL_BLAST",
+            expel_blast,
+            [multi_attack_intent(expel_dmg, 2)],
+            follow_up_id="REPEATER_MOVE",
+        ),
+        "SUBMERGE_MOVE": MoveState("SUBMERGE_MOVE", submerge, [defend_intent()], follow_up_id="CHARGE_UP_MOVE"),
     }
 
     # Initial setup: gain 13 block + 1 artifact
     creature.gain_block(13)
     creature.apply_power(PowerId.ARTIFACT, 1)
 
-    return creature, MonsterAI(states, "CHARGE_UP")
+    return creature, MonsterAI(states, "CHARGE_UP_MOVE")
 
 
 # ---- Flyconid (HP 47-49 / 51-53 asc) ----
@@ -113,24 +128,34 @@ def create_flyconid(rng: Rng) -> tuple[Creature, MonsterAI]:
         _deal_damage_to_player(combat, creature, smash_dmg)
 
     # Initial random: FrailSpores(2) or Smash(1)
-    initial_rand = RandomBranchState("INITIAL_RAND")
-    initial_rand.add_branch("FRAIL_SPORES", weight=2.0)
-    initial_rand.add_branch("SMASH", weight=1.0)
+    initial_rand = RandomBranchState("INITIAL")
+    initial_rand.add_branch("FRAIL_SPORES_MOVE", weight=2.0)
+    initial_rand.add_branch("SMASH_MOVE", weight=1.0)
 
     # Main random: all 3, cannot repeat
     main_rand = RandomBranchState("RAND")
-    main_rand.add_branch("VULNERABLE_SPORES", MoveRepeatType.CANNOT_REPEAT, weight=3.0)
-    main_rand.add_branch("FRAIL_SPORES", MoveRepeatType.CANNOT_REPEAT, weight=2.0)
-    main_rand.add_branch("SMASH", MoveRepeatType.CANNOT_REPEAT, weight=1.0)
+    main_rand.add_branch("VULNERABLE_SPORES_MOVE", MoveRepeatType.CANNOT_REPEAT, weight=3.0)
+    main_rand.add_branch("FRAIL_SPORES_MOVE", MoveRepeatType.CANNOT_REPEAT, weight=2.0)
+    main_rand.add_branch("SMASH_MOVE", MoveRepeatType.CANNOT_REPEAT, weight=1.0)
 
     states: dict[str, MonsterState] = {
-        "INITIAL_RAND": initial_rand,
+        "INITIAL": initial_rand,
         "RAND": main_rand,
-        "VULNERABLE_SPORES": MoveState("VULNERABLE_SPORES", vulnerable_spores, [debuff_intent()], follow_up_id="RAND"),
-        "FRAIL_SPORES": MoveState("FRAIL_SPORES", frail_spores, [attack_intent(spore_dmg), debuff_intent()], follow_up_id="RAND"),
-        "SMASH": MoveState("SMASH", smash, [attack_intent(smash_dmg)], follow_up_id="RAND"),
+        "VULNERABLE_SPORES_MOVE": MoveState(
+            "VULNERABLE_SPORES_MOVE",
+            vulnerable_spores,
+            [debuff_intent()],
+            follow_up_id="RAND",
+        ),
+        "FRAIL_SPORES_MOVE": MoveState(
+            "FRAIL_SPORES_MOVE",
+            frail_spores,
+            [attack_intent(spore_dmg), debuff_intent()],
+            follow_up_id="RAND",
+        ),
+        "SMASH_MOVE": MoveState("SMASH_MOVE", smash, [attack_intent(smash_dmg)], follow_up_id="RAND"),
     }
-    return creature, MonsterAI(states, "INITIAL_RAND")
+    return creature, MonsterAI(states, "INITIAL", rng)
 
 
 # ---- Fogmog (HP 74 / 78 asc) ----
@@ -143,10 +168,11 @@ def create_eye_with_teeth(rng: Rng) -> tuple[Creature, MonsterAI]:
             combat.add_card_to_discard(make_dazed())
 
     states: dict[str, MonsterState] = {
-        "DISTRACT": MoveState("DISTRACT", distract, [status_intent()], follow_up_id="DISTRACT"),
+        "DISTRACT_MOVE": MoveState("DISTRACT_MOVE", distract, [status_intent()], follow_up_id="DISTRACT_MOVE"),
     }
+    creature.apply_power(PowerId.ILLUSION, 1)
     creature.apply_power(PowerId.MINION, 1)
-    return creature, MonsterAI(states, "DISTRACT")
+    return creature, MonsterAI(states, "DISTRACT_MOVE")
 
 
 def create_fogmog(rng: Rng) -> tuple[Creature, MonsterAI]:
@@ -167,18 +193,33 @@ def create_fogmog(rng: Rng) -> tuple[Creature, MonsterAI]:
     def headbutt(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, headbutt_dmg)
 
-    rand = RandomBranchState("RAND")
-    rand.add_branch("SWIPE_RANDOM", MoveRepeatType.CANNOT_REPEAT, weight=0.4)
-    rand.add_branch("HEADBUTT", MoveRepeatType.CANNOT_REPEAT, weight=0.6)
+    rand = RandomBranchState("BRANCH")
+    rand.add_branch("SWIPE_RANDOM_MOVE", MoveRepeatType.CANNOT_REPEAT, weight=0.4)
+    rand.add_branch("HEADBUTT_MOVE", MoveRepeatType.CANNOT_REPEAT, weight=0.6)
 
     states: dict[str, MonsterState] = {
-        "ILLUSION": MoveState("ILLUSION", illusion, [Intent(IntentType.SUMMON)], follow_up_id="SWIPE"),
-        "SWIPE": MoveState("SWIPE", swipe, [attack_intent(swipe_dmg), buff_intent()], follow_up_id="RAND"),
-        "RAND": rand,
-        "SWIPE_RANDOM": MoveState("SWIPE_RANDOM", swipe, [attack_intent(swipe_dmg), buff_intent()], follow_up_id="HEADBUTT"),
-        "HEADBUTT": MoveState("HEADBUTT", headbutt, [attack_intent(headbutt_dmg)], follow_up_id="SWIPE"),
+        "ILLUSION_MOVE": MoveState("ILLUSION_MOVE", illusion, [Intent(IntentType.SUMMON)], follow_up_id="SWIPE_MOVE"),
+        "SWIPE_MOVE": MoveState(
+            "SWIPE_MOVE",
+            swipe,
+            [attack_intent(swipe_dmg), buff_intent()],
+            follow_up_id="BRANCH",
+        ),
+        "BRANCH": rand,
+        "SWIPE_RANDOM_MOVE": MoveState(
+            "SWIPE_RANDOM_MOVE",
+            swipe,
+            [attack_intent(swipe_dmg), buff_intent()],
+            follow_up_id="HEADBUTT_MOVE",
+        ),
+        "HEADBUTT_MOVE": MoveState(
+            "HEADBUTT_MOVE",
+            headbutt,
+            [attack_intent(headbutt_dmg)],
+            follow_up_id="SWIPE_MOVE",
+        ),
     }
-    return creature, MonsterAI(states, "ILLUSION")
+    return creature, MonsterAI(states, "ILLUSION_MOVE")
 
 
 # ---- Inklet (HP 30-33 / 32-35 asc) ----
@@ -215,7 +256,7 @@ def create_inklet(rng: Rng, slot: str = "first") -> tuple[Creature, MonsterAI]:
     else:
         initial = "RAND"
 
-    return creature, MonsterAI(states, initial)
+    return creature, MonsterAI(states, initial, rng)
 
 
 # ---- Mawler (HP 72 / 76 asc) ----
@@ -237,17 +278,22 @@ def create_mawler(rng: Rng) -> tuple[Creature, MonsterAI]:
         _deal_damage_to_player(combat, creature, claw_dmg, hits=2)
 
     rand = RandomBranchState("RAND")
-    rand.add_branch("RIP_AND_TEAR", MoveRepeatType.CANNOT_REPEAT)
-    rand.add_branch("ROAR", MoveRepeatType.USE_ONLY_ONCE)
-    rand.add_branch("CLAW", MoveRepeatType.CANNOT_REPEAT)
+    rand.add_branch("RIP_AND_TEAR_MOVE", MoveRepeatType.CANNOT_REPEAT)
+    rand.add_branch("ROAR_MOVE", MoveRepeatType.USE_ONLY_ONCE)
+    rand.add_branch("CLAW_MOVE", MoveRepeatType.CANNOT_REPEAT)
 
     states: dict[str, MonsterState] = {
         "RAND": rand,
-        "RIP_AND_TEAR": MoveState("RIP_AND_TEAR", rip_and_tear, [attack_intent(rip_dmg)], follow_up_id="RAND"),
-        "ROAR": MoveState("ROAR", roar, [debuff_intent()], follow_up_id="RAND"),
-        "CLAW": MoveState("CLAW", claw, [multi_attack_intent(claw_dmg, 2)], follow_up_id="RAND"),
+        "RIP_AND_TEAR_MOVE": MoveState(
+            "RIP_AND_TEAR_MOVE",
+            rip_and_tear,
+            [attack_intent(rip_dmg)],
+            follow_up_id="RAND",
+        ),
+        "ROAR_MOVE": MoveState("ROAR_MOVE", roar, [debuff_intent()], follow_up_id="RAND"),
+        "CLAW_MOVE": MoveState("CLAW_MOVE", claw, [multi_attack_intent(claw_dmg, 2)], follow_up_id="RAND"),
     }
-    return creature, MonsterAI(states, "CLAW")
+    return creature, MonsterAI(states, "CLAW_MOVE")
 
 
 # ---- VineShambler (HP 40-43 / 42-45 asc) ----
@@ -279,34 +325,41 @@ def create_vine_shambler(rng: Rng) -> tuple[Creature, MonsterAI]:
     # AfterAddedToRoom: Thorns(3)
     creature.apply_power(PowerId.THORNS, 3)
 
-    return creature, MonsterAI(states, "RAND")
+    return creature, MonsterAI(states, "RAND", rng)
 
 
-# ---- SlitheringStrangler (HP 45-49 / 47-51 asc) ----
+# ---- SlitheringStrangler (HP 53-55 / 54-56 asc) ----
 
 def create_slithering_strangler(rng: Rng) -> tuple[Creature, MonsterAI]:
-    hp = rng.next_int(45, 49)
+    hp = rng.next_int(53, 55)
     creature = Creature(max_hp=hp, monster_id="SLITHERING_STRANGLER")
 
-    squeeze_dmg = 5
-    strangle_dmg = 12
+    twack_dmg = 7
+    lash_dmg = 12
+    twack_block = 5
 
-    def squeeze(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, squeeze_dmg, hits=2)
+    def constrict(combat: CombatState) -> None:
+        combat.apply_power_to(combat.primary_player, PowerId.CONSTRICT, 3)
 
-    def strangle(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, strangle_dmg)
-        combat.apply_power_to(combat.primary_player, PowerId.WEAK, 1)
+    def twack(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, twack_dmg)
+        _gain_block(creature, twack_block)
+
+    def lash(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, lash_dmg)
+
+    rand = RandomBranchState("rand")
+    rand.add_branch("TWACK")
+    rand.add_branch("LASH")
 
     states: dict[str, MonsterState] = {
-        "SQUEEZE": MoveState("SQUEEZE", squeeze, [multi_attack_intent(squeeze_dmg, 2)], follow_up_id="STRANGLE"),
-        "STRANGLE": MoveState("STRANGLE", strangle, [attack_intent(strangle_dmg), debuff_intent()], follow_up_id="SQUEEZE"),
+        "CONSTRICT": MoveState("CONSTRICT", constrict, [debuff_intent()], follow_up_id="rand"),
+        "TWACK": MoveState("TWACK", twack, [attack_intent(twack_dmg), defend_intent()], follow_up_id="CONSTRICT"),
+        "LASH": MoveState("LASH", lash, [attack_intent(lash_dmg)], follow_up_id="CONSTRICT"),
+        "rand": rand,
     }
 
-    # AfterAddedToRoom: Constrict(3)
-    creature.apply_power(PowerId.CONSTRICT, 3)
-
-    return creature, MonsterAI(states, "SQUEEZE")
+    return creature, MonsterAI(states, "CONSTRICT")
 
 
 # ---- SnappingJaxfruit (HP 53-56 / 56-59 asc) ----
@@ -344,7 +397,7 @@ def create_snapping_jaxfruit(rng: Rng) -> tuple[Creature, MonsterAI]:
     # AfterAddedToRoom: Thorns(3)
     creature.apply_power(PowerId.THORNS, 3)
 
-    return creature, MonsterAI(states, "RAND")
+    return creature, MonsterAI(states, "RAND", rng)
 
 
 # ---- RubyRaiders ----
@@ -358,9 +411,14 @@ def create_assassin_ruby_raider(rng: Rng) -> tuple[Creature, MonsterAI]:
         _deal_damage_to_player(combat, creature, killshot_dmg)
 
     states: dict[str, MonsterState] = {
-        "KILLSHOT": MoveState("KILLSHOT", killshot, [attack_intent(killshot_dmg)], follow_up_id="KILLSHOT"),
+        "KILLSHOT_MOVE": MoveState(
+            "KILLSHOT_MOVE",
+            killshot,
+            [attack_intent(killshot_dmg)],
+            follow_up_id="KILLSHOT_MOVE",
+        ),
     }
-    return creature, MonsterAI(states, "KILLSHOT")
+    return creature, MonsterAI(states, "KILLSHOT_MOVE")
 
 
 def create_axe_ruby_raider(rng: Rng) -> tuple[Creature, MonsterAI]:
@@ -397,10 +455,10 @@ def create_brute_ruby_raider(rng: Rng) -> tuple[Creature, MonsterAI]:
         creature.apply_power(PowerId.STRENGTH, 3)
 
     states: dict[str, MonsterState] = {
-        "BEAT": MoveState("BEAT", beat, [attack_intent(beat_dmg)], follow_up_id="ROAR"),
-        "ROAR": MoveState("ROAR", roar, [buff_intent()], follow_up_id="BEAT"),
+        "BEAT_MOVE": MoveState("BEAT_MOVE", beat, [attack_intent(beat_dmg)], follow_up_id="ROAR_MOVE"),
+        "ROAR_MOVE": MoveState("ROAR_MOVE", roar, [buff_intent()], follow_up_id="BEAT_MOVE"),
     }
-    return creature, MonsterAI(states, "BEAT")
+    return creature, MonsterAI(states, "BEAT_MOVE")
 
 
 def create_crossbow_ruby_raider(rng: Rng) -> tuple[Creature, MonsterAI]:
@@ -416,10 +474,10 @@ def create_crossbow_ruby_raider(rng: Rng) -> tuple[Creature, MonsterAI]:
         _gain_block(creature, reload_block)
 
     states: dict[str, MonsterState] = {
-        "RELOAD": MoveState("RELOAD", reload, [defend_intent()], follow_up_id="FIRE"),
-        "FIRE": MoveState("FIRE", fire, [attack_intent(fire_dmg)], follow_up_id="RELOAD"),
+        "RELOAD_MOVE": MoveState("RELOAD_MOVE", reload, [defend_intent()], follow_up_id="FIRE_MOVE"),
+        "FIRE_MOVE": MoveState("FIRE_MOVE", fire, [attack_intent(fire_dmg)], follow_up_id="RELOAD_MOVE"),
     }
-    return creature, MonsterAI(states, "RELOAD")
+    return creature, MonsterAI(states, "RELOAD_MOVE")
 
 
 def create_tracker_ruby_raider(rng: Rng) -> tuple[Creature, MonsterAI]:
@@ -435,10 +493,15 @@ def create_tracker_ruby_raider(rng: Rng) -> tuple[Creature, MonsterAI]:
         _deal_damage_to_player(combat, creature, hounds_dmg, hits=hounds_hits)
 
     states: dict[str, MonsterState] = {
-        "TRACK": MoveState("TRACK", track, [debuff_intent()], follow_up_id="HOUNDS"),
-        "HOUNDS": MoveState("HOUNDS", hounds, [multi_attack_intent(hounds_dmg, hounds_hits)], follow_up_id="HOUNDS"),
+        "TRACK_MOVE": MoveState("TRACK_MOVE", track, [debuff_intent()], follow_up_id="HOUNDS_MOVE"),
+        "HOUNDS_MOVE": MoveState(
+            "HOUNDS_MOVE",
+            hounds,
+            [multi_attack_intent(hounds_dmg, hounds_hits)],
+            follow_up_id="HOUNDS_MOVE",
+        ),
     }
-    return creature, MonsterAI(states, "TRACK")
+    return creature, MonsterAI(states, "TRACK_MOVE")
 
 
 # ========================================================================
@@ -465,16 +528,26 @@ def create_bygone_effigy(rng: Rng) -> tuple[Creature, MonsterAI]:
         _deal_damage_to_player(combat, creature, slash_dmg)
 
     states: dict[str, MonsterState] = {
-        "INITIAL_SLEEP": MoveState("INITIAL_SLEEP", initial_sleep, [sleep_intent()], follow_up_id="WAKE"),
-        "WAKE": MoveState("WAKE", wake, [buff_intent()], follow_up_id="SLASHES"),
-        "SLEEP": MoveState("SLEEP", sleep_move, [sleep_intent()], follow_up_id="SLASHES"),
-        "SLASHES": MoveState("SLASHES", slashes, [attack_intent(slash_dmg)], follow_up_id="SLASHES"),
+        "INITIAL_SLEEP_MOVE": MoveState(
+            "INITIAL_SLEEP_MOVE",
+            initial_sleep,
+            [sleep_intent()],
+            follow_up_id="WAKE_MOVE",
+        ),
+        "WAKE_MOVE": MoveState("WAKE_MOVE", wake, [buff_intent()], follow_up_id="SLASHES_MOVE"),
+        "SLEEP_MOVE": MoveState("SLEEP_MOVE", sleep_move, [sleep_intent()], follow_up_id="SLASHES_MOVE"),
+        "SLASHES_MOVE": MoveState(
+            "SLASHES_MOVE",
+            slashes,
+            [attack_intent(slash_dmg)],
+            follow_up_id="SLASHES_MOVE",
+        ),
     }
 
     # AfterAddedToRoom: applies Slow power
     creature.apply_power(PowerId.SLOW, 1)
 
-    return creature, MonsterAI(states, "INITIAL_SLEEP")
+    return creature, MonsterAI(states, "INITIAL_SLEEP_MOVE")
 
 
 # ---- Byrdonis (HP 91-94 / 99 asc) ----
@@ -493,44 +566,44 @@ def create_byrdonis(rng: Rng) -> tuple[Creature, MonsterAI]:
         _deal_damage_to_player(combat, creature, swoop_dmg)
 
     states: dict[str, MonsterState] = {
-        "SWOOP": MoveState("SWOOP", swoop, [attack_intent(swoop_dmg)], follow_up_id="PECK"),
-        "PECK": MoveState("PECK", peck, [multi_attack_intent(peck_dmg, peck_hits)], follow_up_id="SWOOP"),
+        "SWOOP_MOVE": MoveState("SWOOP_MOVE", swoop, [attack_intent(swoop_dmg)], follow_up_id="PECK_MOVE"),
+        "PECK_MOVE": MoveState(
+            "PECK_MOVE",
+            peck,
+            [multi_attack_intent(peck_dmg, peck_hits)],
+            follow_up_id="SWOOP_MOVE",
+        ),
     }
 
     # AfterAddedToRoom: applies Territorial power
     creature.apply_power(PowerId.TERRITORIAL, 1)
 
-    return creature, MonsterAI(states, "SWOOP")
+    return creature, MonsterAI(states, "SWOOP_MOVE")
 
 
-# ---- PhrogParasite (HP 80-83 / 83-86 asc) ----
+# ---- PhrogParasite (HP 61-64 / 66-68 asc) ----
 
 def create_phrog_parasite(rng: Rng) -> tuple[Creature, MonsterAI]:
-    hp = rng.next_int(80, 83)
+    hp = rng.next_int(61, 64)
     creature = Creature(max_hp=hp, monster_id="PHROG_PARASITE")
-    lunge_dmg = 12
     bite_dmg = 4
 
-    def lunge(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, lunge_dmg)
-
     def infest(combat: CombatState) -> None:
-        for _ in range(2):
-            combat.add_card_to_discard(make_parasite())
+        for _ in range(3):
+            combat.add_card_to_discard(make_infection())
 
     def bite(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, bite_dmg, hits=3)
+        _deal_damage_to_player(combat, creature, bite_dmg, hits=4)
 
     states: dict[str, MonsterState] = {
-        "LUNGE": MoveState("LUNGE", lunge, [attack_intent(lunge_dmg)], follow_up_id="INFEST"),
-        "INFEST": MoveState("INFEST", infest, [status_intent()], follow_up_id="BITE"),
-        "BITE": MoveState("BITE", bite, [multi_attack_intent(bite_dmg, 3)], follow_up_id="LUNGE"),
+        "INFECT_MOVE": MoveState("INFECT_MOVE", infest, [status_intent()], follow_up_id="LASH_MOVE"),
+        "LASH_MOVE": MoveState("LASH_MOVE", bite, [multi_attack_intent(bite_dmg, 4)], follow_up_id="INFECT_MOVE"),
     }
 
-    # AfterAddedToRoom: CurlUp(10)
-    creature.apply_power(PowerId.CURL_UP, 10)
+    # AfterAddedToRoom: Infested(4)
+    creature.apply_power(PowerId.INFESTED, 4)
 
-    return creature, MonsterAI(states, "LUNGE")
+    return creature, MonsterAI(states, "INFECT_MOVE")
 
 
 # ========================================================================
@@ -540,18 +613,18 @@ def create_phrog_parasite(rng: Rng) -> tuple[Creature, MonsterAI]:
 # ---- Vantom (HP 206 / 216 asc) ----
 
 def create_parafright(rng: Rng) -> tuple[Creature, MonsterAI]:
-    creature = Creature(max_hp=1, monster_id="PARAFRIGHT")
-    haunt_dmg = 5
+    creature = Creature(max_hp=21, monster_id="PARAFRIGHT")
+    slam_dmg = 16
 
-    def haunt(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, haunt_dmg)
-        combat.apply_power_to(combat.primary_player, PowerId.FRAIL, 1)
+    def slam(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, slam_dmg)
 
     states: dict[str, MonsterState] = {
-        "HAUNT": MoveState("HAUNT", haunt, [attack_intent(haunt_dmg), debuff_intent()], follow_up_id="HAUNT"),
+        "SLAM_MOVE": MoveState("SLAM_MOVE", slam, [attack_intent(slam_dmg)], follow_up_id="SLAM_MOVE"),
     }
+    creature.apply_power(PowerId.ILLUSION, 1)
     creature.apply_power(PowerId.MINION, 1)
-    return creature, MonsterAI(states, "HAUNT")
+    return creature, MonsterAI(states, "SLAM_MOVE")
 
 
 def create_vantom(rng: Rng) -> tuple[Creature, MonsterAI]:
@@ -682,4 +755,4 @@ def create_kin_follower(rng: Rng, slot: str = "first") -> tuple[Creature, Monste
     }
 
     initial = "BASH" if slot != "third" else "BITE"
-    return creature, MonsterAI(states, initial)
+    return creature, MonsterAI(states, initial, rng)

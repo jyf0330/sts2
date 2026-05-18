@@ -11,7 +11,8 @@ from typing import TYPE_CHECKING
 from sts2_env.cards.enchantments import can_enchant_card
 from sts2_env.characters.all import ALL_CHARACTERS
 from sts2_env.core.enums import (
-    CardId, CardRarity, RelicRarity, CombatSide, CardType, PowerId, RoomType, ValueProp,
+    CardId, CardRarity, RelicRarity, CombatSide, CardTag, CardType, MapPointType, PowerId, RoomType, TargetType,
+    ValueProp,
 )
 from sts2_env.relics.base import RelicId, RelicPool, RelicInstance
 from sts2_env.relics.registry import register_relic
@@ -45,6 +46,19 @@ def _queue_named_cards_reward(owner: Creature, *names: str) -> bool:
     return True
 
 
+def _active_combat_creature(owner: object) -> tuple[CombatState | None, Creature | None]:
+    combat = getattr(owner, "combat_state", None)
+    if combat is None or not getattr(combat, "_combat_started", False) or getattr(combat, "is_over", False):
+        return None, None
+    for player_state in combat.combat_player_states:
+        if player_state.player_state is owner:
+            return combat, player_state.creature
+    state = combat.combat_player_state_for(owner)
+    if state is not None:
+        return combat, owner
+    return combat, None
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # SHOP RELICS
 # ═══════════════════════════════════════════════════════════════════════════
@@ -72,11 +86,44 @@ class BeltBuckle(RelicInstance):
         return bool(getattr(owner, "has_potions", False))
 
     def before_combat_start(self, owner: Creature, combat: CombatState) -> None:
+        self._dex_applied = False
         if not self._owner_has_potions(owner, combat) and not self._dex_applied:
             owner.apply_power(PowerId.DEXTERITY, self.DEXTERITY)
             self._dex_applied = True
 
-    def after_combat_end(self, owner: Creature, combat: CombatState) -> None:
+    def after_obtained(self, owner: Creature) -> None:
+        combat, creature = _active_combat_creature(owner)
+        if combat is not None and creature is not None:
+            self._apply_dexterity_if_empty(creature, combat)
+
+    def _remove_dexterity(self, owner: Creature) -> None:
+        if self._dex_applied:
+            owner.apply_power(PowerId.DEXTERITY, -self.DEXTERITY)
+            self._dex_applied = False
+
+    def _apply_dexterity_if_empty(self, owner: Creature, combat: CombatState) -> None:
+        if not self._owner_has_potions(owner, combat) and not self._dex_applied:
+            owner.apply_power(PowerId.DEXTERITY, self.DEXTERITY)
+            self._dex_applied = True
+
+    def after_potion_procured(self, owner: Creature, potion: object, combat: CombatState | None) -> None:
+        if combat is not None and self._owner_has_potions(owner, combat):
+            self._remove_dexterity(owner)
+
+    def after_potion_discarded(self, owner: Creature, potion: object, combat: CombatState | None) -> None:
+        if combat is not None:
+            self._apply_dexterity_if_empty(owner, combat)
+
+    def after_potion_used(
+        self,
+        owner: Creature,
+        potion: object,
+        target: Creature | None,
+        combat: CombatState,
+    ) -> None:
+        self._apply_dexterity_if_empty(owner, combat)
+
+    def after_combat_victory(self, owner: Creature, combat: CombatState) -> None:
         self._dex_applied = False
 
 
@@ -129,6 +176,7 @@ class BurningSticks(RelicInstance):
 
     def after_card_exhausted(self, owner: Creature, card: object, combat: CombatState) -> None:
         if (not self._used_this_combat
+                and getattr(card, "owner", None) is owner
                 and hasattr(card, "card_type") and card.card_type == CardType.SKILL):
             self._used_this_combat = True
             combat.clone_card_to_hand(owner, card)
@@ -161,6 +209,8 @@ class ChemicalX(RelicInstance):
     INCREASE = 2
 
     def modify_x_value(self, owner: Creature, x_value: int, card: object) -> int:
+        if getattr(card, "owner", None) is not owner:
+            return x_value
         return x_value + self.INCREASE
 
     def before_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
@@ -170,6 +220,8 @@ class ChemicalX(RelicInstance):
         so we mirror the C# `ModifyXValue` effect by adjusting that value once per
         play sequence for X-cost cards.
         """
+        if getattr(card, "owner", None) is not owner:
+            return
         if not getattr(card, "has_energy_cost_x", False):
             return
         if not hasattr(card, "combat_vars"):
@@ -202,6 +254,8 @@ class DingyRug(RelicInstance):
     ) -> CardRewardGenerationOptions:
         from sts2_env.run.rewards import CardRewardGenerationOptions
 
+        if not options.allow_card_pool_modifications:
+            return options
         return CardRewardGenerationOptions(
             context=options.context,
             num_cards=options.num_cards,
@@ -209,6 +263,12 @@ class DingyRug(RelicInstance):
             forced_rarities=options.forced_rarities,
             include_colorless=True,
             use_default_character_pool=options.use_default_character_pool,
+            generation_context=options.generation_context,
+            roll_upgrade=options.roll_upgrade,
+            card_creation_source=options.card_creation_source,
+            allow_card_pool_modifications=options.allow_card_pool_modifications,
+            has_custom_card_pool=options.has_custom_card_pool,
+            custom_card_ids=options.custom_card_ids,
         )
 
 
@@ -235,6 +295,9 @@ class DragonFruit(RelicInstance):
     pool = RelicPool.SHARED
     MAX_HP = 1
 
+    def is_allowed(self, run_state: RunState) -> bool:
+        return self.is_before_act3_treasure_chest(run_state)
+
     def on_gold_gained(self, owner: Creature, amount: int) -> None:
         if amount > 0:
             owner.gain_max_hp(self.MAX_HP)
@@ -246,7 +309,35 @@ class GhostSeed(RelicInstance):
     relic_id = RelicId.GHOST_SEED
     rarity = RelicRarity.SHOP
     pool = RelicPool.SHARED
-    # AfterCardEnteredCombat hook
+
+    @staticmethod
+    def _can_affect(card: object) -> bool:
+        return (
+            hasattr(card, "rarity")
+            and getattr(card, "rarity", None) == CardRarity.BASIC
+            and hasattr(card, "card_id")
+            and ("STRIKE" in card.card_id.name or "DEFEND" in card.card_id.name)
+            and not getattr(card, "is_ethereal", False)
+        )
+
+    @staticmethod
+    def _apply_ethereal(card: object) -> None:
+        keywords = set(getattr(card, "keywords", frozenset()))
+        keywords.add("ethereal")
+        card.keywords = frozenset(keywords)
+
+    def before_combat_start(self, owner: Creature, combat: CombatState) -> None:
+        state = combat.combat_player_state_for(owner)
+        if state is None:
+            return
+        for pile in state.all_piles:
+            for card in pile:
+                if self._can_affect(card):
+                    self._apply_ethereal(card)
+
+    def after_card_entered_combat(self, owner: Creature, card: object, combat: CombatState) -> None:
+        if getattr(card, "owner", None) is owner and self._can_affect(card):
+            self._apply_ethereal(card)
 
 
 @register_relic
@@ -297,7 +388,7 @@ class LavaLamp(RelicInstance):
         self, owner: Creature, target: Creature, dealer: Creature | None,
         damage: int, props: ValueProp, combat: CombatState
     ) -> None:
-        if target is owner and damage > 0:
+        if target is owner and damage > 0 and not bool(props & ValueProp.UNBLOCKABLE):
             self._took_damage = True
 
     def before_combat_start(self, owner: Creature, combat: CombatState) -> None:
@@ -382,11 +473,11 @@ class MysticLighter(RelicInstance):
         self, owner: Creature, dealer: Creature | None, target: Creature,
         props: ValueProp, card: object | None = None
     ) -> int:
-        if (dealer is owner
+        if ((dealer is owner or getattr(card, "owner", None) is owner)
                 and card is not None
                 and hasattr(card, "card_type") and card.card_type == CardType.ATTACK
                 and hasattr(card, "is_enchanted") and card.is_enchanted
-                and bool(props & ValueProp.MOVE)):
+                and bool(props & ValueProp.MOVE) and not bool(props & ValueProp.UNPOWERED)):
             return self.EXTRA_DAMAGE
         return 0
 
@@ -399,8 +490,8 @@ class NinjaScroll(RelicInstance):
     pool = RelicPool.SILENT
     SHIVS = 3
 
-    def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side == CombatSide.PLAYER and combat.round_number == 1:
+    def before_hand_draw(self, owner: Creature, combat: CombatState) -> None:
+        if combat.round_number == 1:
             create_shivs_in_hand = getattr(combat, "create_shivs_in_hand", None)
             if callable(create_shivs_in_hand):
                 create_shivs_in_hand(owner, self.SHIVS)
@@ -459,6 +550,7 @@ class RoyalStamp(RelicInstance):
 
     def after_obtained(self, owner: Creature) -> None:
         candidates = [card for card in owner.deck if can_enchant_card(card, "RoyallyApproved")]
+        owner.run_state.rng.niche.shuffle(candidates)
         if getattr(owner.run_state, "defer_followup_rewards", False):
             owner.offer_enchant_cards_reward("RoyallyApproved", 1, 1, cards=candidates)
             return
@@ -496,9 +588,14 @@ class ScreamingFlagon(RelicInstance):
     DAMAGE = 20
 
     def before_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side == CombatSide.PLAYER and len(combat.hand) == 0:
-            for enemy in combat.get_alive_enemies():
-                combat.deal_damage(owner, enemy, self.DAMAGE, ValueProp.UNPOWERED)
+        state = combat.combat_player_state_for(owner)
+        if side == CombatSide.PLAYER and state is not None and len(state.hand) == 0:
+            combat.deal_damage(
+                dealer=owner,
+                amount=self.DAMAGE,
+                props=ValueProp.UNPOWERED,
+                targets=list(combat.hittable_enemies),
+            )
 
 
 @register_relic
@@ -538,16 +635,16 @@ class Toolbox(RelicInstance):
         super().__init__(relic_id)
         self._used_this_combat: bool = False
 
-    def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
+    def before_hand_draw(self, owner: Creature, combat: CombatState) -> None:
         from sts2_env.cards.factory import create_cards_from_ids, eligible_registered_cards
 
-        if side != CombatSide.PLAYER or combat.round_number != 1 or self._used_this_combat:
+        if combat.round_number != 1 or self._used_this_combat:
             return
         ids = eligible_registered_cards(
             module_name="sts2_env.cards.colorless",
             generation_context="combat",
         )
-        cards = create_cards_from_ids(ids, combat.rng, self.CARDS, distinct=True)
+        cards = create_cards_from_ids(ids, combat.combat_card_generation_rng, self.CARDS, distinct=True)
         if not cards:
             return
         self._used_this_combat = True
@@ -555,7 +652,7 @@ class Toolbox(RelicInstance):
             prompt="Choose a colorless card to add to your hand.",
             cards=cards,
             source_pile="generated",
-            resolver=lambda card: combat.move_card_to_creature_hand(owner, card),
+            resolver=lambda card: combat.add_generated_card_to_creature_hand(owner, card),
             allow_skip=False,
         )
 
@@ -578,10 +675,13 @@ class UndyingSigil(RelicInstance):
         self, owner: Creature, dealer: Creature | None, target: Creature,
         props: ValueProp, card: object | None = None
     ) -> float:
-        if (target is owner
-                and dealer is not None
-                and hasattr(dealer, "doom") and hasattr(dealer, "current_hp")
-                and dealer.current_hp <= dealer.doom):
+        if (
+            target is owner
+            and dealer is not None
+            and dealer is not owner
+            and props.is_powered()
+            and dealer.current_hp <= dealer.get_power_amount(PowerId.DOOM)
+        ):
             return self.MULTIPLIER
         return 1.0
 
@@ -598,22 +698,24 @@ class VitruvianMinion(RelicInstance):
         self, owner: Creature, dealer: Creature | None, target: Creature,
         props: ValueProp, card: object | None = None
     ) -> float:
-        if (dealer is owner and card is not None
-                and hasattr(card, "tags") and hasattr(CardType, "MINION")):
-            from sts2_env.core.enums import CardTag
-            if CardTag.MINION in card.tags:
-                return self.MULTIPLIER
+        if (
+            card is not None
+            and getattr(card, "owner", None) is owner
+            and CardTag.MINION in getattr(card, "tags", ())
+        ):
+            return self.MULTIPLIER
         return 1.0
 
     def modify_block_multiplicative(
         self, owner: Creature, target: Creature, props: ValueProp,
         card_source: object | None = None, card_play: object | None = None,
     ) -> float:
-        if (target is owner and card_source is not None
-                and hasattr(card, "tags")):
-            from sts2_env.core.enums import CardTag
-            if CardTag.MINION in card.tags:
-                return self.MULTIPLIER
+        if (
+            card_source is not None
+            and getattr(card_source, "owner", None) is owner
+            and CardTag.MINION in getattr(card_source, "tags", ())
+        ):
+            return self.MULTIPLIER
         return 1.0
 
 
@@ -633,10 +735,10 @@ class WingCharm(RelicInstance):
         room: Room | None,
         run_state: RunState,
     ) -> list[CardInstance]:
-        if not cards:
+        candidates = [card for card in cards if can_enchant_card(card, "Swift")]
+        if not candidates:
             return cards
-        index = run_state.rng.rewards.next_int(0, len(cards) - 1)
-        cards[index].add_enchantment("Swift", self.SWIFT)
+        run_state.rng.niche.choice(candidates).add_enchantment("Swift", self.SWIFT)
         return cards
 
 
@@ -653,10 +755,70 @@ class AlchemicalCoffer(RelicInstance):
     pool = RelicPool.EVENT
     POTION_SLOTS = 4
 
+    def _can_procure_potion(self, owner: Creature, combat: CombatState | None) -> bool:
+        if combat is not None:
+            relics = combat.relics_for_creature(owner)
+        else:
+            get_relic_objects = getattr(owner, "get_relic_objects", None)
+            relics = get_relic_objects() if callable(get_relic_objects) else []
+        for relic in relics:
+            should_procure = getattr(relic, "should_procure_potion", None)
+            if callable(should_procure) and should_procure(owner) is False:
+                return False
+        return True
+
+    def _add_potion_to_slot(self, owner: Creature, potion: object, slot: int) -> bool:
+        combat = getattr(owner, "combat_state", None)
+        if combat is not None:
+            from sts2_env.core.hooks import fire_after_potion_procured
+
+            state = combat.combat_player_state_for(owner)
+            if state is None or slot >= state.max_potion_slots:
+                return False
+            while len(state.potions) <= slot:
+                state.potions.append(None)
+            if state.potions[slot] is not None:
+                return False
+            potion.slot_index = slot
+            potion.owner = state.creature
+            state.potions[slot] = potion
+            fire_after_potion_procured(potion, combat)
+            return True
+
+        if slot >= owner.max_potion_slots:
+            return False
+        while len(owner.potions) <= slot:
+            owner.potions.append(None)
+        if owner.potions[slot] is not None:
+            return False
+        potion.slot_index = slot
+        owner.potions[slot] = potion
+        return True
+
     def after_obtained(self, owner: Creature) -> None:
+        from sts2_env.potions.base import create_potion, roll_random_potion_model
+
+        combat = getattr(owner, "combat_state", None)
+        if combat is not None:
+            state = combat.combat_player_state_for(owner)
+            if state is None:
+                return
+            original_slot_count = state.max_potion_slots
+        else:
+            original_slot_count = owner.max_potion_slots
         owner.gain_potion_slots(self.POTION_SLOTS)
-        for _ in range(self.POTION_SLOTS):
-            owner.procure_potion("random")
+        if combat is not None:
+            rng = combat.combat_potion_generation_rng
+            character_id = state.character_id
+        else:
+            rng = owner.run_state.rng.combat_potion_generation
+            character_id = owner.character_id
+        for offset in range(self.POTION_SLOTS):
+            model = roll_random_potion_model(rng, character_id=character_id, in_combat=False)
+            if model is None:
+                continue
+            if self._can_procure_potion(owner, combat):
+                self._add_potion_to_slot(owner, create_potion(model.potion_id), original_slot_count + offset)
 
 
 @register_relic
@@ -724,9 +886,7 @@ class ArchaicTooth(RelicInstance):
                     owner.offer_transform_cards_reward(
                         1,
                         cards=cards,
-                        transform_to=ancient_id.name,
-                        preserve_upgrades=True,
-                        preserve_enchantments=True,
+                        mapping={starter_id: ancient_id},
                     )
                     return
                 if cards:
@@ -813,7 +973,13 @@ class BiiigHug(RelicInstance):
         owner.remove_cards_from_deck(self.CARDS, cards=candidates)
 
     def after_shuffle(self, owner: Creature, combat: CombatState) -> None:
-        combat.add_card_to_draw_pile(owner, "Soot")
+        from sts2_env.cards.factory import create_card
+
+        combat.add_generated_card_to_creature_draw_pile(
+            owner,
+            create_card(CardId.SOOT),
+            random_position=True,
+        )
 
 
 @register_relic
@@ -823,15 +989,14 @@ class BingBong(RelicInstance):
     rarity = RelicRarity.EVENT
     pool = RelicPool.EVENT
 
-    def __init__(self, relic_id: RelicId):
-        super().__init__(relic_id)
-        self._skip_next: bool = False
-
-    def on_card_added_to_deck(self, owner: Creature) -> None:
-        if not self._skip_next:
-            self._skip_next = True
-            owner.duplicate_last_added_card()
-            self._skip_next = False
+    def on_card_added_to_deck(
+        self,
+        owner: Creature,
+        card: CardInstance,
+        source: object | None = None,
+    ) -> None:
+        if source is None:
+            owner.add_card_instance_to_deck(card.clone(20_000_000 + len(owner.deck)), source=self)
 
 
 @register_relic
@@ -868,10 +1033,16 @@ class BlessedAntler(RelicInstance):
     def modify_max_energy(self, owner: Creature, energy: int) -> int:
         return energy + self.ENERGY
 
-    def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side == CombatSide.PLAYER and combat.round_number == 1:
+    def before_hand_draw(self, owner: Creature, combat: CombatState) -> None:
+        from sts2_env.cards.factory import create_card
+
+        if combat.round_number == 1:
             for _ in range(self.DAZED_COUNT):
-                combat.add_card_to_draw_pile(owner, "Dazed")
+                combat.add_generated_card_to_creature_draw_pile(
+                    owner,
+                    create_card(CardId.DAZED),
+                    random_position=True,
+                )
 
 
 @register_relic
@@ -887,7 +1058,7 @@ class BloodSoakedRose(RelicInstance):
 
     def after_obtained(self, owner: Creature) -> None:
         if getattr(owner.run_state, "defer_followup_rewards", False):
-            from sts2_env.cards.factory import create_card
+            from sts2_env.cards.factory import create_card, eligible_registered_cards
 
             card_id = owner._coerce_card_id("Enthralled")
             if card_id is not None:
@@ -911,10 +1082,12 @@ class BoneTea(RelicInstance):
     def after_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         if (side == CombatSide.PLAYER and combat.round_number == 1
                 and self._combats_left > 0):
+            state = combat.combat_player_state_for(owner)
+            if state is None:
+                return
             self._combats_left -= 1
-            for card in list(combat.hand):
-                if hasattr(card, "upgrade"):
-                    card.upgrade()
+            for card in list(state.hand):
+                combat.upgrade_card(card)
 
 
 @register_relic
@@ -944,11 +1117,36 @@ class BrilliantScarf(RelicInstance):
         self._cards_this_turn: int = 0
 
     def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side == CombatSide.PLAYER:
+        if side == owner.side:
             self._cards_this_turn = 0
 
     def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
-        self._cards_this_turn += 1
+        if getattr(combat, "active_card_play_is_auto", False):
+            return
+        if getattr(card, "owner", None) is owner:
+            self._cards_this_turn += 1
+
+    def _should_modify_cost(self, owner: Creature, card: object, combat: CombatState) -> bool:
+        if getattr(card, "owner", None) is not owner or self._cards_this_turn != self.CARD_NUMBER - 1:
+            return False
+        state = combat.combat_player_state_for(owner)
+        if state is None:
+            return False
+        return (
+            card in state.hand
+            or card in state.play
+            or getattr(combat, "_card_being_played_for_cost", None) is card
+        )
+
+    def modify_card_cost(self, owner: Creature, card: object, combat: CombatState) -> int | None:
+        if not self._should_modify_cost(owner, card, combat):
+            return None
+        return 0
+
+    def modify_star_cost(self, owner: Creature, card: object, combat: CombatState) -> int | None:
+        if not self._should_modify_cost(owner, card, combat):
+            return None
+        return 0
 
     def after_combat_end(self, owner: Creature, combat: CombatState) -> None:
         self._cards_this_turn = 0
@@ -960,7 +1158,32 @@ class Byrdpip(RelicInstance):
     relic_id = RelicId.BYRDPIP
     rarity = RelicRarity.EVENT
     pool = RelicPool.EVENT
-    # Pet system hook
+
+    def after_obtained(self, owner: Creature) -> None:
+        eggs = [card for card in getattr(owner, "deck", ()) if card.card_id == CardId.BYRDONIS_EGG]
+        transform = getattr(owner, "transform_specific_cards_with_mapping", None)
+        if callable(transform):
+            transform(eggs, {CardId.BYRDONIS_EGG: CardId.BYRD_SWOOP})
+        combat, creature = _active_combat_creature(owner)
+        if combat is None or creature is None:
+            return
+        from sts2_env.cards.factory import create_card
+
+        seen: set[int] = set()
+        state = combat.combat_player_state_for(creature)
+        if state is not None:
+            for pile in state.all_piles:
+                for card in list(pile):
+                    marker = id(card)
+                    if marker in seen:
+                        continue
+                    seen.add(marker)
+                    if card.card_id == CardId.BYRDONIS_EGG:
+                        combat.transform_card(card, create_card(CardId.BYRD_SWOOP, upgraded=card.upgraded))
+        combat.summon_event_pet(creature, "BYRDPIP")
+
+    def before_combat_start(self, owner: Creature, combat: CombatState) -> None:
+        combat.summon_event_pet(owner, "BYRDPIP")
 
 
 @register_relic
@@ -1007,17 +1230,17 @@ class ChoicesParadox(RelicInstance):
         super().__init__(relic_id)
         self._used_this_combat: bool = False
 
-    def after_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
+    def after_player_turn_start(self, owner: Creature, combat: CombatState) -> None:
         from sts2_env.cards.factory import create_distinct_character_cards
 
-        if side != CombatSide.PLAYER or combat.round_number != 1 or self._used_this_combat:
+        if combat.round_number != 1 or self._used_this_combat:
             return
         state = combat.combat_player_state_for(owner)
         if state is None:
             return
         cards = create_distinct_character_cards(
             state.character_id,
-            combat.rng,
+            combat.combat_card_generation_rng,
             self.CARDS,
             generation_context="combat",
         )
@@ -1030,7 +1253,7 @@ class ChoicesParadox(RelicInstance):
             prompt="Choose a retained card to add to your hand.",
             cards=cards,
             source_pile="generated",
-            resolver=lambda card: combat.move_card_to_creature_hand(owner, card),
+            resolver=lambda card: combat.add_generated_card_to_creature_hand(owner, card),
             allow_skip=False,
         )
 
@@ -1118,9 +1341,14 @@ class DarkstonePeriapt(RelicInstance):
     pool = RelicPool.EVENT
     MAX_HP = 6
 
-    def on_card_added_to_deck(self, owner: Creature) -> None:
-        # Check if last added card is curse type
-        pass  # Handled by card-added-to-deck system
+    def on_card_added_to_deck(
+        self,
+        owner: Creature,
+        card: CardInstance,
+        source: object | None = None,
+    ) -> None:
+        if card.card_type == CardType.CURSE:
+            owner.gain_max_hp(self.MAX_HP)
 
 
 @register_relic
@@ -1132,7 +1360,8 @@ class DaughterOfTheWind(RelicInstance):
     BLOCK = 1
 
     def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
-        if hasattr(card, "card_type") and card.card_type == CardType.ATTACK:
+        if (getattr(card, "owner", None) is owner
+                and hasattr(card, "card_type") and card.card_type == CardType.ATTACK):
             owner.gain_block(self.BLOCK, unpowered=True)
 
 
@@ -1144,7 +1373,7 @@ class DelicateFrond(RelicInstance):
     pool = RelicPool.EVENT
 
     def before_combat_start(self, owner: Creature, combat: CombatState) -> None:
-        owner.fill_empty_potion_slots()
+        combat.fill_empty_potion_slots(owner, in_combat=False)
 
 
 @register_relic
@@ -1160,13 +1389,14 @@ class DiamondDiadem(RelicInstance):
         self._cards_this_turn: int = 0
 
     def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
-        self._cards_this_turn += 1
+        if getattr(card, "owner", None) is owner:
+            self._cards_this_turn += 1
 
     def before_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         if side == CombatSide.PLAYER and self._cards_this_turn <= self.CARD_THRESHOLD:
             owner.apply_power(PowerId.DIAMOND_DIADEM, 1)
 
-    def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
+    def after_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         if side == CombatSide.PLAYER:
             self._cards_this_turn = 0
 
@@ -1364,8 +1594,8 @@ class FakeBloodVial(RelicInstance):
     pool = RelicPool.EVENT
     HEAL = 1
 
-    def after_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side == CombatSide.PLAYER and combat.round_number == 1:
+    def after_player_turn_start_late(self, owner: Creature, combat: CombatState) -> None:
+        if combat.round_number == 1:
             owner.heal(self.HEAL)
 
 
@@ -1383,9 +1613,9 @@ class FakeHappyFlower(RelicInstance):
         self._turns_seen: int = 0
 
     def after_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side == CombatSide.PLAYER:
-            self._turns_seen += 1
-            if self._turns_seen % self.TURNS == 0:
+        if side == owner.side:
+            self._turns_seen = (self._turns_seen + 1) % self.TURNS
+            if self._turns_seen == 0:
                 combat.gain_energy(owner, self.ENERGY)
 
 
@@ -1428,9 +1658,21 @@ class FakeOrichalcum(RelicInstance):
     pool = RelicPool.EVENT
     BLOCK = 3
 
+    def __init__(self, relic_id: RelicId):
+        super().__init__(relic_id)
+        self._should_trigger: bool = False
+
+    def before_turn_end_very_early(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
+        if side == owner.side and owner.block == 0:
+            self._should_trigger = True
+
     def before_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side == CombatSide.PLAYER and owner.block == 0:
+        if self._should_trigger:
+            self._should_trigger = False
             owner.gain_block(self.BLOCK, unpowered=True)
+
+    def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
+        self._should_trigger = False
 
 
 @register_relic
@@ -1439,6 +1681,11 @@ class FakeSneckoEye(RelicInstance):
     relic_id = RelicId.FAKE_SNECKO_EYE
     rarity = RelicRarity.EVENT
     pool = RelicPool.EVENT
+
+    def after_obtained(self, owner: Creature) -> None:
+        _, creature = _active_combat_creature(owner)
+        if creature is not None:
+            creature.apply_power(PowerId.CONFUSED, 1)
 
     def before_combat_start(self, owner: Creature, combat: CombatState) -> None:
         owner.apply_power(PowerId.CONFUSED, 1)
@@ -1456,9 +1703,8 @@ class FakeStrikeDummy(RelicInstance):
         self, owner: Creature, dealer: Creature | None, target: Creature,
         props: ValueProp, card: object | None = None
     ) -> int:
-        if (dealer is owner and card is not None
+        if ((dealer is owner or getattr(card, "owner", None) is owner) and card is not None
                 and hasattr(card, "tags")):
-            from sts2_env.core.enums import CardTag
             if CardTag.STRIKE in card.tags:
                 return self.EXTRA_DAMAGE
         return 0
@@ -1494,8 +1740,13 @@ class Fiddle(RelicInstance):
     pool = RelicPool.EVENT
     EXTRA_DRAW = 2
 
-    def modify_hand_draw(self, owner: Creature, draw: int, combat: CombatState) -> int:
+    def modify_hand_draw_late(self, owner: Creature, draw: int, combat: CombatState) -> int:
         return draw + self.EXTRA_DRAW
+
+    def should_draw(self, owner: Creature, from_hand_draw: bool, combat: CombatState) -> bool | None:
+        if from_hand_draw or owner.side != combat.current_side:
+            return None
+        return False
 
 
 @register_relic
@@ -1507,7 +1758,9 @@ class ForgottenSoul(RelicInstance):
     DAMAGE = 1
 
     def after_card_exhausted(self, owner: Creature, card: object, combat: CombatState) -> None:
-        target = combat.get_random_enemy()
+        if getattr(card, "owner", None) is not owner:
+            return
+        target = combat.random_enemy_of(owner)
         if target:
             combat.deal_damage(owner, target, self.DAMAGE, ValueProp.UNPOWERED)
 
@@ -1526,7 +1779,7 @@ class FragrantMushroom(RelicInstance):
         if getattr(owner.run_state, "defer_followup_rewards", False):
             owner.offer_upgrade_cards_reward(self.CARDS, cards=owner.upgradable_deck_cards())
             return
-        owner.upgrade_random_cards(None, self.CARDS)
+        owner.upgrade_random_cards(None, self.CARDS, rng=owner.run_state.rng.niche)
 
 
 @register_relic
@@ -1546,11 +1799,13 @@ class FresnelLens(RelicInstance):
         run_state: RunState,
     ) -> list[CardInstance]:
         for card in cards:
-            card.add_enchantment("Nimble", self.NIMBLE)
+            if can_enchant_card(card, "Nimble"):
+                card.add_enchantment("Nimble", self.NIMBLE)
         return cards
 
     def modify_card_being_added_to_deck(self, owner: Creature, card: CardInstance) -> CardInstance:
-        card.add_enchantment("Nimble", self.NIMBLE)
+        if can_enchant_card(card, "Nimble"):
+            card.add_enchantment("Nimble", self.NIMBLE)
         return card
 
     def modify_merchant_card_creation_results(
@@ -1561,7 +1816,8 @@ class FresnelLens(RelicInstance):
         is_colorless: bool,
         run_state: RunState,
     ) -> CardInstance:
-        card.add_enchantment("Nimble", self.NIMBLE)
+        if can_enchant_card(card, "Nimble"):
+            card.add_enchantment("Nimble", self.NIMBLE)
         return card
 
 
@@ -1572,7 +1828,66 @@ class FurCoat(RelicInstance):
     rarity = RelicRarity.ANCIENT
     pool = RelicPool.EVENT
     COMBATS = 7
-    # Map modification + BeforeCombatStart hook
+
+    def __init__(self, relic_id: RelicId):
+        super().__init__(relic_id)
+        self._fur_coat_act_index: int = -1
+        self._marked_coords: list[tuple[int, int]] = []
+
+    def _add_marked_rooms(self, owner: Creature, run_state: RunState, act_map: object) -> object:
+        if run_state.current_act_index != self._fur_coat_act_index:
+            return act_map
+        valid_existing = self._marked_coords and all(
+            (point := act_map.get_point(coord)) is not None
+            and point.point_type in (MapPointType.MONSTER, MapPointType.ELITE)
+            for coord in self._marked_map_coords()
+        )
+        if valid_existing:
+            return act_map
+
+        from sts2_env.core.rng import Rng, deterministic_hash_code
+
+        candidates = [
+            point
+            for point in act_map.room_points()
+            if point.point_type in (MapPointType.MONSTER, MapPointType.ELITE)
+        ]
+        rng = Rng(run_state.rng.seed + getattr(owner, "player_id", 1) + deterministic_hash_code("FurCoat"))
+        rng.shuffle(candidates)
+        self._marked_coords = [(point.col, point.row) for point in candidates[:self.COMBATS]]
+        return act_map
+
+    def _marked_map_coords(self):
+        from sts2_env.map.map_point import MapCoord
+
+        return [MapCoord(col, row) for col, row in self._marked_coords]
+
+    def after_obtained(self, owner: Creature) -> None:
+        run_state = getattr(owner, "run_state", None)
+        if run_state is None or run_state.map is None:
+            return
+        self._fur_coat_act_index = run_state.current_act_index
+        self._add_marked_rooms(owner, run_state, run_state.map)
+
+    def modify_generated_map_late(
+        self,
+        owner: Creature,
+        run_state: RunState,
+        act_map: object,
+        act_index: int,
+    ) -> object:
+        return self._add_marked_rooms(owner, run_state, act_map)
+
+    def before_combat_start(self, owner: Creature, combat: CombatState) -> None:
+        state = combat.combat_player_state_for(owner)
+        run_state = getattr(getattr(state, "player_state", None), "run_state", None)
+        if run_state is None or run_state.current_act_index != self._fur_coat_act_index:
+            return
+        current_coord = run_state.visited_map_coords[-1] if run_state.visited_map_coords else None
+        if current_coord not in self._marked_map_coords():
+            return
+        for enemy in combat.hittable_enemies:
+            enemy.current_hp = min(enemy.current_hp, 1)
 
 
 @register_relic
@@ -1597,6 +1912,8 @@ class GlassEye(RelicInstance):
                     owner.player_id,
                     option_count=3,
                     forced_rarities=(rarity, rarity, rarity),
+                    generation_context=None,
+                    roll_upgrade=False,
                 )
             )
 
@@ -1617,17 +1934,47 @@ class Glitter(RelicInstance):
         run_state: RunState,
     ) -> list[CardInstance]:
         for card in cards:
-            card.add_enchantment("Glam", 1)
+            if can_enchant_card(card, "Glam"):
+                card.add_enchantment("Glam", 1)
         return cards
 
 
 @register_relic
 class GoldenCompass(RelicInstance):
-    """Replace map with all-events map."""
+    """Replace current act map with the fixed golden path."""
     relic_id = RelicId.GOLDEN_COMPASS
     rarity = RelicRarity.ANCIENT
     pool = RelicPool.EVENT
-    # Map modification hooks
+
+    def __init__(self, relic_id: RelicId):
+        super().__init__(relic_id)
+        self._golden_path_act: int = -1
+
+    def after_obtained(self, owner: Creature) -> None:
+        run_state = getattr(owner, "run_state", None)
+        if run_state is None:
+            return
+        self._golden_path_act = run_state.current_act_index
+        run_state.generate_map()
+
+    def modify_generated_map(
+        self,
+        owner: Creature,
+        run_state: RunState,
+        act_map: object,
+        act_index: int,
+    ) -> object:
+        if act_index != self._golden_path_act:
+            return act_map
+        from sts2_env.map.generator import generate_golden_path_map
+
+        return generate_golden_path_map(player_count=len(getattr(run_state, "players", (owner,))))
+
+    def modify_unknown_map_point_room_types(self, owner: Creature, room_types: set[object]) -> set[object]:
+        run_state = getattr(owner, "run_state", None)
+        if run_state is None or run_state.current_act_index != self._golden_path_act:
+            return room_types
+        return {RoomType.EVENT}
 
 
 @register_relic
@@ -1654,7 +2001,7 @@ class HandDrill(RelicInstance):
         self, owner: Creature, dealer: Creature, target: Creature,
         damage: int, props: ValueProp, combat: CombatState
     ) -> None:
-        if dealer is not owner:
+        if dealer is not owner and getattr(dealer, "pet_owner", None) is not owner:
             return
         attack = getattr(combat, "active_attack", None)
         if attack is None:
@@ -1662,8 +2009,8 @@ class HandDrill(RelicInstance):
         result = next((entry for entry in reversed(attack.results) if entry.target is target), None)
         if result is None:
             return
-        if result.blocked > 0 and target.block == 0:
-            target.apply_power(PowerId.VULNERABLE, self.VULNERABLE)
+        if getattr(result, "was_block_broken", False):
+            combat.apply_power_to(target, PowerId.VULNERABLE, self.VULNERABLE, applier=owner)
 
 
 @register_relic
@@ -1700,8 +2047,8 @@ class HistoryCourse(RelicInstance):
             None,
         )
 
-    def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side != CombatSide.PLAYER or combat.round_number <= 1:
+    def after_player_turn_start_early(self, owner: Creature, combat: CombatState) -> None:
+        if combat.round_number <= 1:
             return
         pending = self._pending_replay_card
         self._pending_replay_card = None
@@ -1726,6 +2073,8 @@ class IronClub(RelicInstance):
         self._cards_played: int = 0
 
     def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
+        if getattr(card, "owner", None) is not owner:
+            return
         self._cards_played += 1
         if self._cards_played % self.CARD_THRESHOLD == 0:
             combat.draw_cards(owner, 1)
@@ -1738,8 +2087,8 @@ class JeweledMask(RelicInstance):
     rarity = RelicRarity.ANCIENT
     pool = RelicPool.EVENT
 
-    def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side != CombatSide.PLAYER or combat.round_number != 1:
+    def before_hand_draw(self, owner: Creature, combat: CombatState) -> None:
+        if combat.round_number != 1:
             return
         state = combat.combat_player_state_for(owner)
         if state is None:
@@ -1747,8 +2096,8 @@ class JeweledMask(RelicInstance):
         candidates = [card for card in state.draw if card.card_type == CardType.POWER]
         if not candidates:
             return
-        selected = combat.rng.choice(candidates)
-        selected.set_temporary_cost_for_turn(0)
+        selected = combat.combat_card_selection_rng.choice(candidates)
+        selected.set_temporary_free_this_turn()
         combat.move_card_to_creature_hand(owner, selected)
 
 
@@ -1857,10 +2206,10 @@ class LeafyPoultice(RelicInstance):
         defend = next((card for card in owner.basic_strike_defend_cards() if "DEFEND" in card.card_id.name), None)
         cards = [card for card in (strike, defend) if card is not None]
         if getattr(owner.run_state, "defer_followup_rewards", False):
-            owner.offer_transform_cards_reward(len(cards), cards=cards)
+            owner.offer_transform_cards_reward(len(cards), cards=cards, rng_stream="transformations")
             return
         if cards:
-            owner.transform_specific_cards(cards)
+            owner.transform_specific_cards(cards, rng=owner.run_state.rng.transformations)
 
 
 @register_relic
@@ -1881,7 +2230,13 @@ class LordsParasol(RelicInstance):
     relic_id = RelicId.LORDS_PARASOL
     rarity = RelicRarity.ANCIENT
     pool = RelicPool.EVENT
-    # AfterRoomEntered hook
+
+    def after_room_entered(self, owner: Creature, room_type: object) -> None:
+        if not getattr(room_type, "is_merchant", False):
+            return
+        run_manager = getattr(room_type, "run_manager", None)
+        if run_manager is not None:
+            run_manager._auto_purchase_shop_inventory()
 
 
 @register_relic
@@ -1905,9 +2260,14 @@ class LostWisp(RelicInstance):
     DAMAGE = 8
 
     def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
-        if hasattr(card, "card_type") and card.card_type == CardType.POWER:
-            for enemy in combat.get_alive_enemies():
-                combat.deal_damage(owner, enemy, self.DAMAGE, ValueProp.UNPOWERED)
+        if (getattr(card, "owner", None) is owner
+                and hasattr(card, "card_type") and card.card_type == CardType.POWER):
+            combat.deal_damage(
+                dealer=owner,
+                amount=self.DAMAGE,
+                props=ValueProp.UNPOWERED,
+                targets=list(combat.hittable_enemies),
+            )
 
 
 @register_relic
@@ -1937,8 +2297,17 @@ class MawBank(RelicInstance):
         if not self._purchased:
             owner.gain_gold(self.GOLD)
 
-    def on_item_purchased(self, owner: Creature) -> None:
-        self._purchased = True
+    def on_item_purchased(
+        self,
+        owner: Creature,
+        *,
+        item_kind: str = "",
+        item: object | None = None,
+        run_state: RunState | None = None,
+        gold_spent: int = 0,
+    ) -> None:
+        if gold_spent > 0:
+            self._purchased = True
 
 
 @register_relic
@@ -1964,11 +2333,14 @@ class MrStruggles(RelicInstance):
     rarity = RelicRarity.EVENT
     pool = RelicPool.EVENT
 
-    def after_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side == CombatSide.PLAYER:
-            damage = combat.round_number
-            for enemy in combat.get_alive_enemies():
-                combat.deal_damage(owner, enemy, damage, ValueProp.UNPOWERED)
+    def after_player_turn_start(self, owner: Creature, combat: CombatState) -> None:
+        damage = combat.round_number
+        combat.deal_damage(
+            dealer=owner,
+            amount=damage,
+            props=ValueProp.UNPOWERED,
+            targets=list(combat.hittable_enemies),
+        )
 
 
 @register_relic
@@ -1981,19 +2353,27 @@ class MusicBox(RelicInstance):
     def __init__(self, relic_id: RelicId):
         super().__init__(relic_id)
         self._used_this_turn: bool = False
+        self._card_being_played: object | None = None
 
     def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         if side == CombatSide.PLAYER:
             self._used_this_turn = False
 
+    def before_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
+        if self._card_being_played is not None or self._used_this_turn:
+            return
+        if getattr(card, "owner", None) is owner and hasattr(card, "card_type") and card.card_type == CardType.ATTACK:
+            self._card_being_played = card
+
     def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
-        if (not self._used_this_turn
-                and hasattr(card, "card_type") and card.card_type == CardType.ATTACK):
+        if card is self._card_being_played:
             self._used_this_turn = True
+            self._card_being_played = None
             combat.create_ethereal_clone_in_hand(owner, card)
 
     def after_combat_end(self, owner: Creature, combat: CombatState) -> None:
         self._used_this_turn = False
+        self._card_being_played = None
 
 
 @register_relic
@@ -2085,9 +2465,11 @@ class PaelsEye(RelicInstance):
         self._any_cards_played: bool = False
 
     def before_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
+        if getattr(card, "owner", None) is not owner:
+            return
         self._any_cards_played = True
 
-    def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
+    def after_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         if side == CombatSide.PLAYER:
             self._any_cards_played = False
 
@@ -2096,13 +2478,16 @@ class PaelsEye(RelicInstance):
             return True
         return None
 
-    def before_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
+    def before_turn_end_early(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         if self._used_this_combat or self._any_cards_played or side != CombatSide.PLAYER:
             return
         from sts2_env.core.hooks import fire_after_card_exhausted
-        for card in list(combat.hand):
-            combat.hand.remove(card)
-            combat.exhaust_pile.append(card)
+        state = combat.combat_player_state_for(owner)
+        if state is None:
+            return
+        for card in list(state.hand):
+            state.hand.remove(card)
+            state.exhaust.append(card)
             fire_after_card_exhausted(card, combat)
 
     def after_taking_extra_turn(self, owner: Creature, combat: CombatState) -> None:
@@ -2174,6 +2559,60 @@ class PaelsLegion(RelicInstance):
     def __init__(self, relic_id: RelicId):
         super().__init__(relic_id)
         self._cooldown: int = 0
+        self._affected_card: object | None = None
+
+    def before_combat_start(self, owner: Creature, combat: CombatState) -> None:
+        self._cooldown = 0
+        self._affected_card = None
+        combat.summon_event_pet(owner, "PAELS_LEGION")
+
+    def after_obtained(self, owner: Creature) -> None:
+        combat, creature = _active_combat_creature(owner)
+        if combat is not None and creature is not None:
+            combat.summon_event_pet(creature, "PAELS_LEGION")
+
+    def modify_block_multiplicative(
+        self,
+        owner: Creature,
+        target: Creature,
+        props: ValueProp,
+        card_source: object | None = None,
+        card_play: object | None = None,
+    ) -> float:
+        if (
+            target is owner
+            and self._cooldown <= 0
+            and card_source is not None
+            and bool(props & ValueProp.MOVE)
+        ):
+            return 2.0
+        return 1.0
+
+    def after_modifying_block_amount(
+        self,
+        owner: Creature,
+        modified_amount: int,
+        card_source: object | None,
+        card_play: object | None,
+        combat: CombatState,
+    ) -> None:
+        if modified_amount <= 0 or card_source is None:
+            return
+        if self._affected_card is None or self._affected_card is card_source:
+            self._affected_card = card_source
+
+    def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
+        if card is self._affected_card:
+            self._affected_card = None
+            self._cooldown = 2
+
+    def after_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
+        if side == owner.side and self._cooldown > 0:
+            self._cooldown -= 1
+
+    def after_combat_end(self, owner: Creature, combat: CombatState) -> None:
+        self._cooldown = 0
+        self._affected_card = None
 
 
 @register_relic
@@ -2193,9 +2632,8 @@ class PaelsTears(RelicInstance):
             self._had_leftover = getattr(combat, "current_energy", 0) > 0
 
     def after_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side == CombatSide.PLAYER and self._had_leftover:
+        if side == owner.side and self._had_leftover:
             combat.gain_energy(owner, self.ENERGY)
-            self._had_leftover = False
 
     def after_combat_end(self, owner: Creature, combat: CombatState) -> None:
         self._had_leftover = False
@@ -2211,7 +2649,41 @@ class PaelsTooth(RelicInstance):
 
     def __init__(self, relic_id: RelicId):
         super().__init__(relic_id)
-        self._stored_cards: list = []
+        self._stored_cards: list[CardInstance] = []
+
+    def _store_and_remove_cards(self, owner: Creature, cards: list[CardInstance]) -> int:
+        selected = sorted(cards[:self.CARDS], key=lambda card: card.card_id.name)
+        self._stored_cards = [card.clone(40_000_000 + index) for index, card in enumerate(selected)]
+        selected_ids = {id(card) for card in selected}
+        owner.deck = [card for card in owner.deck if id(card) not in selected_ids]
+        return len(selected)
+
+    def after_obtained(self, owner: Creature) -> None:
+        candidates = owner.upgradable_deck_cards()
+        max_count = min(self.CARDS, len(candidates))
+        if max_count > 0 and owner.request_deck_choice(
+            prompt=f"Choose up to {max_count} cards for Pael's Tooth",
+            cards=candidates,
+            resolver=lambda selected: self._store_and_remove_cards(owner, selected),
+            allow_skip=True,
+            min_count=0,
+            max_count=max_count,
+        ):
+            return
+        self._store_and_remove_cards(owner, candidates[:max_count])
+
+    def after_combat_end(self, owner: Creature, combat: CombatState) -> None:
+        if owner.is_dead or not self._stored_cards:
+            return
+        state = combat.combat_player_state_for(owner)
+        if state is None:
+            return
+        rng = getattr(getattr(state.player_state, "run_state", None), "rng", None)
+        rewards_rng = getattr(rng, "rewards", combat.rng)
+        card = rewards_rng.choice(self._stored_cards)
+        self._stored_cards.remove(card)
+        state.player_state.upgrade_card_instance(card)
+        state.player_state.add_card_instance_to_deck(card)
 
 
 @register_relic
@@ -2225,6 +2697,16 @@ class PaelsWing(RelicInstance):
     def __init__(self, relic_id: RelicId):
         super().__init__(relic_id)
         self._rewards_sacrificed: int = 0
+
+    def sacrifice_card_reward(self, owner: Creature) -> str | None:
+        self._rewards_sacrificed += 1
+        if self._rewards_sacrificed % self.SACRIFICES != 0:
+            return None
+        relic_id = owner.pull_next_relic_reward_id()
+        if relic_id is None:
+            return None
+        owner.obtain_relic(relic_id)
+        return relic_id
 
 
 @register_relic
@@ -2279,12 +2761,15 @@ class PollinousCore(RelicInstance):
         self._turns_seen: int = 0
 
     def modify_hand_draw(self, owner: Creature, draw: int, combat: CombatState) -> int:
-        if self._turns_seen > 0 and self._turns_seen % self.TURNS == 0:
+        if self._turns_seen == self.TURNS:
             return draw + self.EXTRA_CARDS
         return draw
 
+    def after_modifying_hand_draw(self, owner: Creature, combat: CombatState) -> None:
+        self._turns_seen = 0
+
     def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side == CombatSide.PLAYER:
+        if side == owner.side:
             self._turns_seen += 1
 
 
@@ -2297,6 +2782,9 @@ class Pomander(RelicInstance):
 
     def after_obtained(self, owner: Creature) -> None:
         candidates = owner.upgradable_deck_cards()
+        if getattr(owner.run_state, "defer_followup_rewards", False):
+            owner.offer_upgrade_cards_reward(1, cards=candidates)
+            return
         if getattr(owner.run_state, "enable_deck_choice_requests", False):
             owner.offer_upgrade_cards_reward(1, cards=candidates)
             return
@@ -2379,6 +2867,12 @@ class PrismaticGem(RelicInstance):
     ) -> CardRewardGenerationOptions:
         from sts2_env.run.rewards import CardRewardGenerationOptions
 
+        if not options.allow_card_pool_modifications:
+            return options
+        if options.has_custom_card_pool:
+            return options
+        if options.include_colorless and not options.use_default_character_pool and not options.character_ids:
+            return options
         return CardRewardGenerationOptions(
             context=options.context,
             num_cards=options.num_cards,
@@ -2386,6 +2880,12 @@ class PrismaticGem(RelicInstance):
             forced_rarities=options.forced_rarities,
             include_colorless=options.include_colorless,
             use_default_character_pool=options.use_default_character_pool,
+            generation_context=options.generation_context,
+            roll_upgrade=options.roll_upgrade,
+            card_creation_source=options.card_creation_source,
+            allow_card_pool_modifications=options.allow_card_pool_modifications,
+            has_custom_card_pool=options.has_custom_card_pool,
+            custom_card_ids=options.custom_card_ids,
         )
 
 
@@ -2401,11 +2901,24 @@ class PumpkinCandle(RelicInstance):
         super().__init__(relic_id)
         self._active_act: int = -1
 
+    @staticmethod
+    def _current_act_index(owner: Creature) -> int | None:
+        run_state = getattr(owner, "run_state", None)
+        if run_state is None:
+            combat = getattr(owner, "combat_state", None)
+            state = combat.combat_player_state_for(owner) if combat is not None else None
+            run_state = getattr(getattr(state, "player_state", None), "run_state", None)
+        return getattr(run_state, "current_act_index", None)
+
     def after_obtained(self, owner: Creature) -> None:
-        self._active_act = getattr(owner, "current_act", 0)
+        current_act = self._current_act_index(owner)
+        self._active_act = 0 if current_act is None else current_act
 
     def modify_max_energy(self, owner: Creature, energy: int) -> int:
-        if getattr(owner, "current_act", -1) == self._active_act:
+        current_act = self._current_act_index(owner)
+        if current_act is None and self._active_act < 0:
+            return energy + self.ENERGY
+        if current_act == self._active_act:
             return energy + self.ENERGY
         return energy
 
@@ -2417,9 +2930,10 @@ class RadiantPearl(RelicInstance):
     rarity = RelicRarity.ANCIENT
     pool = RelicPool.EVENT
 
-    def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side == CombatSide.PLAYER and combat.round_number == 1:
-            combat.create_card_in_hand(owner, "Luminesce")
+    def before_hand_draw(self, owner: Creature, combat: CombatState) -> None:
+        if combat.round_number == 1:
+            card = combat._make_named_card("Luminesce")  # noqa: SLF001
+            combat.add_generated_card_to_creature_hand(owner, card)
 
 
 @register_relic
@@ -2430,8 +2944,8 @@ class RoyalPoison(RelicInstance):
     pool = RelicPool.EVENT
     DAMAGE = 4
 
-    def after_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side == CombatSide.PLAYER and combat.round_number == 1:
+    def after_player_turn_start(self, owner: Creature, combat: CombatState) -> None:
+        if combat.round_number == 1:
             combat.deal_damage(None, owner, self.DAMAGE,
                                ValueProp.UNBLOCKABLE | ValueProp.UNPOWERED)
 
@@ -2472,7 +2986,7 @@ class SandCastle(RelicInstance):
         if getattr(owner.run_state, "defer_followup_rewards", False):
             owner.offer_upgrade_cards_reward(self.CARDS, cards=owner.upgradable_deck_cards())
             return
-        owner.upgrade_random_cards(None, self.CARDS)
+        owner.upgrade_random_cards(None, self.CARDS, rng=owner.run_state.rng.niche)
 
 
 @register_relic
@@ -2509,17 +3023,20 @@ class SeaGlass(RelicInstance):
 
     def after_obtained(self, owner: Creature) -> None:
         if self._character_id is None:
-            self._character_id = owner.run_state.rng.rewards.choice(
-                [character.character_id for character in ALL_CHARACTERS]
-            )
+            self._character_id = "Ironclad"
         owner.offer_custom_card_reward(
             option_count=self.CARDS,
+            cards_to_pick=self.CARDS,
             character_ids=(self._character_id,),
             forced_rarities=(
                 (CardRarity.COMMON,) * 5
                 + (CardRarity.UNCOMMON,) * 5
                 + (CardRarity.RARE,) * 5
             ),
+            generation_context=None,
+            roll_upgrade=False,
+            card_creation_source="other",
+            allow_card_pool_modifications=False,
         )
 
 
@@ -2534,9 +3051,10 @@ class SealOfGold(RelicInstance):
 
     def after_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         if side == CombatSide.PLAYER:
-            gold = getattr(owner, "gold", 0)
+            state = combat.combat_player_state_for(owner)
+            gold = state.player_state.gold if state is not None else getattr(owner, "gold", 0)
             if gold >= self.GOLD_COST:
-                owner.lose_gold(self.GOLD_COST)
+                combat.lose_gold(owner, self.GOLD_COST)
                 combat.gain_energy(owner, self.ENERGY)
 
 
@@ -2549,13 +3067,13 @@ class SereTalon(RelicInstance):
 
     def after_obtained(self, owner: Creature) -> None:
         if getattr(owner.run_state, "defer_followup_rewards", False):
-            from sts2_env.cards.factory import create_card
+            from sts2_env.cards.factory import create_card, eligible_registered_cards
 
-            curse_ids = eligible_registered_cards(card_type=CardType.CURSE, generation_context=None)
+            curse_ids = eligible_registered_cards(card_type=CardType.CURSE, generation_context="modifier")
+            chosen_curses = owner.run_state.rng.niche.sample(curse_ids, min(2, len(curse_ids)))
             generated = [
-                create_card(owner.run_state.rng.rewards.choice(curse_ids))
-                for _ in range(2)
-                if curse_ids
+                create_card(card_id)
+                for card_id in chosen_curses
             ]
             wish_id = owner._coerce_card_id("Wish")
             if wish_id is not None:
@@ -2563,7 +3081,7 @@ class SereTalon(RelicInstance):
             if generated:
                 owner.offer_add_cards_reward(generated)
                 return
-        owner.add_random_curses(2)
+        owner.add_random_curses(2, rng=owner.run_state.rng.niche)
         for _ in range(3):
             owner.add_card_to_deck("Wish")
 
@@ -2644,6 +3162,11 @@ class SneckoEye(RelicInstance):
     pool = RelicPool.EVENT
     EXTRA_DRAW = 2
 
+    def after_obtained(self, owner: Creature) -> None:
+        _, creature = _active_combat_creature(owner)
+        if creature is not None:
+            creature.apply_power(PowerId.CONFUSED, 1)
+
     def before_combat_start(self, owner: Creature, combat: CombatState) -> None:
         owner.apply_power(PowerId.CONFUSED, 1)
 
@@ -2685,6 +3208,8 @@ class SpikedGauntlets(RelicInstance):
         )
 
     def should_play(self, owner: Creature, card: object, combat: CombatState) -> bool | None:
+        if getattr(card, "owner", None) is not owner:
+            return None
         if not self._is_non_x_power(card):
             return None
         state = combat.combat_player_state_for(owner)
@@ -2695,20 +3220,15 @@ class SpikedGauntlets(RelicInstance):
             return False
         return None
 
-    def before_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
+    def modify_card_cost(self, owner: Creature, card: object, combat: CombatState) -> int | None:
+        if getattr(card, "owner", None) is not owner:
+            return None
         if not self._is_non_x_power(card):
-            return
-        pending = getattr(combat, "_pending_play", None)
-        if isinstance(pending, dict):
-            if pending.get("_spiked_gauntlets_paid", False):
-                return
-            pending["_spiked_gauntlets_paid"] = True
-        state = combat.combat_player_state_for(owner)
-        if state is None:
-            return
-        state.energy = max(0, state.energy - self.POWER_COST_INCREASE)
-        if hasattr(card, "energy_spent"):
-            card.energy_spent = int(getattr(card, "energy_spent", 0)) + self.POWER_COST_INCREASE
+            return None
+        return max(0, int(getattr(card, "cost", 0))) + self.POWER_COST_INCREASE
+
+    def before_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
+        return
 
 
 @register_relic
@@ -2802,10 +3322,16 @@ class TeaOfDiscourtesy(RelicInstance):
         self._combats_left: int = self.COMBATS
 
     def before_combat_start(self, owner: Creature, combat: CombatState) -> None:
+        from sts2_env.cards.factory import create_card
+
         if self._combats_left > 0:
             self._combats_left -= 1
             for _ in range(self.DAZED_COUNT):
-                combat.add_card_to_draw_pile(owner, "Dazed")
+                combat.add_generated_card_to_creature_draw_pile(
+                    owner,
+                    create_card(CardId.DAZED),
+                    random_position=True,
+                )
 
 
 @register_relic
@@ -2816,12 +3342,11 @@ class TheBoot(RelicInstance):
     pool = RelicPool.EVENT
     DAMAGE_MINIMUM = 5
 
-    def modify_hp_lost(
+    def modify_hp_lost_before_osty(
         self, owner: Creature, target: Creature, amount: float,
         dealer: Creature | None, props: ValueProp
     ) -> float:
         if (dealer is owner
-                and target is not owner
                 and bool(props & ValueProp.MOVE)
                 and not bool(props & ValueProp.UNPOWERED)
                 and 0 < amount < self.DAMAGE_MINIMUM):
@@ -2841,10 +3366,15 @@ class ThrowingAxe(RelicInstance):
         self._used_this_combat: bool = False
 
     def modify_card_play_count(self, owner: Creature, count: int, card: object) -> int:
+        if getattr(card, "owner", None) is not owner:
+            return count
         if not self._used_this_combat:
-            self._used_this_combat = True
             return count + 1
         return count
+
+    def after_modifying_card_play_count(self, owner: Creature, card: object, combat: CombatState) -> None:
+        if getattr(card, "owner", None) is owner and not self._used_this_combat:
+            self._used_this_combat = True
 
     def before_combat_start(self, owner: Creature, combat: CombatState) -> None:
         self._used_this_combat = False
@@ -2861,10 +3391,22 @@ class ToastyMittens(RelicInstance):
     pool = RelicPool.EVENT
     STRENGTH = 1
 
-    def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side == CombatSide.PLAYER:
+    def before_hand_draw(self, owner: Creature, combat: CombatState) -> None:
+        from sts2_env.core.hooks import fire_after_card_exhausted
+
+        state = combat.combat_player_state_for(owner)
+        if state is None:
+            return
+        combat._shuffle_if_needed(owner)  # noqa: SLF001
+        if combat.round_number == 1:
+            card = next((card for card in state.draw if not card.is_innate), None)
+            if card is not None:
+                state.draw.remove(card)
+                state.exhaust.append(card)
+                fire_after_card_exhausted(card, combat)
+        else:
             combat.exhaust_top_of_draw_pile(owner)
-            owner.apply_power(PowerId.STRENGTH, self.STRENGTH)
+        owner.apply_power(PowerId.STRENGTH, self.STRENGTH)
 
 
 @register_relic
@@ -2975,12 +3517,15 @@ class VelvetChoker(RelicInstance):
         return energy + self.ENERGY
 
     def should_play(self, owner: Creature, card: object, combat: CombatState) -> bool | None:
+        if getattr(card, "owner", None) is not owner:
+            return None
         if self._cards_this_turn >= self.MAX_CARDS:
             return False
         return None
 
     def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
-        self._cards_this_turn += 1
+        if getattr(card, "owner", None) is owner:
+            self._cards_this_turn += 1
 
     def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         if side == CombatSide.PLAYER:
@@ -3018,7 +3563,8 @@ class WarHammer(RelicInstance):
         if state is None:
             return
         player_state = state.player_state
-        player_state.offer_upgrade_cards_reward(self.CARDS, cards=player_state.upgradable_deck_cards())
+        rng_set = getattr(getattr(player_state, "run_state", None), "rng", None)
+        player_state.upgrade_random_cards(None, self.CARDS, rng=getattr(rng_set, "niche", getattr(combat, "rng", None)))
 
 
 @register_relic
@@ -3028,9 +3574,47 @@ class WhisperingEarring(RelicInstance):
     rarity = RelicRarity.ANCIENT
     pool = RelicPool.EVENT
     ENERGY = 1
+    MAX_CARDS_TO_PLAY = 13
 
     def modify_max_energy(self, owner: Creature, energy: int) -> int:
         return energy + self.ENERGY
+
+    def _target_for_autoplay(self, owner: Creature, card: CardInstance, combat: CombatState) -> Creature | None:
+        if card.target_type == TargetType.ANY_ENEMY:
+            return combat.hittable_enemies[0] if combat.hittable_enemies else None
+        if card.target_type == TargetType.ANY_ALLY:
+            allies = combat.get_player_allies_of(owner)
+            return combat.combat_targets_rng.choice(allies) if allies else None
+        if card.target_type == TargetType.SELF:
+            return owner
+        return None
+
+    def before_play_phase_start(self, owner: Creature, player: Creature, combat: CombatState) -> None:
+        if player is not owner or combat.round_number > 1:
+            return
+        state = combat.combat_player_state_for(owner)
+        if state is None:
+            return
+
+        previous_in_play_phase = combat.in_play_phase
+        combat.in_play_phase = True
+        try:
+            for _ in range(self.MAX_CARDS_TO_PLAY):
+                if combat.is_over or combat.pending_choice is not None:
+                    return
+                playable = next((card for card in list(state.hand) if combat.can_play_card(card)), None)
+                if playable is None:
+                    return
+                target = self._target_for_autoplay(owner, playable, combat)
+                if playable.target_type == TargetType.ANY_ENEMY and target is None:
+                    return
+                if playable.target_type == TargetType.ANY_ALLY and target is None:
+                    return
+                combat._remove_card_from_piles(playable)
+                combat._execute_card_play(playable, target, spend_energy=True, is_auto_play=True)
+                combat._check_combat_end()
+        finally:
+            combat.in_play_phase = previous_in_play_phase
 
 
 @register_relic
@@ -3104,6 +3688,7 @@ class Circlet(RelicInstance):
     relic_id = RelicId.CIRCLET
     rarity = RelicRarity.COMMON  # No specific rarity
     pool = RelicPool.FALLBACK
+    is_stackable = True
 
 
 @register_relic
@@ -3112,3 +3697,4 @@ class DeprecatedRelic(RelicInstance):
     relic_id = RelicId.DEPRECATED_RELIC
     rarity = RelicRarity.COMMON
     pool = RelicPool.DEPRECATED
+    is_stackable = True

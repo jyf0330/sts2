@@ -8,6 +8,7 @@ import math
 import pytest
 
 from sts2_env.cards.ironclad import create_ironclad_starter_deck
+from sts2_env.cards.factory import create_card
 from sts2_env.core.enums import (
     CardId, CardRarity, CardType, MapPointType, RoomType, TargetType,
 )
@@ -204,6 +205,19 @@ class TestPlayerState:
 
         assert len(rs.player.deck) == starting_deck + 2
 
+    def test_bing_bong_duplicate_still_notifies_other_card_added_relics(self):
+        rs = RunState(seed=42, character_id="Ironclad")
+        rs.initialize_run()
+        rs.player.obtain_relic("BING_BONG")
+        rs.player.obtain_relic("DARKSTONE_PERIAPT")
+        starting_deck = len(rs.player.deck)
+        starting_max_hp = rs.player.max_hp
+
+        rs.player.add_card_instance_to_deck(create_card(CardId.INJURY))
+
+        assert len(rs.player.deck) == starting_deck + 2
+        assert rs.player.max_hp == starting_max_hp + 12
+
 
 class TestMapNavigation:
     def test_available_coords_at_start(self):
@@ -325,7 +339,7 @@ class TestRoomCreation:
 
 class TestConcreteRunObjects:
     def test_shop_purchase_adds_real_card_and_potion(self):
-        mgr = RunManager(seed=71, character_id="Ironclad")
+        mgr = RunManager(seed=64, character_id="Ironclad")
         mgr._enter_shop()
         inv = mgr._shop_inventory
         assert inv is not None

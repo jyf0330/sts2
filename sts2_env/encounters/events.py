@@ -92,14 +92,14 @@ def setup_punch_off(combat: CombatState, rng: Rng) -> None:
     c1, a1 = create_punch_construct(
         rng,
         starts_with_strong_punch=True,
-        starting_hp_reduction=rng.next_int(2, 10),
+        starting_hp_reduction=rng.next_int_exclusive(2, 10),
     )
     combat.add_enemy(c1, a1)
 
     c2, a2 = create_punch_construct(
         rng,
         starts_with_strong_punch=False,
-        starting_hp_reduction=rng.next_int(2, 10),
+        starting_hp_reduction=rng.next_int_exclusive(2, 10),
     )
     combat.add_enemy(c2, a2)
 

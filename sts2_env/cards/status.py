@@ -1,6 +1,7 @@
 """Status, Curse, Event, Token, and Quest card factories and effects.
 
-Status (11), Curse (18), Event (27), Token (14), Quest (3).
+Status (11), Curse reference pool (18), Event (27), Token (14), Quest (3).
+Pain and Parasite are legacy explicit-construction cards and are not in STS2 card pools.
 """
 
 from __future__ import annotations
@@ -24,6 +25,23 @@ def _owner(card: CardInstance, combat: CombatState) -> Creature:
     )
 
 
+def _osty(card: CardInstance, combat: CombatState) -> Creature | None:
+    return combat.get_osty(_owner(card, combat))
+
+
+def _deal_osty_damage_single(
+    card: CardInstance,
+    combat: CombatState,
+    target: Creature,
+    fallback: int = 0,
+) -> None:
+    osty = _osty(card, combat)
+    if osty is None or not osty.is_alive:
+        return
+    damage = card.effect_vars.get("osty_damage", card.base_damage or fallback)
+    combat.deal_damage(osty, target, damage, ValueProp.MOVE)
+
+
 # ===========================================================================
 # Helpers
 # ===========================================================================
@@ -36,7 +54,7 @@ def _deal_damage_single(card: CardInstance, combat: CombatState, target: Creatur
 
 def _deal_damage_all(card: CardInstance, combat: CombatState) -> None:
     owner = _owner(card, combat)
-    for enemy in list(combat.alive_enemies):
+    for enemy in list(combat.hittable_enemies):
         damage = calculate_damage(card.base_damage, owner, enemy, ValueProp.MOVE, combat)
         apply_damage(enemy, damage, ValueProp.MOVE, combat, owner)
 
@@ -133,7 +151,8 @@ def make_infection() -> CardInstance:
     return CardInstance(
         card_id=CardId.INFECTION, cost=-1, card_type=CardType.STATUS,
         target_type=TargetType.NONE, rarity=CardRarity.STATUS,
-        keywords=frozenset({"unplayable"}), instance_id=_get_next_id(),
+        keywords=frozenset({"unplayable"}), effect_vars={"damage": 3},
+        instance_id=_get_next_id(),
     )
 
 
@@ -149,7 +168,8 @@ def make_toxic() -> CardInstance:
     return CardInstance(
         card_id=CardId.TOXIC, cost=1, card_type=CardType.STATUS,
         target_type=TargetType.NONE, rarity=CardRarity.STATUS,
-        keywords=frozenset({"exhaust"}), instance_id=_get_next_id(),
+        keywords=frozenset({"exhaust"}), effect_vars={"damage": 5},
+        instance_id=_get_next_id(),
     )
 
 
@@ -161,7 +181,7 @@ def make_ascenders_bane() -> CardInstance:
     return CardInstance(
         card_id=CardId.ASCENDERS_BANE, cost=-1, card_type=CardType.CURSE,
         target_type=TargetType.NONE, rarity=CardRarity.CURSE,
-        keywords=frozenset({"unplayable", "ethereal"}),
+        keywords=frozenset({"eternal", "unplayable", "ethereal"}),
         instance_id=_get_next_id(),
     )
 
@@ -170,7 +190,7 @@ def make_bad_luck() -> CardInstance:
     return CardInstance(
         card_id=CardId.BAD_LUCK, cost=-1, card_type=CardType.CURSE,
         target_type=TargetType.NONE, rarity=CardRarity.CURSE,
-        keywords=frozenset({"unplayable"}),
+        keywords=frozenset({"eternal", "unplayable"}),
         effect_vars={"hp_loss": 13}, instance_id=_get_next_id(),
     )
 
@@ -188,7 +208,7 @@ def make_curse_of_the_bell() -> CardInstance:
     return CardInstance(
         card_id=CardId.CURSE_OF_THE_BELL, cost=-1, card_type=CardType.CURSE,
         target_type=TargetType.NONE, rarity=CardRarity.CURSE,
-        keywords=frozenset({"unplayable"}), instance_id=_get_next_id(),
+        keywords=frozenset({"eternal", "unplayable"}), instance_id=_get_next_id(),
     )
 
 
@@ -222,6 +242,7 @@ def make_enthralled() -> CardInstance:
     return CardInstance(
         card_id=CardId.ENTHRALLED, cost=2, card_type=CardType.CURSE,
         target_type=TargetType.NONE, rarity=CardRarity.CURSE,
+        keywords=frozenset({"eternal"}),
         instance_id=_get_next_id(),
     )
 
@@ -230,7 +251,7 @@ def make_folly() -> CardInstance:
     return CardInstance(
         card_id=CardId.FOLLY, cost=-1, card_type=CardType.CURSE,
         target_type=TargetType.NONE, rarity=CardRarity.CURSE,
-        keywords=frozenset({"unplayable", "innate"}),
+        keywords=frozenset({"unplayable", "eternal", "innate"}),
         instance_id=_get_next_id(),
     )
 
@@ -239,7 +260,7 @@ def make_greed() -> CardInstance:
     return CardInstance(
         card_id=CardId.GREED, cost=-1, card_type=CardType.CURSE,
         target_type=TargetType.NONE, rarity=CardRarity.CURSE,
-        keywords=frozenset({"unplayable"}), instance_id=_get_next_id(),
+        keywords=frozenset({"eternal", "unplayable"}), instance_id=_get_next_id(),
     )
 
 
@@ -265,7 +286,7 @@ def make_normality() -> CardInstance:
         card_id=CardId.NORMALITY, cost=-1, card_type=CardType.CURSE,
         target_type=TargetType.NONE, rarity=CardRarity.CURSE,
         keywords=frozenset({"unplayable"}),
-        effect_vars={"card_limit": 3}, instance_id=_get_next_id(),
+        effect_vars={"calc_base": 3}, instance_id=_get_next_id(),
     )
 
 
@@ -338,12 +359,10 @@ def rip_and_tear_effect(card: CardInstance, combat: CombatState, target: Creatur
         return
     owner = _owner(card, combat)
     for _ in range(2):
-        t = target if target.is_alive else None
-        if t is None:
-            alive = combat.alive_enemies
-            if not alive:
-                break
-            t = combat.rng.choice(alive)
+        hittable = combat.hittable_enemies
+        if not hittable:
+            break
+        t = combat.combat_targets_rng.choice(hittable)
         damage = calculate_damage(card.base_damage, owner, t, ValueProp.MOVE, combat)
         apply_damage(t, damage, ValueProp.MOVE, combat, owner)
 
@@ -377,7 +396,7 @@ def make_apotheosis(upgraded: bool = False) -> CardInstance:
 
 @register_effect(CardId.APPARITION)
 def apparition_effect(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    combat.apply_power_to(_owner(card, combat), PowerId.INTANGIBLE, 1)
+    combat.apply_power_to(_owner(card, combat), PowerId.INTANGIBLE, card.effect_vars.get("intangible_power", 1))
 
 
 def make_apparition(upgraded: bool = False) -> CardInstance:
@@ -385,7 +404,7 @@ def make_apparition(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.APPARITION, cost=1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.ANCIENT,
-        upgraded=upgraded, keywords=kw, instance_id=_get_next_id(),
+        upgraded=upgraded, keywords=kw, effect_vars={"intangible_power": 1}, instance_id=_get_next_id(),
     )
 
 
@@ -444,7 +463,7 @@ def neows_fury_effect(card: CardInstance, combat: CombatState, target: Creature 
     candidates = list(combat.discard_pile)
     if not candidates:
         return
-    for selected in combat.rng.sample(candidates, min(count, len(candidates))):
+    for selected in combat.combat_card_selection_rng.sample(candidates, min(count, len(candidates))):
         combat.move_card_to_hand(selected)
 
 
@@ -536,7 +555,7 @@ def make_byrd_swoop(upgraded: bool = False) -> CardInstance:
 
 @register_effect(CardId.CALTROPS)
 def caltrops_effect(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    thorns = card.effect_vars.get("thorns", 3)
+    thorns = card.effect_vars.get("thorns_power", 3)
     combat.apply_power_to(_owner(card, combat), PowerId.THORNS, thorns)
 
 
@@ -544,7 +563,7 @@ def make_caltrops(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.CALTROPS, cost=1, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.EVENT,
-        upgraded=upgraded, effect_vars={"thorns": 5 if upgraded else 3},
+        upgraded=upgraded, effect_vars={"thorns_power": 5 if upgraded else 3},
         instance_id=_get_next_id(),
     )
 
@@ -568,15 +587,15 @@ def make_clash(upgraded: bool = False) -> CardInstance:
 def distraction_effect(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     generated = create_character_cards(
         combat.character_id,
-        combat.rng,
+        combat.combat_card_generation_rng,
         1,
         card_type=CardType.SKILL,
         generation_context="modifier",
     )
     if not generated:
         return
-    generated[0].set_temporary_cost_for_turn(0)
-    combat.move_card_to_hand(generated[0])
+    generated[0].set_temporary_free_this_turn()
+    combat.add_generated_card_to_creature_hand(_owner(card, combat), generated[0])
 
 
 def make_distraction(upgraded: bool = False) -> CardInstance:
@@ -671,7 +690,7 @@ def make_exterminate(upgraded: bool = False) -> CardInstance:
         card_id=CardId.EXTERMINATE, cost=1, card_type=CardType.ATTACK,
         target_type=TargetType.ALL_ENEMIES, rarity=CardRarity.EVENT,
         base_damage=4 if upgraded else 3, upgraded=upgraded,
-        effect_vars={"hits": 3}, instance_id=_get_next_id(),
+        effect_vars={"hits": 4}, instance_id=_get_next_id(),
     )
 
 
@@ -715,10 +734,15 @@ def mad_science_effect(card: CardInstance, combat: CombatState, target: Creature
         for _ in range(hits):
             _deal_damage_single(card, combat, target)
         if rider == 1:
-            target.apply_power(PowerId.WEAK, card.effect_vars.get("sapping_weak", 2))
-            target.apply_power(PowerId.VULNERABLE, card.effect_vars.get("sapping_vulnerable", 2))
+            combat.apply_power_to(target, PowerId.WEAK, card.effect_vars.get("sapping_weak", 2), applier=owner)
+            combat.apply_power_to(
+                target,
+                PowerId.VULNERABLE,
+                card.effect_vars.get("sapping_vulnerable", 2),
+                applier=owner,
+            )
         elif rider == 3:
-            target.apply_power(PowerId.STRANGLE, card.effect_vars.get("choking_damage", 6))
+            combat.apply_power_to(target, PowerId.STRANGLE, card.effect_vars.get("choking_damage", 6), applier=owner)
         return
 
     if card.card_type == CardType.SKILL:
@@ -730,24 +754,23 @@ def mad_science_effect(card: CardInstance, combat: CombatState, target: Creature
         elif rider == 6:
             generated = create_character_cards(
                 combat.character_id,
-                combat.rng,
+                combat.combat_card_generation_rng,
                 1,
                 distinct=True,
                 generation_context="modifier",
             )
             if generated:
                 generated[0].set_combat_cost(0)
-                generated[0].owner = owner
-                combat.hand.append(generated[0])
+                combat.add_generated_card_to_creature_hand(owner, generated[0])
         return
 
     if rider == 7:
-        owner.apply_power(PowerId.STRENGTH, card.effect_vars.get("expertise_strength", 2))
-        owner.apply_power(PowerId.DEXTERITY, card.effect_vars.get("expertise_dexterity", 2))
+        combat.apply_power_to(owner, PowerId.STRENGTH, card.effect_vars.get("expertise_strength", 2), applier=owner)
+        combat.apply_power_to(owner, PowerId.DEXTERITY, card.effect_vars.get("expertise_dexterity", 2), applier=owner)
     elif rider == 8:
-        owner.apply_power(PowerId.CURIOUS, card.effect_vars.get("curious_reduction", 1))
+        combat.apply_power_to(owner, PowerId.CURIOUS, card.effect_vars.get("curious_reduction", 1), applier=owner)
     elif rider == 9:
-        owner.apply_power(PowerId.IMPROVEMENT, 1)
+        combat.apply_power_to(owner, PowerId.IMPROVEMENT, 1, applier=owner)
 
 
 def make_mad_science(upgraded: bool = False) -> CardInstance:
@@ -777,15 +800,19 @@ def make_mad_science(upgraded: bool = False) -> CardInstance:
 def metamorphosis_effect(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     generated = create_character_cards(
         combat.character_id,
-        combat.rng,
+        combat.combat_card_generation_rng,
         card.effect_vars.get("cards", 3),
         card_type=CardType.ATTACK,
         distinct=False,
         generation_context="modifier",
     )
     for generated_card in generated:
-        generated_card.set_combat_cost(0)
-        combat.insert_card_into_draw_pile(generated_card, random_position=True)
+        generated_card.set_free_this_combat()
+        combat.add_generated_card_to_creature_draw_pile(
+            _owner(card, combat),
+            generated_card,
+            random_position=True,
+        )
 
 
 def make_metamorphosis(upgraded: bool = False) -> CardInstance:
@@ -818,7 +845,7 @@ def make_outmaneuver(upgraded: bool = False) -> CardInstance:
 def peck_effect(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
     owner = _owner(card, combat)
-    hits = card.effect_vars.get("hits", 3)
+    hits = card.effect_vars.get("repeat", 3)
     for _ in range(hits):
         damage = calculate_damage(card.base_damage, owner, target, ValueProp.MOVE, combat)
         apply_damage(target, damage, ValueProp.MOVE, combat, owner)
@@ -831,7 +858,7 @@ def make_peck(upgraded: bool = False) -> CardInstance:
         card_id=CardId.PECK, cost=1, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.EVENT,
         base_damage=2, upgraded=upgraded,
-        effect_vars={"hits": 4 if upgraded else 3},
+        effect_vars={"repeat": 4 if upgraded else 3},
         instance_id=_get_next_id(),
     )
 
@@ -876,8 +903,7 @@ def stack_effect(card: CardInstance, combat: CombatState, target: Creature | Non
     owner = _owner(card, combat)
     state = combat.combat_player_state_for(owner)
     discard_count = len(state.discard) if state is not None else 0
-    base = card.base_block if card.base_block is not None else 0
-    total_block = base + discard_count
+    total_block = card.effect_vars.get("calc_base", card.base_block or 0) + card.effect_vars.get("calc_extra", 1) * discard_count
     block = calculate_block(total_block, owner, ValueProp.MOVE, combat, card_source=card)
     owner.gain_block(block)
 
@@ -887,6 +913,7 @@ def make_stack(upgraded: bool = False) -> CardInstance:
         card_id=CardId.STACK, cost=1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.EVENT,
         base_block=3 if upgraded else 0, upgraded=upgraded,
+        effect_vars={"calc_base": 3 if upgraded else 0, "calc_extra": 1},
         instance_id=_get_next_id(),
     )
 
@@ -1010,6 +1037,10 @@ def make_minion_strike(upgraded: bool = False) -> CardInstance:
 
 @register_effect(CardId.SHIV)
 def shiv_effect(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
+    owner = _owner(card, combat)
+    if owner.get_power_amount(PowerId.FAN_OF_KNIVES) > 0:
+        _deal_damage_all(card, combat)
+        return
     assert target is not None
     _deal_damage_single(card, combat, target)
 
@@ -1019,7 +1050,9 @@ def make_shiv(upgraded: bool = False) -> CardInstance:
         card_id=CardId.SHIV, cost=0, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.STATUS,
         base_damage=6 if upgraded else 4, upgraded=upgraded,
-        keywords=frozenset({"exhaust"}), tags=frozenset({CardTag.SHIV}), instance_id=_get_next_id(),
+        keywords=frozenset({"exhaust"}), tags=frozenset({CardTag.SHIV}),
+        effect_vars={"calc_base": 0, "calc_extra": 1},
+        instance_id=_get_next_id(),
     )
 
 
@@ -1044,17 +1077,10 @@ def sovereign_blade_effect(card: CardInstance, combat: CombatState, target: Crea
     """Regent token attack; all-target only while Seeking Edge is active."""
     owner = _owner(card, combat)
     repeats = 1
-    cost_increase = 0
     for power in owner.powers.values():
         get_repeats = getattr(power, "get_sovereign_blade_repeats", None)
         if callable(get_repeats):
             repeats = max(repeats, get_repeats())
-        get_cost_increase = getattr(power, "get_sovereign_blade_cost_increase", None)
-        if callable(get_cost_increase):
-            cost_increase = max(cost_increase, get_cost_increase())
-
-    if cost_increase:
-        card.cost = (card.original_cost or card.cost) + cost_increase
 
     if owner.has_power(PowerId.SEEKING_EDGE):
         for _ in range(max(1, repeats)):
@@ -1071,6 +1097,7 @@ def make_sovereign_blade(upgraded: bool = False) -> CardInstance:
         card_type=CardType.ATTACK, target_type=TargetType.ANY_ENEMY,
         rarity=CardRarity.STATUS, upgraded=upgraded,
         base_damage=10, keywords=frozenset({"retain"}),
+        effect_vars={"calc_base": 0, "calc_extra": 1, "repeat": 1},
         instance_id=_get_next_id(),
     )
 
@@ -1079,26 +1106,26 @@ def make_sovereign_blade(upgraded: bool = False) -> CardInstance:
 def sweeping_gaze_effect(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     """OstyAttack — deal damage to random enemy."""
     if target is not None:
-        _deal_damage_single(card, combat, target)
+        _deal_osty_damage_single(card, combat, target, 10)
 
 
 def make_sweeping_gaze(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.SWEEPING_GAZE, cost=0, card_type=CardType.ATTACK,
         target_type=TargetType.RANDOM_ENEMY, rarity=CardRarity.STATUS,
-        base_damage=5 if upgraded else 0, upgraded=upgraded,
+        base_damage=15 if upgraded else 10, upgraded=upgraded,
         keywords=frozenset({"ethereal", "exhaust"}),
+        effect_vars={"osty_damage": 15 if upgraded else 10},
         instance_id=_get_next_id(),
     )
 
 
-# Token status cards (unplayable)
+# Knowledge Demon choice cards
 def make_disintegration() -> CardInstance:
     return CardInstance(
         card_id=CardId.DISINTEGRATION, cost=-1, card_type=CardType.STATUS,
         target_type=TargetType.NONE, rarity=CardRarity.STATUS,
-        keywords=frozenset({"unplayable"}),
-        effect_vars={"disintegration": 6}, instance_id=_get_next_id(),
+        effect_vars={"disintegration_power": 6}, instance_id=_get_next_id(),
     )
 
 
@@ -1106,8 +1133,7 @@ def make_mind_rot() -> CardInstance:
     return CardInstance(
         card_id=CardId.MIND_ROT, cost=-1, card_type=CardType.STATUS,
         target_type=TargetType.NONE, rarity=CardRarity.STATUS,
-        keywords=frozenset({"unplayable"}),
-        effect_vars={"mind_rot": 1}, instance_id=_get_next_id(),
+        effect_vars={"mind_rot_power": 1}, instance_id=_get_next_id(),
     )
 
 
@@ -1115,8 +1141,7 @@ def make_sloth_status() -> CardInstance:
     return CardInstance(
         card_id=CardId.SLOTH_STATUS, cost=-1, card_type=CardType.STATUS,
         target_type=TargetType.NONE, rarity=CardRarity.STATUS,
-        keywords=frozenset({"unplayable"}),
-        effect_vars={"sloth": 3}, instance_id=_get_next_id(),
+        effect_vars={"sloth_power": 3}, instance_id=_get_next_id(),
     )
 
 
@@ -1124,8 +1149,7 @@ def make_waste_away() -> CardInstance:
     return CardInstance(
         card_id=CardId.WASTE_AWAY, cost=-1, card_type=CardType.STATUS,
         target_type=TargetType.NONE, rarity=CardRarity.STATUS,
-        keywords=frozenset({"unplayable"}),
-        effect_vars={"waste_away": 1}, instance_id=_get_next_id(),
+        effect_vars={"waste_away_power": 1}, instance_id=_get_next_id(),
     )
 
 
@@ -1154,7 +1178,7 @@ def make_spoils_map() -> CardInstance:
         card_id=CardId.SPOILS_MAP, cost=-1, card_type=CardType.QUEST,
         target_type=TargetType.SELF, rarity=CardRarity.QUEST,
         keywords=frozenset({"unplayable"}),
-        effect_vars={"gold": 600}, instance_id=_get_next_id(),
+        effect_vars={"gold": 600, "spoils_act_index": 1}, instance_id=_get_next_id(),
     )
 
 
@@ -1247,7 +1271,7 @@ def toxic_effect(card: CardInstance, combat: CombatState, target: Creature | Non
 
 @register_effect(CardId.DISINTEGRATION)
 def disintegration_effect(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    """Unplayable. When chosen by Knowledge Demon, applies DisintegrationPower(6).
+    """When chosen by Knowledge Demon, applies DisintegrationPower(6).
     The OnChosen trigger is handled outside the play-effect path."""
     pass
 
@@ -1261,27 +1285,27 @@ def infection_effect(card: CardInstance, combat: CombatState, target: Creature |
 
 @register_effect(CardId.MIND_ROT)
 def mind_rot_effect(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    """Unplayable. When chosen by Knowledge Demon, applies MindRotPower(1).
+    """When chosen by Knowledge Demon, applies MindRotPower(1).
     The OnChosen trigger is handled outside the play-effect path."""
     pass
 
 
 @register_effect(CardId.SLOTH_STATUS)
 def sloth_status_effect(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    """Unplayable. When chosen by Knowledge Demon, applies SlothPower(3).
+    """When chosen by Knowledge Demon, applies SlothPower(3).
     The OnChosen trigger is handled outside the play-effect path."""
     pass
 
 
 @register_effect(CardId.WASTE_AWAY)
 def waste_away_effect(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    """Unplayable. When chosen by Knowledge Demon, applies WasteAwayPower(1).
+    """When chosen by Knowledge Demon, applies WasteAwayPower(1).
     The OnChosen trigger is handled outside the play-effect path."""
     pass
 
 
 # ---------------------------------------------------------------------------
-# Curse cards (20): ASCENDERS_BANE, BAD_LUCK, CLUMSY, CURSE_OF_THE_BELL,
+# Curse cards (18 reference + 2 legacy): ASCENDERS_BANE, BAD_LUCK, CLUMSY, CURSE_OF_THE_BELL,
 #   DEBT, DECAY, DOUBT, ENTHRALLED, FOLLY, GREED, GUILTY, INJURY,
 #   NORMALITY, PAIN, PARASITE, POOR_SLEEP, REGRET, SHAME, SPORE_MIND,
 #   WRITHE
@@ -1375,15 +1399,13 @@ def normality_effect(card: CardInstance, combat: CombatState, target: Creature |
 
 @register_effect(CardId.PAIN)
 def pain_effect(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    """Unplayable. When any other card is played, lose 1 HP.
-    Triggered by the on-card-played hook, not this function."""
+    """Legacy non-reference curse. Not included in STS2 card pools."""
     pass
 
 
 @register_effect(CardId.PARASITE)
 def parasite_effect(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    """Unplayable. When removed from deck, lose 3 max HP.
-    Triggered by the card-removal hook, not this function."""
+    """Legacy non-reference curse. Not included in STS2 card pools."""
     pass
 
 

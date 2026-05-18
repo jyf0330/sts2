@@ -120,7 +120,7 @@ class BoundPhylactery(RelicInstance):
     def before_combat_start(self, owner: Creature, combat: CombatState) -> None:
         combat.summon_osty(owner, self.SUMMON_COUNT)
 
-    def after_energy_reset(self, owner: Creature, combat: CombatState) -> None:
+    def after_energy_reset_late(self, owner: Creature, combat: CombatState) -> None:
         if combat.round_number > 1:
             combat.summon_osty(owner, self.SUMMON_COUNT)
 
@@ -152,9 +152,8 @@ class DivineRight(RelicInstance):
     pool = RelicPool.REGENT
     STARS = 3
 
-    def after_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side == CombatSide.PLAYER and combat.round_number == 1:
-            combat.gain_stars(owner, self.STARS)
+    def before_combat_start(self, owner: Creature, combat: CombatState) -> None:
+        combat.gain_stars(owner, self.STARS)
 
 
 @register_relic

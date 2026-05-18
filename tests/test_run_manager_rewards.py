@@ -1,8 +1,9 @@
 """Tests for post-combat reward sequencing in RunManager."""
 
 from sts2_env.cards.ironclad import create_ironclad_starter_deck
+from sts2_env.cards.status import make_guilty
 from sts2_env.core.combat import CombatState
-from sts2_env.core.enums import RoomType
+from sts2_env.core.enums import CardId, RoomType
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle
 from sts2_env.potions.base import create_potion
@@ -87,6 +88,33 @@ def test_combat_end_syncs_player_max_hp_back_to_run_state():
 
     assert mgr.run_state.player.max_hp == 86
     assert mgr.run_state.player.current_hp == 70
+
+
+def test_guilty_counts_combat_victories_and_removes_itself_after_five():
+    mgr = RunManager(seed=5, character_id="Ironclad")
+    guilty = make_guilty()
+    mgr.run_state.player.deck = [guilty]
+    mgr.run_state.potion_reward_odds.current_value = -1.0
+    mgr._heal_after_combat = 0
+
+    for expected_seen in range(1, 5):
+        mgr._combat = _won_combat(extra_card_rewards=0)
+        mgr._current_room_type = RoomType.MONSTER
+        mgr._current_room = None
+
+        mgr._resolve_combat_end()
+
+        assert mgr.run_state.player.deck == [guilty]
+        assert guilty.effect_vars["combats_seen"] == expected_seen
+        assert guilty.effect_vars["combats"] == 5 - expected_seen
+
+    mgr._combat = _won_combat(extra_card_rewards=0)
+    mgr._current_room_type = RoomType.MONSTER
+    mgr._current_room = None
+
+    mgr._resolve_combat_end()
+
+    assert all(card.card_id != CardId.GUILTY for card in mgr.run_state.player.deck)
 
 
 def test_fruit_juice_updates_persistent_player_state_inside_combat():

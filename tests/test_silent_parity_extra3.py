@@ -3,6 +3,7 @@
 import sts2_env.powers  # noqa: F401
 
 from sts2_env.cards.silent import (
+    make_anticipate,
     make_blade_dance,
     make_deadly_poison,
     make_defend_silent,
@@ -17,7 +18,7 @@ from sts2_env.cards.silent import (
 )
 from sts2_env.core.combat import CombatState
 from sts2_env.core.enums import CardId, CombatSide, PowerId
-from sts2_env.core.hooks import fire_after_side_turn_start
+from sts2_env.core.hooks import fire_after_side_turn_start, fire_after_turn_end
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle
 
@@ -40,6 +41,20 @@ def _make_combat(deck: list | None = None, *, extra_enemies: int = 0) -> CombatS
 
 
 class TestSilentParityExtra3:
+    def test_anticipate_grants_temporary_dexterity_until_turn_end(self):
+        combat = _make_combat()
+        combat.hand = [make_anticipate(upgraded=True)]
+        combat.energy = 0
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.ANTICIPATE) == 5
+        assert combat.player.get_power_amount(PowerId.DEXTERITY) == 5
+
+        fire_after_turn_end(CombatSide.PLAYER, combat)
+
+        assert combat.player.get_power_amount(PowerId.ANTICIPATE) == 0
+        assert combat.player.get_power_amount(PowerId.DEXTERITY) == 0
+
     def test_dodge_and_roll_applies_block_now_and_next_turn_with_current_block_scaling(self):
         combat = _make_combat()
         combat.player.apply_power(PowerId.DEXTERITY, 2)
@@ -109,6 +124,19 @@ class TestSilentParityExtra3:
         for enemy in combat.enemies:
             assert enemy.get_power_amount(PowerId.POISON) == 2
 
+    def test_noxious_fumes_poison_uses_owner_applier_triggers_outbreak(self):
+        combat = _make_combat(extra_enemies=2)
+        for enemy in combat.enemies:
+            enemy.max_hp = 100
+            enemy.current_hp = 100
+        combat.apply_power_to(combat.player, PowerId.OUTBREAK, 11)
+        combat.apply_power_to(combat.player, PowerId.NOXIOUS_FUMES, 2)
+
+        fire_after_side_turn_start(CombatSide.PLAYER, combat)
+
+        assert [enemy.get_power_amount(PowerId.POISON) for enemy in combat.enemies] == [2, 2, 2]
+        assert [enemy.current_hp for enemy in combat.enemies] == [89, 89, 89]
+
     def test_phantom_blades_applies_power_and_buffs_only_first_shiv_each_turn(self):
         combat = _make_combat()
         enemy = combat.enemies[0]
@@ -121,6 +149,7 @@ class TestSilentParityExtra3:
 
         shiv_indices = [i for i, card in enumerate(combat.hand) if card.card_id == CardId.SHIV]
         assert len(shiv_indices) == 3
+        assert all(combat.hand[index].is_retain for index in shiv_indices)
 
         hp_before_first = enemy.current_hp
         assert combat.play_card(shiv_indices[0], 0)
@@ -164,7 +193,7 @@ class TestSilentParityExtra3:
 
         assert tracked_damage == baseline_damage * 2
 
-    def test_malaise_uses_x_energy_for_strength_and_weak_and_requires_energy_to_play(self):
+    def test_malaise_uses_x_energy_for_strength_and_weak_and_allows_zero_energy_play(self):
         combat = _make_combat()
         enemy = combat.enemies[0]
         combat.hand = [make_malaise()]
@@ -179,4 +208,16 @@ class TestSilentParityExtra3:
         no_energy_combat.hand = [make_malaise()]
         no_energy_combat.energy = 0
 
-        assert not no_energy_combat.play_card(0, 0)
+        no_energy_enemy = no_energy_combat.enemies[0]
+        assert no_energy_combat.play_card(0, 0)
+        assert no_energy_enemy.get_power_amount(PowerId.STRENGTH) == 0
+        assert no_energy_enemy.get_power_amount(PowerId.WEAK) == 0
+
+        upgraded_combat = _make_combat()
+        upgraded_enemy = upgraded_combat.enemies[0]
+        upgraded_combat.hand = [make_malaise(upgraded=True)]
+        upgraded_combat.energy = 0
+
+        assert upgraded_combat.play_card(0, 0)
+        assert upgraded_enemy.get_power_amount(PowerId.STRENGTH) == -1
+        assert upgraded_enemy.get_power_amount(PowerId.WEAK) == 1

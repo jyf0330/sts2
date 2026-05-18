@@ -44,6 +44,8 @@ _COMBAT_GENERATION_EXCLUDED = frozenset({
     CardId.HAND_OF_GREED,
     CardId.MIND_ROT,
     CardId.NEOWS_FURY,
+    CardId.PAIN,
+    CardId.PARASITE,
     CardId.ROYALTIES_CARD,
     CardId.SLOTH_STATUS,
     CardId.SOOT,
@@ -58,8 +60,15 @@ _MODIFIER_GENERATION_EXCLUDED = frozenset({
     CardId.ENTHRALLED,
     CardId.FOLLY,
     CardId.GREED,
+    CardId.PAIN,
+    CardId.PARASITE,
     CardId.POOR_SLEEP,
     CardId.SPORE_MIND,
+})
+
+_LEGACY_NON_REFERENCE_CARD_IDS = frozenset({
+    CardId.PAIN,
+    CardId.PARASITE,
 })
 
 _REFERENCE_VAR_ALIASES: dict[str, str] = {
@@ -67,9 +76,12 @@ _REFERENCE_VAR_ALIASES: dict[str, str] = {
     "weak_power": "weak",
     "strength_power": "strength",
     "dexterity_power": "dexterity",
+    "poison": "poison_power",
     "plating_power": "plating",
     "doom_power": "doom",
     "doom_threshold": "doom_base",
+    "calculation_base": "calc_base",
+    "calculation_extra": "calc_extra",
     "calcify_power": "calcify",
     "countdown_power": "countdown",
     "danse_macabre_power": "danse_macabre",
@@ -218,11 +230,16 @@ def _apply_upgrade_text(
         if not match:
             continue
         field_name = _camel_to_snake(match.group(1))
+        field_name = _REFERENCE_VAR_ALIASES.get(field_name, field_name)
         delta = int(match.group(2))
         if field_name == "damage":
             card.base_damage = (card.base_damage or 0) + delta
+            if field_name in effect_vars:
+                effect_vars[field_name] += delta
         elif field_name == "block":
             card.base_block = (card.base_block or 0) + delta
+            if field_name in effect_vars:
+                effect_vars[field_name] += delta
         elif field_name == "cost":
             card.cost += delta
             card.original_cost += delta
@@ -362,7 +379,17 @@ def create_card(card_id: CardId, upgraded: bool = False) -> CardInstance:
 
     if supports_upgraded:
         return _apply_generation_metadata(factory(upgraded=upgraded))
-    return _apply_generation_metadata(factory())
+    card = factory()
+    if upgraded:
+        definition = _reference_definition(card_id)
+        if definition is not None and definition.upgrade_text not in {
+            "",
+            "No upgrade changes",
+            "Cannot be upgraded",
+        }:
+            card.upgraded = True
+            _apply_upgrade_text(card, card.effect_vars, definition.upgrade_text)
+    return _apply_generation_metadata(card)
 
 
 @lru_cache(maxsize=None)
@@ -459,6 +486,8 @@ def eligible_registered_cards(
     registry = _factory_registry()
     for card_id in CardId:
         if card_id in exclude_ids:
+            continue
+        if card_id in _LEGACY_NON_REFERENCE_CARD_IDS:
             continue
         if card_id.name == "GENERIC":
             continue

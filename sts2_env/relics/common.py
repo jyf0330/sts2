@@ -14,6 +14,7 @@ from sts2_env.relics.base import RelicId, RelicPool, RelicInstance
 from sts2_env.relics.registry import register_relic
 
 if TYPE_CHECKING:
+    from sts2_env.cards.base import CardInstance
     from sts2_env.core.creature import Creature
     from sts2_env.core.combat import CombatState
 
@@ -24,6 +25,9 @@ class AmethystAubergine(RelicInstance):
     relic_id = RelicId.AMETHYST_AUBERGINE
     rarity = RelicRarity.COMMON
     pool = RelicPool.SHARED
+
+    def is_allowed(self, run_state: RunState) -> bool:
+        return self.is_before_act3_treasure_chest(run_state)
     GOLD = 10
 
     def modify_rewards(
@@ -36,7 +40,12 @@ class AmethystAubergine(RelicInstance):
         from sts2_env.core.enums import RoomType
         from sts2_env.run.reward_objects import GoldReward
 
-        if room is not None and getattr(room, "room_type", None) in {RoomType.MONSTER, RoomType.ELITE}:
+        room_type = getattr(room, "room_type", None)
+        is_final_boss = (
+            room_type == RoomType.BOSS
+            and run_state.current_act_index >= len(getattr(run_state, "acts", ())) - 1
+        )
+        if room is not None and room_type in {RoomType.MONSTER, RoomType.ELITE, RoomType.BOSS} and not is_final_boss:
             return [*rewards, GoldReward(owner.player_id, self.GOLD, self.GOLD)]
         return rewards
 
@@ -75,8 +84,8 @@ class BloodVial(RelicInstance):
     pool = RelicPool.SHARED
     HEAL = 2
 
-    def after_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side == CombatSide.PLAYER and combat.round_number == 1:
+    def after_player_turn_start_late(self, owner: Creature, combat: CombatState) -> None:
+        if combat.round_number == 1:
             owner.heal(self.HEAL)
 
 
@@ -163,10 +172,14 @@ class FestivePopper(RelicInstance):
     pool = RelicPool.SHARED
     DAMAGE = 9
 
-    def after_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side == CombatSide.PLAYER and combat.round_number == 1:
-            for enemy in combat.get_alive_enemies():
-                combat.deal_damage(owner, enemy, self.DAMAGE, ValueProp.UNPOWERED)
+    def after_player_turn_start(self, owner: Creature, combat: CombatState) -> None:
+        if combat.round_number == 1:
+            combat.deal_damage(
+                dealer=owner,
+                amount=self.DAMAGE,
+                props=ValueProp.UNPOWERED,
+                targets=list(combat.hittable_enemies),
+            )
 
 
 @register_relic
@@ -195,9 +208,9 @@ class HappyFlower(RelicInstance):
         self._turns_seen: int = 0
 
     def after_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side == CombatSide.PLAYER:
-            self._turns_seen += 1
-            if self._turns_seen % self.TURNS == 0:
+        if side == owner.side:
+            self._turns_seen = (self._turns_seen + 1) % self.TURNS
+            if self._turns_seen == 0:
                 combat.gain_energy(owner, self.ENERGY)
 
     def after_combat_end(self, owner: Creature, combat: CombatState) -> None:
@@ -210,7 +223,14 @@ class JuzuBracelet(RelicInstance):
     relic_id = RelicId.JUZU_BRACELET
     rarity = RelicRarity.COMMON
     pool = RelicPool.SHARED
-    # Map modification hook - no combat effect
+
+    def is_allowed(self, run_state: RunState) -> bool:
+        return self.is_before_act3_treasure_chest(run_state)
+
+    def modify_unknown_map_point_room_types(self, owner: Creature, room_types: set[object]) -> set[object]:
+        from sts2_env.core.enums import RoomType
+
+        return {room_type for room_type in room_types if room_type is not RoomType.MONSTER}
 
 
 @register_relic
@@ -232,6 +252,9 @@ class MealTicket(RelicInstance):
     relic_id = RelicId.MEAL_TICKET
     rarity = RelicRarity.COMMON
     pool = RelicPool.SHARED
+
+    def is_allowed(self, run_state: RunState) -> bool:
+        return self.is_before_act3_treasure_chest(run_state)
     HEAL = 15
 
     def after_room_entered(self, owner: Creature, room_type: object) -> None:
@@ -277,6 +300,7 @@ class Permafrost(RelicInstance):
 
     def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
         if (not self._activated_this_combat
+                and getattr(card, "owner", None) is owner
                 and hasattr(card, "card_type") and card.card_type == CardType.POWER):
             self._activated_this_combat = True
             owner.gain_block(self.BLOCK, unpowered=True)
@@ -323,11 +347,14 @@ class RedSkull(RelicInstance):
         self._strength_applied = False
         self._check_hp(owner)
 
-    def after_damage_received(
-        self, owner: Creature, target: Creature, dealer: Creature | None,
-        damage: int, props: ValueProp, combat: CombatState
+    def after_current_hp_changed(
+        self,
+        owner: Creature,
+        creature: Creature,
+        delta: int,
+        combat: CombatState,
     ) -> None:
-        if target is owner:
+        if creature is owner:
             self._check_hp(owner)
 
     def after_combat_end(self, owner: Creature, combat: CombatState) -> None:
@@ -353,7 +380,20 @@ class SneckoSkull(RelicInstance):
     rarity = RelicRarity.COMMON
     pool = RelicPool.SILENT
     EXTRA_POISON = 1
-    # ModifyPowerAmountGiven - applied in power application pipeline
+
+    def modify_power_amount_given(
+        self,
+        owner: Creature,
+        power_id: PowerId,
+        amount: int,
+        giver: Creature,
+        target: Creature | None,
+        source: object | None,
+        combat: CombatState,
+    ) -> int:
+        if giver is owner and power_id == PowerId.POISON and amount > 0:
+            return amount + self.EXTRA_POISON
+        return amount
 
 
 @register_relic
@@ -387,7 +427,7 @@ class StrikeDummy(RelicInstance):
                 or (hasattr(card, "card_id") and "STRIKE" in card.card_id.name)
             )
         )
-        if (dealer is owner
+        if ((dealer is owner or getattr(card, "owner", None) is owner)
                 and is_strike
                 and hasattr(card, "card_type") and card.card_type == CardType.ATTACK
                 and bool(props & ValueProp.MOVE) and not bool(props & ValueProp.UNPOWERED)):
@@ -454,7 +494,7 @@ class WarPaint(RelicInstance):
         if getattr(owner.run_state, "defer_followup_rewards", False):
             owner.offer_upgrade_cards_reward(self.CARDS, cards=owner.upgradable_deck_cards(CardType.SKILL))
             return
-        owner.upgrade_random_cards(CardType.SKILL, self.CARDS)
+        owner.upgrade_random_cards(CardType.SKILL, self.CARDS, rng=owner.run_state.rng.niche)
 
 
 @register_relic
@@ -469,7 +509,7 @@ class Whetstone(RelicInstance):
         if getattr(owner.run_state, "defer_followup_rewards", False):
             owner.offer_upgrade_cards_reward(self.CARDS, cards=owner.upgradable_deck_cards(CardType.ATTACK))
             return
-        owner.upgrade_random_cards(CardType.ATTACK, self.CARDS)
+        owner.upgrade_random_cards(CardType.ATTACK, self.CARDS, rng=owner.run_state.rng.niche)
 
 
 @register_relic
@@ -478,6 +518,9 @@ class BookOfFiveRings(RelicInstance):
     relic_id = RelicId.BOOK_OF_FIVE_RINGS
     rarity = RelicRarity.COMMON
     pool = RelicPool.SHARED
+
+    def is_allowed(self, run_state: RunState) -> bool:
+        return self.is_before_act3_treasure_chest(run_state)
     CARDS_THRESHOLD = 5
     HEAL = 15
 
@@ -485,7 +528,12 @@ class BookOfFiveRings(RelicInstance):
         super().__init__(relic_id)
         self._cards_added: int = 0
 
-    def on_card_added_to_deck(self, owner: Creature) -> None:
+    def on_card_added_to_deck(
+        self,
+        owner: Creature,
+        card: CardInstance,
+        source: object | None = None,
+    ) -> None:
         self._cards_added += 1
         if self._cards_added >= self.CARDS_THRESHOLD:
             self._cards_added = 0

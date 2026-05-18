@@ -39,7 +39,7 @@ def deal_damage(
     results = []
     with combat.attack_context(dealer, target, props):
         for _ in range(hits):
-            if target.is_dead:
+            if dealer.is_dead or target.is_dead:
                 break
             dmg = calculate_damage(base_damage, dealer, target, props, combat)
             result = apply_damage(target, dmg, props, combat, dealer)
@@ -55,11 +55,13 @@ def deal_damage_to_all_enemies(
     hits: int = 1,
     props: ValueProp = ValueProp.MOVE,
 ) -> list[DamageResult]:
-    """Deal powered damage to all alive enemies."""
+    """Deal powered damage to all hittable enemies."""
     results = []
     with combat.attack_context(dealer, None, props):
         for _ in range(hits):
-            for enemy in list(combat.alive_enemies):
+            if dealer.is_dead:
+                break
+            for enemy in list(combat.hittable_enemies):
                 if enemy.is_dead:
                     continue
                 dmg = calculate_damage(base_damage, dealer, enemy, props, combat)
@@ -80,10 +82,12 @@ def deal_damage_to_random_enemy(
     results = []
     with combat.attack_context(dealer, None, props):
         for _ in range(hits):
-            alive = combat.alive_enemies
-            if not alive:
+            if dealer.is_dead:
                 break
-            target = combat.rng.choice(alive)
+            hittable = combat.hittable_enemies
+            if not hittable:
+                break
+            target = combat.combat_targets_rng.choice(hittable)
             dmg = calculate_damage(base_damage, dealer, target, props, combat)
             result = apply_damage(target, dmg, props, combat, dealer)
             results.append(result)
@@ -139,8 +143,8 @@ def apply_power_to_all_enemies(
     power_id: PowerId,
     amount: int,
 ) -> None:
-    """Apply a power to all alive enemies."""
-    for enemy in list(combat.alive_enemies):
+    """Apply a power to all hittable enemies."""
+    for enemy in list(combat.hittable_enemies):
         combat.apply_power_to(enemy, power_id, amount)
 
 
@@ -199,7 +203,7 @@ def add_card_to_pile(
         elif position == "bottom":
             zones["draw"].append(card)
         else:
-            idx = combat.rng.next_int(0, max(0, len(zones["draw"])))
+            idx = combat.shuffle_rng.next_int(0, max(0, len(zones["draw"])))
             zones["draw"].insert(idx, card)
     elif pile_type == PileType.EXHAUST:
         zones["exhaust"].append(card)
@@ -296,7 +300,7 @@ def random_card_from_hand(combat: CombatState) -> CardInstance | None:
     hand = combat._zones_for_creature(current_owner(combat))["hand"]  # noqa: SLF001
     if not hand:
         return None
-    return combat.rng.choice(hand)
+    return combat.combat_card_selection_rng.choice(hand)
 
 
 def get_playable_cards(combat: CombatState) -> list[CardInstance]:

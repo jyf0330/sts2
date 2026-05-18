@@ -19,7 +19,10 @@ import sts2_env.powers  # noqa: F401
 
 from sts2_env.cards.base import CardInstance
 from sts2_env.cards.factory import (
+    _build_reference_effect_vars,
+    _coerce_reference_rarity,
     _factory_registry,
+    _reference_definition,
     create_card,
     eligible_character_cards,
     eligible_registered_cards,
@@ -218,6 +221,8 @@ def _make_smoke_combat(card: CardInstance) -> CombatState:
         combat.draw_pile = []
     if card.card_id == CardId.CLASH:
         combat.hand = [card, make_strike_ironclad(), make_bash()]
+    if card.card_id == CardId.PACTS_END:
+        combat.exhaust_pile = [make_bash(), make_strike_ironclad(), make_defend_ironclad()]
     return combat
 
 
@@ -314,6 +319,88 @@ def test_factory_backed_playable_cards_have_smoke_execution(card_id: CardId):
     assert combat.pending_choice is None
 
 
+def test_factory_backed_cards_match_reference_core_metadata():
+    mismatches: list[str] = []
+    for card_id in sorted(_factory_registry(), key=lambda current: current.value):
+        definition = _reference_definition(card_id)
+        if definition is None:
+            continue
+        card = create_card(card_id)
+        cost_text = definition.cost.split("|", 1)[0].strip()
+        ref_x_cost = cost_text == "X"
+        ref_cost = -1 if cost_text == "Unplayable" else (0 if ref_x_cost else int(cost_text))
+        expected = {
+            "cost": ref_cost,
+            "x_cost": ref_x_cost,
+            "type": CardType[definition.card_type.upper()],
+            "target": TargetType[_camel_to_snake(definition.target).upper()],
+            "rarity": _coerce_reference_rarity(definition.rarity),
+            "keywords": frozenset(definition.keywords),
+            "tags": frozenset(definition.tags),
+        }
+        actual = {
+            "cost": card.cost,
+            "x_cost": card.has_energy_cost_x,
+            "type": card.card_type,
+            "target": card.target_type,
+            "rarity": card.rarity,
+            "keywords": card.keywords,
+            "tags": card.tags,
+        }
+        for field, expected_value in expected.items():
+            if actual[field] != expected_value:
+                mismatches.append(f"{card_id.name}.{field}: {actual[field]!r} != {expected_value!r}")
+    assert mismatches == []
+
+
+def test_factory_backed_cards_match_reference_dynamic_vars():
+    mismatches: list[str] = []
+    for card_id in sorted(_factory_registry(), key=lambda current: current.value):
+        definition = _reference_definition(card_id)
+        if definition is None:
+            continue
+        card = create_card(card_id)
+        for key, expected in sorted(_build_reference_effect_vars(definition.vars_text).items()):
+            actual = card.effect_vars.get(key)
+            if key in {"damage", "calc_base"} and actual is None and card.base_damage == expected:
+                continue
+            if key == "block" and actual is None and card.base_block == expected:
+                continue
+            if actual != expected:
+                mismatches.append(f"{card_id.name}.{key}: {actual!r} != {expected!r}")
+    assert mismatches == []
+
+
+def test_reference_upgrades_apply_for_factories_without_custom_upgrade_arg():
+    mismatches: list[str] = []
+    for card_id, (_, supports_upgraded, _) in sorted(
+        _factory_registry().items(),
+        key=lambda item: item[0].value,
+    ):
+        if supports_upgraded:
+            continue
+        definition = _reference_definition(card_id)
+        if definition is None or definition.upgrade_text in {
+            "",
+            "No upgrade changes",
+            "Cannot be upgraded",
+        }:
+            continue
+        base_card = create_card(card_id)
+        upgraded_card = create_card(card_id, upgraded=True)
+        changed = (
+            upgraded_card.cost != base_card.cost
+            or upgraded_card.base_damage != base_card.base_damage
+            or upgraded_card.base_block != base_card.base_block
+            or upgraded_card.star_cost != base_card.star_cost
+            or upgraded_card.keywords != base_card.keywords
+            or upgraded_card.effect_vars != base_card.effect_vars
+        )
+        if not upgraded_card.upgraded or not changed:
+            mismatches.append(card_id.name)
+    assert mismatches == []
+
+
 def test_docs_backed_character_cards_still_participate_in_generation_pools():
     assert CardId.BONE_SHARDS in eligible_character_cards("Necrobinder")
 
@@ -322,8 +409,52 @@ def test_docs_backed_colorless_cards_still_participate_in_registered_colorless_p
     assert CardId.GANG_UP in eligible_registered_cards(module_name="sts2_env.cards.colorless")
 
 
-def test_docs_backed_cards_preserve_reference_tags_for_explicit_instantiation():
-    assert CardTag.OSTY_ATTACK in create_card(CardId.BONE_SHARDS).tags
+@pytest.mark.parametrize(
+    ("card_id", "expected_tags"),
+    [
+        (CardId.BONE_SHARDS, {CardTag.OSTY_ATTACK}),
+        (CardId.DEFEND_IRONCLAD, {CardTag.DEFEND}),
+        (CardId.KNIFE_TRAP, {CardTag.SHIV}),
+        (CardId.MINION_STRIKE, {CardTag.MINION, CardTag.STRIKE}),
+        (CardId.POKE, {CardTag.OSTY_ATTACK}),
+    ],
+)
+def test_docs_backed_cards_preserve_reference_tags_for_explicit_instantiation(card_id, expected_tags):
+    assert expected_tags <= create_card(card_id).tags
+
+
+@pytest.mark.parametrize(
+    ("card_id", "expected_keywords"),
+    [
+        (CardId.ASCENDERS_BANE, {"eternal", "unplayable", "ethereal"}),
+        (CardId.BAD_LUCK, {"eternal", "unplayable"}),
+        (CardId.CURSE_OF_THE_BELL, {"eternal", "unplayable"}),
+        (CardId.ENTHRALLED, {"eternal"}),
+        (CardId.FOLLY, {"unplayable", "eternal", "innate"}),
+        (CardId.GREED, {"eternal", "unplayable"}),
+    ],
+)
+def test_eternal_curses_preserve_reference_keywords(card_id, expected_keywords):
+    card = create_card(card_id)
+
+    assert card.keywords == frozenset(expected_keywords)
+    assert not card.is_removable
+
+
+@pytest.mark.parametrize(
+    "card_id",
+    [
+        CardId.DISINTEGRATION,
+        CardId.MIND_ROT,
+        CardId.SLOTH_STATUS,
+        CardId.WASTE_AWAY,
+    ],
+)
+def test_knowledge_demon_status_cards_are_cost_unplayable_without_keyword(card_id):
+    card = create_card(card_id)
+
+    assert card.keywords == frozenset()
+    assert card.is_unplayable
 
 
 def test_new_real_necrobinder_factory_cards_participate_in_generation_pools():
@@ -332,3 +463,36 @@ def test_new_real_necrobinder_factory_cards_participate_in_generation_pools():
 
 def test_new_real_regent_factory_cards_participate_in_generation_pools():
     assert CardId.ALIGNMENT in eligible_character_cards("Regent", generation_context=None)
+
+
+@pytest.mark.parametrize(
+    ("card_id", "expected_cost", "expected_damage", "expected_block", "expected_vars"),
+    [
+        (CardId.STRIKE_SILENT, 1, 9, None, {}),
+        (CardId.DEFEND_SILENT, 1, None, 8, {}),
+        (CardId.NEUTRALIZE, 0, 4, None, {"weak": 2}),
+        (CardId.SURVIVOR, 1, None, 11, {}),
+        (CardId.STRIKE_DEFECT, 1, 9, None, {}),
+        (CardId.DEFEND_DEFECT, 1, None, 8, {}),
+        (CardId.ZAP, 0, None, None, {}),
+        (CardId.DUALCAST, 0, None, None, {}),
+    ],
+)
+def test_silent_and_defect_basic_upgrades_apply_reference_changes(
+    card_id,
+    expected_cost,
+    expected_damage,
+    expected_block,
+    expected_vars,
+):
+    card = create_card(card_id, upgraded=True)
+
+    assert card.upgraded is True
+    assert card.cost == expected_cost
+    assert card.original_cost == expected_cost
+    if expected_damage is not None:
+        assert card.base_damage == expected_damage
+    if expected_block is not None:
+        assert card.base_block == expected_block
+    for key, value in expected_vars.items():
+        assert card.effect_vars[key] == value

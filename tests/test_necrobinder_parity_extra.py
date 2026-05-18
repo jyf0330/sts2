@@ -8,6 +8,7 @@ from sts2_env.cards.necrobinder import (
     make_drain_power,
     make_end_of_days,
     make_glimpse_beyond,
+    make_reave,
     make_severance,
     make_soul_storm,
 )
@@ -17,6 +18,17 @@ from sts2_env.core.enums import CardId, PowerId
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle
 from sts2_env.run.run_state import PlayerState
+
+
+class _NoShuffleRng:
+    def next_int(self, low: int, high: int) -> int:
+        raise AssertionError("Reave should not use random draw-pile insertion")
+
+
+def _with_owner(cards: list, owner):
+    for card in cards:
+        card.owner = owner
+    return cards
 
 
 def _make_combat() -> CombatState:
@@ -89,6 +101,25 @@ class TestNecrobinderParityExtra:
         assert len(ally_souls) == 4
         assert len(combat.draw_pile) == owner_start
         assert len(owner_souls) == 0
+
+    def test_reave_adds_generated_soul_to_bottom_of_draw_pile(self):
+        """Matches Reave.cs: AddGeneratedCardsToCombat uses the default bottom position."""
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        combat.draw_pile = _with_owner([make_strike_ironclad(), make_defend_ironclad()], combat.player)
+        combat.hand = [make_reave()]
+        combat.hand[0].owner = combat.player
+        combat.energy = 1
+        combat.rng = _NoShuffleRng()
+
+        assert combat.play_card(0, 0)
+
+        assert [card.card_id for card in combat.draw_pile] == [
+            CardId.STRIKE_IRONCLAD,
+            CardId.DEFEND_IRONCLAD,
+            CardId.SOUL,
+        ]
+        assert enemy.current_hp < enemy.max_hp
 
     def test_severance_deals_damage_and_places_souls_in_draw_discard_and_hand(self):
         """Matches Severance.cs: attack, then create one Soul in draw/discard/hand respectively."""

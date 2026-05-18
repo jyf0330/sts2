@@ -68,8 +68,6 @@ class PlatingPower(PowerInstance):
       BeforeTurnEndEarly (side == Owner.Side): gain block = Amount (Unpowered).
       AfterTurnEnd (side == ENEMY): decrement by 1 (player) or by player-count (enemy).
 
-    For the simulator, we simplify the multiplayer scaling:
-    enemies decrement by 1 per turn (single-player).
     """
 
     power_type = PowerType.BUFF
@@ -87,7 +85,7 @@ class PlatingPower(PowerInstance):
                 owner.gain_block(self.amount)
                 self._first_round_block_given = True
 
-    def before_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
+    def before_turn_end_early(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         if side == owner.side:
             owner.gain_block(self.amount)
 
@@ -96,7 +94,8 @@ class PlatingPower(PowerInstance):
             if self.skip_next_tick:
                 self.skip_next_tick = False
                 return
-            self.amount -= 1
+            decrement = len(combat.combat_player_states) if owner.side == CombatSide.ENEMY else 1
+            self.amount -= decrement
 
     # Legacy hook kept for backward compat with tick_down_power()
     def on_turn_end_enemy_side(self, owner: Creature) -> None:

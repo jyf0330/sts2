@@ -120,7 +120,7 @@ def enchant_play_count_bonus(card: CardInstance) -> int:
 
 def on_card_drawn(card: CardInstance, combat: CombatState, from_hand_draw: bool) -> None:
     if card.has_enchantment("Slither"):
-        card.set_combat_cost(combat.rng.next_int(0, 3))
+        card.set_combat_cost(combat.combat_energy_costs_rng.next_int(0, 3))
 
 
 def after_player_turn_start(owner, combat: CombatState) -> None:

@@ -14,6 +14,7 @@ import pytest
 from sts2_env.cards.ironclad_basic import create_ironclad_starter_deck
 from sts2_env.core.combat import CombatState
 from sts2_env.core.rng import Rng
+from sts2_env.encounters.events import setup_punch_off
 
 # Act 1
 from sts2_env.encounters.act1 import (
@@ -78,6 +79,19 @@ def _make_combat(rng_seed: int = 42) -> CombatState:
     """Create a fresh CombatState for encounter testing."""
     deck = create_ironclad_starter_deck()
     return CombatState(player_hp=80, player_max_hp=80, deck=deck, rng_seed=rng_seed)
+
+
+class _ExclusiveHighRng:
+    def next_int_exclusive(self, low: int, high: int) -> int:
+        return high - 1
+
+
+def test_punch_off_hp_reduction_uses_exclusive_upper_bound():
+    combat = _make_combat()
+
+    setup_punch_off(combat, _ExclusiveHighRng())
+
+    assert [enemy.current_hp for enemy in combat.enemies] == [46, 46]
 
 
 # ========================================================================
@@ -299,6 +313,33 @@ class TestAct3Pools:
 
     def test_all_act3_total(self):
         assert len(ALL_ACT3_ENCOUNTERS) == 3 + 9 + 3 + 3  # 18
+
+    def test_act3_order_matches_original_glory_lists(self):
+        assert [encounter.__name__ for encounter in ACT3_BOSS] == [
+            "setup_queen_boss",
+            "setup_test_subject_boss",
+            "setup_doormaker_boss",
+        ]
+        assert [encounter.__name__ for encounter in ALL_ACT3_ENCOUNTERS] == [
+            "setup_axebots_normal",
+            "setup_construct_menagerie_normal",
+            "setup_devoted_sculptor_weak",
+            "setup_doormaker_boss",
+            "setup_fabricator_normal",
+            "setup_frog_knight_normal",
+            "setup_globe_head_normal",
+            "setup_knights_elite",
+            "setup_mecha_knight_elite",
+            "setup_owl_magistrate_normal",
+            "setup_queen_boss",
+            "setup_scrolls_of_biting_normal",
+            "setup_scrolls_of_biting_weak",
+            "setup_slimed_berserker_normal",
+            "setup_soul_nexus_elite",
+            "setup_test_subject_boss",
+            "setup_the_lost_and_forgotten_normal",
+            "setup_turret_operator_weak",
+        ]
 
 
 # ========================================================================

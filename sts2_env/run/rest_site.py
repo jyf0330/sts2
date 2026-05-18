@@ -45,6 +45,8 @@ class HealOption(RestSiteOption):
         if run_state is not None:
             for relic in player.get_relic_objects():
                 amount = relic.modify_rest_site_heal_amount(player, amount, run_state)
+            for modifier in run_state.modifiers:
+                amount = modifier.modify_rest_site_heal_amount(player, amount, run_state)
             for relic in player.get_relic_objects():
                 rewards = list(relic.modify_rest_site_heal_rewards(player, rewards, run_state))
         healed = player.heal(amount)
@@ -52,6 +54,8 @@ class HealOption(RestSiteOption):
             run_state.pending_rewards.extend(rewards)
             for relic in player.get_relic_objects():
                 relic.after_rest_site_heal(player, healed, run_state)
+            for modifier in run_state.modifiers:
+                modifier.after_rest_site_heal(player, healed, run_state)
         return f"Healed {healed} HP"
 
 
@@ -241,7 +245,8 @@ def generate_rest_site_options(
             if getattr(relic, "relic_id", None).name == "GIRYA":
                 lifts_done = getattr(relic, "_times_lifted", 0)
                 break
-        options.append(LiftOption(lifts_done=lifts_done))
+        if lifts_done < 3:
+            options.append(LiftOption(lifts_done=lifts_done))
 
     removable_count = sum(1 for c in player.deck if c.rarity.name not in ("STATUS", "CURSE"))
     if "MEAT_CLEAVER" in normalized_relic_ids and removable_count >= 2:
@@ -257,5 +262,7 @@ def generate_rest_site_options(
     if run_state is not None:
         for relic in player.get_relic_objects():
             options = list(relic.modify_rest_site_options(player, options, run_state))
+        for modifier in run_state.modifiers:
+            options = list(modifier.modify_rest_site_options(player, options, run_state))
 
     return options

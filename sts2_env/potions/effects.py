@@ -8,7 +8,6 @@ Matches the OnUse methods from decompiled MegaCrit.Sts2.Core.Models.Potions.
 
 from __future__ import annotations
 
-import random
 from typing import TYPE_CHECKING
 
 from sts2_env.cards.factory import create_cards_from_ids, create_character_cards, eligible_registered_cards
@@ -36,8 +35,8 @@ def _deal_unpowered_damage(
 def _deal_unpowered_damage_all(
     combat: CombatState, dealer: Creature, base_damage: int,
 ) -> None:
-    """Deal unpowered damage to all alive enemies."""
-    for enemy in list(combat.alive_enemies):
+    """Deal unpowered damage to all hittable enemies."""
+    for enemy in list(combat.hittable_enemies):
         _deal_unpowered_damage(combat, dealer, enemy, base_damage)
 
 
@@ -50,14 +49,14 @@ def _attack_potion(combat: CombatState, user: Creature, target: Creature | None)
     """
     generated = create_character_cards(
         combat.character_id,
-        combat.rng,
+        combat.combat_card_generation_rng,
         3,
         card_type=CardType.ATTACK,
         distinct=True,
         generation_context="modifier",
     )
     for generated_card in generated:
-        generated_card.set_temporary_cost_for_turn(0)
+        generated_card.set_temporary_free_this_turn()
     if generated:
         combat.request_card_choice(
             prompt="Choose an Attack card",
@@ -88,9 +87,9 @@ def _colorless_potion(combat: CombatState, user: Creature, target: Creature | No
         module_name="sts2_env.cards.colorless",
         generation_context="modifier",
     )
-    generated = create_cards_from_ids(colorless_ids, combat.rng, 3, distinct=True)
+    generated = create_cards_from_ids(colorless_ids, combat.combat_card_generation_rng, 3, distinct=True)
     for generated_card in generated:
-        generated_card.set_temporary_cost_for_turn(0)
+        generated_card.set_temporary_free_this_turn()
     if generated:
         combat.request_card_choice(
             prompt="Choose a Colorless card",
@@ -104,7 +103,7 @@ def _colorless_potion(combat: CombatState, user: Creature, target: Creature | No
 def _dexterity_potion(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Target gains 2 Dexterity."""
     t = target if target is not None else user
-    t.apply_power(PowerId.DEXTERITY, 2)
+    combat.apply_power_to(t, PowerId.DEXTERITY, 2, applier=user)
 
 
 def _energy_potion(combat: CombatState, user: Creature, target: Creature | None) -> None:
@@ -126,24 +125,24 @@ def _fire_potion(combat: CombatState, user: Creature, target: Creature | None) -
 def _flex_potion(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Target gains 5 temporary Strength (FlexPotion power removes at end of turn)."""
     t = target if target is not None else user
-    t.apply_power(PowerId.FLEX_POTION, 5)
+    combat.apply_power_to(t, PowerId.FLEX_POTION, 5, applier=user)
 
 
 def _focus_potion(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """User gains 2 Focus."""
-    user.apply_power(PowerId.FOCUS, 2)
+    combat.apply_power_to(user, PowerId.FOCUS, 2, applier=user)
 
 
 def _poison_potion(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Apply 6 Poison to target enemy."""
     if target is not None:
-        target.apply_power(PowerId.POISON, 6)
+        combat.apply_power_to(target, PowerId.POISON, 6, applier=user)
 
 
 def _potion_of_doom(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Apply 33 Doom to target enemy."""
     if target is not None:
-        target.apply_power(PowerId.DOOM, 33)
+        combat.apply_power_to(target, PowerId.DOOM, 33, applier=user)
 
 
 def _power_potion(combat: CombatState, user: Creature, target: Creature | None) -> None:
@@ -151,14 +150,14 @@ def _power_potion(combat: CombatState, user: Creature, target: Creature | None) 
     """
     generated = create_character_cards(
         combat.character_id,
-        combat.rng,
+        combat.combat_card_generation_rng,
         3,
         card_type=CardType.POWER,
         distinct=True,
         generation_context="modifier",
     )
     for generated_card in generated:
-        generated_card.set_temporary_cost_for_turn(0)
+        generated_card.set_temporary_free_this_turn()
     if generated:
         combat.request_card_choice(
             prompt="Choose a Power card",
@@ -174,14 +173,14 @@ def _skill_potion(combat: CombatState, user: Creature, target: Creature | None) 
     """
     generated = create_character_cards(
         combat.character_id,
-        combat.rng,
+        combat.combat_card_generation_rng,
         3,
         card_type=CardType.SKILL,
         distinct=True,
         generation_context="modifier",
     )
     for generated_card in generated:
-        generated_card.set_temporary_cost_for_turn(0)
+        generated_card.set_temporary_free_this_turn()
     if generated:
         combat.request_card_choice(
             prompt="Choose a Skill card",
@@ -195,7 +194,7 @@ def _skill_potion(combat: CombatState, user: Creature, target: Creature | None) 
 def _speed_potion(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Target gains 5 temporary Dexterity (SpeedPotion power removes at end of turn)."""
     t = target if target is not None else user
-    t.apply_power(PowerId.SPEED_POTION, 5)
+    combat.apply_power_to(t, PowerId.SPEED_POTION, 5, applier=user)
 
 
 def _star_potion(combat: CombatState, user: Creature, target: Creature | None) -> None:
@@ -210,7 +209,7 @@ def _star_potion(combat: CombatState, user: Creature, target: Creature | None) -
 def _strength_potion(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Target gains 2 Strength."""
     t = target if target is not None else user
-    t.apply_power(PowerId.STRENGTH, 2)
+    combat.apply_power_to(t, PowerId.STRENGTH, 2, applier=user)
 
 
 def _swift_potion(combat: CombatState, user: Creature, target: Creature | None) -> None:
@@ -221,13 +220,13 @@ def _swift_potion(combat: CombatState, user: Creature, target: Creature | None) 
 def _vulnerable_potion(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Apply 3 Vulnerable to target enemy."""
     if target is not None:
-        combat.apply_power_to(target, PowerId.VULNERABLE, 3)
+        combat.apply_power_to(target, PowerId.VULNERABLE, 3, applier=user)
 
 
 def _weak_potion(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Apply 3 Weak to target enemy."""
     if target is not None:
-        combat.apply_power_to(target, PowerId.WEAK, 3)
+        combat.apply_power_to(target, PowerId.WEAK, 3, applier=user)
 
 
 # =====================================================================
@@ -270,7 +269,7 @@ def _clarity(combat: CombatState, user: Creature, target: Creature | None) -> No
     """Target draws 1 card and gains 3 Clarity (retain cards)."""
     t = target if target is not None else user
     combat._draw_cards(1)  # noqa: SLF001
-    t.apply_power(PowerId.CLARITY, 3)
+    combat.apply_power_to(t, PowerId.CLARITY, 3, applier=user)
 
 
 def _cunning_potion(combat: CombatState, user: Creature, target: Creature | None) -> None:
@@ -290,7 +289,7 @@ def _cure_all(combat: CombatState, user: Creature, target: Creature | None) -> N
 
 def _duplicator(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Gain 1 Duplication (next card is played twice)."""
-    user.apply_power(PowerId.DUPLICATION, 1)
+    combat.apply_power_to(user, PowerId.DUPLICATION, 1, applier=user)
 
 
 def _fortifier(combat: CombatState, user: Creature, target: Creature | None) -> None:
@@ -302,8 +301,8 @@ def _fortifier(combat: CombatState, user: Creature, target: Creature | None) -> 
 def _fysh_oil(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Target gains 1 Strength and 1 Dexterity."""
     t = target if target is not None else user
-    t.apply_power(PowerId.STRENGTH, 1)
-    t.apply_power(PowerId.DEXTERITY, 1)
+    combat.apply_power_to(t, PowerId.STRENGTH, 1, applier=user)
+    combat.apply_power_to(t, PowerId.DEXTERITY, 1, applier=user)
 
 
 def _gamblers_brew(combat: CombatState, user: Creature, target: Creature | None) -> None:
@@ -330,7 +329,7 @@ def _gamblers_brew(combat: CombatState, user: Creature, target: Creature | None)
 def _heart_of_iron(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Target gains 7 Plating."""
     t = target if target is not None else user
-    t.apply_power(PowerId.PLATING, 7)
+    combat.apply_power_to(t, PowerId.PLATING, 7, applier=user)
 
 
 def _kings_courage(combat: CombatState, user: Creature, target: Creature | None) -> None:
@@ -346,14 +345,14 @@ def _kings_courage(combat: CombatState, user: Creature, target: Creature | None)
 def _liquid_bronze(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Target gains 3 Thorns."""
     t = target if target is not None else user
-    t.apply_power(PowerId.THORNS, 3)
+    combat.apply_power_to(t, PowerId.THORNS, 3, applier=user)
 
 
 def _potion_of_binding(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Apply 1 Weak and 1 Vulnerable to all enemies."""
-    for enemy in list(combat.alive_enemies):
-        combat.apply_power_to(enemy, PowerId.WEAK, 1)
-        combat.apply_power_to(enemy, PowerId.VULNERABLE, 1)
+    for enemy in list(combat.hittable_enemies):
+        combat.apply_power_to(enemy, PowerId.WEAK, 1, applier=user)
+        combat.apply_power_to(enemy, PowerId.VULNERABLE, 1, applier=user)
 
 
 def _potion_of_capacity(combat: CombatState, user: Creature, target: Creature | None) -> None:
@@ -368,26 +367,26 @@ def _potion_of_capacity(combat: CombatState, user: Creature, target: Creature | 
 def _powdered_demise(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Apply 9 Demise to target enemy."""
     if target is not None:
-        target.apply_power(PowerId.DEMISE, 9)
+        combat.apply_power_to(target, PowerId.DEMISE, 9, applier=user)
 
 
 def _radiant_tincture(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Target gains 1 energy and 3 Radiance."""
     t = target if target is not None else user
     combat.energy += 1
-    t.apply_power(PowerId.RADIANCE, 3)
+    combat.apply_power_to(t, PowerId.RADIANCE, 3, applier=user)
 
 
 def _regen_potion(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Target gains 5 Regen."""
     t = target if target is not None else user
-    t.apply_power(PowerId.REGEN, 5)
+    combat.apply_power_to(t, PowerId.REGEN, 5, applier=user)
 
 
 def _stable_serum(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Target gains 2 RetainHand (retain entire hand for N turns)."""
     t = target if target is not None else user
-    t.apply_power(PowerId.RETAIN_HAND, 2)
+    combat.apply_power_to(t, PowerId.RETAIN_HAND, 2, applier=user)
 
 
 def _touch_of_insanity(combat: CombatState, user: Creature, target: Creature | None) -> None:
@@ -400,7 +399,7 @@ def _touch_of_insanity(combat: CombatState, user: Creature, target: Creature | N
     def _resolver(selected):
         if selected is None:
             return
-        selected.set_combat_cost(0)
+        selected.set_free_this_combat()
 
     combat.request_card_choice(
         prompt="Choose a hand card to set to 0 cost",
@@ -417,7 +416,7 @@ def _touch_of_insanity(combat: CombatState, user: Creature, target: Creature | N
 def _beetle_juice(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Apply 4 Shrink to target enemy (reduces damage dealt by 30% per stack)."""
     if target is not None:
-        target.apply_power(PowerId.SHRINK, 4)
+        combat.apply_power_to(target, PowerId.SHRINK, 4, applier=user)
 
 
 def _bottled_potential(combat: CombatState, user: Creature, target: Creature | None) -> None:
@@ -425,7 +424,7 @@ def _bottled_potential(combat: CombatState, user: Creature, target: Creature | N
     cards_in_hand = list(combat.hand)
     combat.hand.clear()
     combat.draw_pile.extend(cards_in_hand)
-    combat.rng.shuffle(combat.draw_pile)
+    combat.shuffle_rng.shuffle(combat.draw_pile)
     combat._draw_cards(5)  # noqa: SLF001
 
 
@@ -436,7 +435,7 @@ def _cosmic_concoction(combat: CombatState, user: Creature, target: Creature | N
         module_name="sts2_env.cards.colorless",
         generation_context="modifier",
     )
-    generated = create_cards_from_ids(colorless_ids, combat.rng, 3, distinct=True)
+    generated = create_cards_from_ids(colorless_ids, combat.combat_card_generation_rng, 3, distinct=True)
     for generated_card in generated:
         combat.upgrade_card(generated_card)
         combat.move_card_to_hand(generated_card)
@@ -487,7 +486,10 @@ def _fairy_in_a_bottle(combat: CombatState, user: Creature, target: Creature | N
     """
     t = target if target is not None else user
     heal_amount = t.max_hp * 30 // 100
-    t.heal(heal_amount)
+    if t.is_dead:
+        t.current_hp = min(t.max_hp, heal_amount)
+    else:
+        t.heal(heal_amount)
 
 
 def _fruit_juice(combat: CombatState, user: Creature, target: Creature | None) -> None:
@@ -499,13 +501,13 @@ def _fruit_juice(combat: CombatState, user: Creature, target: Creature | None) -
 def _ghost_in_a_jar(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Target gains 1 Intangible."""
     t = target if target is not None else user
-    t.apply_power(PowerId.INTANGIBLE, 1)
+    combat.apply_power_to(t, PowerId.INTANGIBLE, 1, applier=user)
 
 
 def _gigantification_potion(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Target gains 1 Gigantification (double damage for 1 turn)."""
     t = target if target is not None else user
-    t.apply_power(PowerId.GIGANTIFICATION, 1)
+    combat.apply_power_to(t, PowerId.GIGANTIFICATION, 1, applier=user)
 
 
 def _liquid_memories(combat: CombatState, user: Creature, target: Creature | None) -> None:
@@ -531,13 +533,13 @@ def _liquid_memories(combat: CombatState, user: Creature, target: Creature | Non
 def _lucky_tonic(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Target gains 1 Buffer (negate next HP loss)."""
     t = target if target is not None else user
-    t.apply_power(PowerId.BUFFER, 1)
+    combat.apply_power_to(t, PowerId.BUFFER, 1, applier=user)
 
 
 def _mazaleths_gift(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Target gains 1 Ritual (gain Strength each turn)."""
     t = target if target is not None else user
-    t.apply_power(PowerId.RITUAL, 1)
+    combat.apply_power_to(t, PowerId.RITUAL, 1, applier=user)
 
 
 def _orobic_acid(combat: CombatState, user: Creature, target: Creature | None) -> None:
@@ -546,24 +548,24 @@ def _orobic_acid(combat: CombatState, user: Creature, target: Creature | None) -
     generated = []
     generated.extend(
         create_character_cards(
-            combat.character_id, combat.rng, 1,
+            combat.character_id, combat.combat_card_generation_rng, 1,
             card_type=CardType.ATTACK, distinct=True, generation_context="modifier",
         )
     )
     generated.extend(
         create_character_cards(
-            combat.character_id, combat.rng, 1,
+            combat.character_id, combat.combat_card_generation_rng, 1,
             card_type=CardType.SKILL, distinct=True, generation_context="modifier",
         )
     )
     generated.extend(
         create_character_cards(
-            combat.character_id, combat.rng, 1,
+            combat.character_id, combat.combat_card_generation_rng, 1,
             card_type=CardType.POWER, distinct=True, generation_context="modifier",
         )
     )
     for generated_card in generated:
-        generated_card.set_temporary_cost_for_turn(0)
+        generated_card.set_temporary_free_this_turn()
         combat.move_card_to_hand(generated_card)
 
 
@@ -578,15 +580,15 @@ def _pot_of_ghouls(combat: CombatState, user: Creature, target: Creature | None)
 
 def _shackling_potion(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Apply 7 ShacklingPotion power to all enemies (temporary Strength loss)."""
-    for enemy in list(combat.alive_enemies):
-        enemy.apply_power(PowerId.SHACKLING_POTION, 7)
+    for enemy in list(combat.hittable_enemies):
+        combat.apply_power_to(enemy, PowerId.SHACKLING_POTION, 7, applier=user)
 
 
 def _ship_in_a_bottle(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Target gains 10 block now and 10 block next turn."""
     t = target if target is not None else user
     t.gain_block(10)
-    t.apply_power(PowerId.BLOCK_NEXT_TURN, 10)
+    combat.apply_power_to(t, PowerId.BLOCK_NEXT_TURN, 10, applier=user)
 
 
 def _snecko_oil(combat: CombatState, user: Creature, target: Creature | None) -> None:
@@ -594,7 +596,7 @@ def _snecko_oil(combat: CombatState, user: Creature, target: Creature | None) ->
     combat._draw_cards(7)  # noqa: SLF001
     for card in combat.hand:
         if hasattr(card, "cost") and card.cost >= 0:
-            card.cost = random.randint(0, 3)
+            card.cost = combat.combat_energy_costs_rng.next_int(0, 3)
 
 
 def _soldiers_stew(combat: CombatState, user: Creature, target: Creature | None) -> None:
@@ -618,7 +620,9 @@ def _foul_potion(combat: CombatState, user: Creature, target: Creature | None) -
     """In combat: deal 12 unpowered damage to ALL creatures (enemies + self).
     Out of combat at merchant: gain 100 gold (handled outside combat).
     """
-    _deal_unpowered_damage_all(combat, user, 12)
+    for creature in list(combat.all_creatures):
+        if creature.is_alive:
+            _deal_unpowered_damage(combat, user, creature, 12)
 
 
 def _glowwater_potion(combat: CombatState, user: Creature, target: Creature | None) -> None:

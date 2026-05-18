@@ -5,10 +5,21 @@ import sts2_env.powers  # noqa: F401
 from sts2_env.cards.colorless import make_volley
 from sts2_env.cards.defect import create_defect_starter_deck
 from sts2_env.cards.ironclad import create_ironclad_starter_deck
+from sts2_env.cards.ironclad_basic import make_strike_ironclad
 from sts2_env.core.combat import CombatState
-from sts2_env.core.enums import PowerId
+from sts2_env.core.enums import CombatSide, PowerId
+from sts2_env.core.hooks import fire_before_side_turn_start
+from sts2_env.powers.base import PowerInstance
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle, create_twig_slime_s
+
+
+class _CannotHitPower(PowerInstance):
+    def __init__(self):
+        super().__init__(PowerId.COVERED, 1)
+
+    def should_allow_hitting(self, owner, combat):
+        return False
 
 
 def _make_ironclad_combat(
@@ -78,6 +89,36 @@ class TestRelicParityExtra:
         combat.start_combat()
 
         assert all(enemy.get_power_amount(PowerId.VULNERABLE) == 1 for enemy in combat.enemies)
+
+        for enemy in combat.enemies:
+            enemy.powers.pop(PowerId.VULNERABLE, None)
+        combat.hand = []
+        combat.draw_pile = [make_strike_ironclad(), make_strike_ironclad()]
+        combat.apply_power_to(combat.player, PowerId.VICIOUS, 1)
+
+        fire_before_side_turn_start(CombatSide.PLAYER, combat)
+
+        assert len(combat.hand) == 2
+
+    def test_bag_of_marbles_skips_unhittable_enemies(self):
+        """Matches BagOfMarbles.cs: applies Vulnerable to HittableEnemies."""
+        combat = CombatState(
+            player_hp=80,
+            player_max_hp=80,
+            deck=create_ironclad_starter_deck(),
+            rng_seed=47,
+            character_id="Ironclad",
+            relics=["BagOfMarbles"],
+        )
+        enemy_a, ai_a = create_shrinker_beetle(Rng(47))
+        enemy_b, ai_b = create_twig_slime_s(Rng(48))
+        enemy_b.powers[PowerId.COVERED] = _CannotHitPower()
+        combat.add_enemy(enemy_a, ai_a)
+        combat.add_enemy(enemy_b, ai_b)
+        combat.start_combat()
+
+        assert enemy_a.get_power_amount(PowerId.VULNERABLE) == 1
+        assert enemy_b.get_power_amount(PowerId.VULNERABLE) == 0
 
     def test_bronze_scales_reflects_damage_with_thorns_on_enemy_attack(self):
         """Matches BronzeScales.cs + ThornsPower.cs: thorn damage is returned on hit."""

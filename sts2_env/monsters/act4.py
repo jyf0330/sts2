@@ -60,86 +60,148 @@ def create_corpse_slug(rng: Rng, starter_idx: int = 0) -> tuple[Creature, Monste
         combat.apply_power_to(combat.primary_player, PowerId.FRAIL, 2)
 
     states: dict[str, MonsterState] = {
-        "WHIP_SLAP": MoveState("WHIP_SLAP", whip_slap, [multi_attack_intent(whip_slap_dmg, 2)], follow_up_id="GLOMP"),
-        "GLOMP": MoveState("GLOMP", glomp, [attack_intent(glomp_dmg)], follow_up_id="GOOP"),
-        "GOOP": MoveState("GOOP", goop, [debuff_intent()], follow_up_id="WHIP_SLAP"),
+        "WHIP_SLAP_MOVE": MoveState(
+            "WHIP_SLAP_MOVE",
+            whip_slap,
+            [multi_attack_intent(whip_slap_dmg, 2)],
+            follow_up_id="GLOMP_MOVE",
+        ),
+        "GLOMP_MOVE": MoveState("GLOMP_MOVE", glomp, [attack_intent(glomp_dmg)], follow_up_id="GOOP_MOVE"),
+        "GOOP_MOVE": MoveState("GOOP_MOVE", goop, [debuff_intent()], follow_up_id="WHIP_SLAP_MOVE"),
     }
 
-    starter_map = {0: "WHIP_SLAP", 1: "GLOMP", 2: "GOOP"}
-    initial = starter_map.get(starter_idx, "WHIP_SLAP")
+    starter_map = {0: "WHIP_SLAP_MOVE", 1: "GLOMP_MOVE", 2: "GOOP_MOVE"}
+    initial = starter_map.get(starter_idx, "WHIP_SLAP_MOVE")
 
     creature.apply_power(PowerId.RAVENOUS, 4)
-    return creature, MonsterAI(states, initial)
+    return creature, MonsterAI(states, initial, rng)
 
 
-# ---- Seapunk (HP 35-38 / 37-40 asc) ----
+# ---- Seapunk (HP 44-46 / 47-49 asc) ----
 
 def create_seapunk(rng: Rng) -> tuple[Creature, MonsterAI]:
-    hp = rng.next_int(35, 38)
+    hp = rng.next_int(44, 46)
     creature = Creature(max_hp=hp, monster_id="SEAPUNK")
-    jab_dmg = 6
-    poison_spit_dmg = 9
+    sea_kick_dmg = 11
+    spinning_kick_dmg = 2
+    bubble_block = 7
+    bubble_str = 1
 
-    def jab(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, jab_dmg)
+    def sea_kick(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, sea_kick_dmg)
 
-    def poison_spit(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, poison_spit_dmg)
-        combat.apply_power_to(combat.primary_player, PowerId.POISON, 3)
+    def spinning_kick(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, spinning_kick_dmg, hits=4)
+
+    def bubble_burp(combat: CombatState) -> None:
+        _gain_block(creature, bubble_block)
+        creature.apply_power(PowerId.STRENGTH, bubble_str, applier=creature)
 
     states: dict[str, MonsterState] = {
-        "JAB": MoveState("JAB", jab, [attack_intent(jab_dmg)], follow_up_id="POISON_SPIT"),
-        "POISON_SPIT": MoveState("POISON_SPIT", poison_spit, [attack_intent(poison_spit_dmg), debuff_intent()], follow_up_id="JAB"),
+        "SEA_KICK_MOVE": MoveState(
+            "SEA_KICK_MOVE",
+            sea_kick,
+            [attack_intent(sea_kick_dmg)],
+            follow_up_id="SPINNING_KICK_MOVE",
+        ),
+        "SPINNING_KICK_MOVE": MoveState(
+            "SPINNING_KICK_MOVE",
+            spinning_kick,
+            [multi_attack_intent(spinning_kick_dmg, 4)],
+            follow_up_id="BUBBLE_BURP_MOVE",
+        ),
+        "BUBBLE_BURP_MOVE": MoveState(
+            "BUBBLE_BURP_MOVE",
+            bubble_burp,
+            [buff_intent(), defend_intent()],
+            follow_up_id="SEA_KICK_MOVE",
+        ),
     }
-    return creature, MonsterAI(states, "JAB")
+    return creature, MonsterAI(states, "SEA_KICK_MOVE")
 
 
-# ---- SludgeSpinner (HP 20-23 / 22-25 asc) ----
+# ---- SludgeSpinner (HP 37-39 / 41-42 asc) ----
 
 def create_sludge_spinner(rng: Rng) -> tuple[Creature, MonsterAI]:
-    hp = rng.next_int(20, 23)
+    hp = rng.next_int(37, 39)
     creature = Creature(max_hp=hp, monster_id="SLUDGE_SPINNER")
-    sludge_ball_dmg = 6
+    oil_spray_dmg = 8
+    slam_dmg = 11
+    rage_dmg = 6
 
-    def toxic_spray(combat: CombatState) -> None:
-        combat.apply_power_to(combat.primary_player, PowerId.WEAK, 2)
+    def oil_spray(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, oil_spray_dmg)
+        combat.apply_power_to(combat.primary_player, PowerId.WEAK, 1, applier=creature)
 
-    def sludge_ball(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, sludge_ball_dmg)
+    def slam(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, slam_dmg)
 
-    states: dict[str, MonsterState] = {
-        "TOXIC_SPRAY": MoveState("TOXIC_SPRAY", toxic_spray, [debuff_intent()], follow_up_id="SLUDGE_BALL"),
-        "SLUDGE_BALL": MoveState("SLUDGE_BALL", sludge_ball, [attack_intent(sludge_ball_dmg)], follow_up_id="SLUDGE_BALL"),
-    }
-    return creature, MonsterAI(states, "TOXIC_SPRAY")
-
-
-# ---- Toadpole (HP 14-16 / 15-17 asc) ----
-
-def create_toadpole(rng: Rng, slot: str = "first") -> tuple[Creature, MonsterAI]:
-    hp = rng.next_int(14, 16)
-    creature = Creature(max_hp=hp, monster_id="TOADPOLE")
-    tongue_dmg = 5
-    chomp_dmg = 9
-
-    def tongue(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, tongue_dmg)
-
-    def chomp(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, chomp_dmg)
+    def rage(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, rage_dmg)
+        creature.apply_power(PowerId.STRENGTH, 3, applier=creature)
 
     rand = RandomBranchState("RAND")
-    rand.add_branch("TONGUE", MoveRepeatType.CANNOT_REPEAT)
-    rand.add_branch("CHOMP", MoveRepeatType.CANNOT_REPEAT)
+    rand.add_branch("OIL_SPRAY_MOVE", MoveRepeatType.CANNOT_REPEAT)
+    rand.add_branch("SLAM_MOVE", MoveRepeatType.CANNOT_REPEAT)
+    rand.add_branch("RAGE_MOVE", MoveRepeatType.CANNOT_REPEAT)
 
     states: dict[str, MonsterState] = {
         "RAND": rand,
-        "TONGUE": MoveState("TONGUE", tongue, [attack_intent(tongue_dmg)], follow_up_id="CHOMP"),
-        "CHOMP": MoveState("CHOMP", chomp, [attack_intent(chomp_dmg)], follow_up_id="RAND"),
+        "OIL_SPRAY_MOVE": MoveState(
+            "OIL_SPRAY_MOVE",
+            oil_spray,
+            [attack_intent(oil_spray_dmg), debuff_intent()],
+            follow_up_id="RAND",
+        ),
+        "SLAM_MOVE": MoveState("SLAM_MOVE", slam, [attack_intent(slam_dmg)], follow_up_id="RAND"),
+        "RAGE_MOVE": MoveState(
+            "RAGE_MOVE",
+            rage,
+            [attack_intent(rage_dmg), buff_intent()],
+            follow_up_id="RAND",
+        ),
+    }
+    return creature, MonsterAI(states, "OIL_SPRAY_MOVE")
+
+
+# ---- Toadpole (HP 21-25 / 22-26 asc) ----
+
+def create_toadpole(rng: Rng, slot: str = "first") -> tuple[Creature, MonsterAI]:
+    hp = rng.next_int(21, 25)
+    creature = Creature(max_hp=hp, monster_id="TOADPOLE")
+    spike_spit_dmg = 3
+    whirl_dmg = 7
+    spiken_amount = 2
+
+    def spike_spit(combat: CombatState) -> None:
+        if creature.has_power(PowerId.THORNS):
+            creature.apply_power(PowerId.THORNS, -spiken_amount, applier=creature)
+        _deal_damage_to_player(combat, creature, spike_spit_dmg, hits=3)
+
+    def whirl(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, whirl_dmg)
+
+    def spiken(combat: CombatState) -> None:
+        creature.apply_power(PowerId.THORNS, spiken_amount, applier=creature)
+
+    is_front = slot in {"first", "front"}
+    init = ConditionalBranchState("INIT_MOVE")
+    init.add_branch(lambda: not is_front, "WHIRL_MOVE")
+    init.add_branch(lambda: True, "SPIKEN_MOVE")
+
+    states: dict[str, MonsterState] = {
+        "INIT_MOVE": init,
+        "SPIKE_SPIT_MOVE": MoveState(
+            "SPIKE_SPIT_MOVE",
+            spike_spit,
+            [multi_attack_intent(spike_spit_dmg, 3)],
+            follow_up_id="WHIRL_MOVE",
+        ),
+        "WHIRL_MOVE": MoveState("WHIRL_MOVE", whirl, [attack_intent(whirl_dmg)], follow_up_id="SPIKEN_MOVE"),
+        "SPIKEN_MOVE": MoveState("SPIKEN_MOVE", spiken, [buff_intent()], follow_up_id="SPIKE_SPIT_MOVE"),
     }
 
-    initial = "TONGUE" if slot == "first" else ("CHOMP" if slot == "second" else "RAND")
-    return creature, MonsterAI(states, initial)
+    return creature, MonsterAI(states, "INIT_MOVE", rng)
 
 
 # ========================================================================
@@ -160,10 +222,20 @@ def create_calcified_cultist(rng: Rng) -> tuple[Creature, MonsterAI]:
         _deal_damage_to_player(combat, creature, dark_strike_dmg)
 
     states: dict[str, MonsterState] = {
-        "INCANTATION": MoveState("INCANTATION", incantation, [buff_intent()], follow_up_id="DARK_STRIKE"),
-        "DARK_STRIKE": MoveState("DARK_STRIKE", dark_strike, [attack_intent(dark_strike_dmg)], follow_up_id="DARK_STRIKE"),
+        "INCANTATION_MOVE": MoveState(
+            "INCANTATION_MOVE",
+            incantation,
+            [buff_intent()],
+            follow_up_id="DARK_STRIKE_MOVE",
+        ),
+        "DARK_STRIKE_MOVE": MoveState(
+            "DARK_STRIKE_MOVE",
+            dark_strike,
+            [attack_intent(dark_strike_dmg)],
+            follow_up_id="DARK_STRIKE_MOVE",
+        ),
     }
-    return creature, MonsterAI(states, "INCANTATION")
+    return creature, MonsterAI(states, "INCANTATION_MOVE")
 
 
 # ---- DampCultist (HP 51-53 / 52-54 asc) ----
@@ -180,10 +252,20 @@ def create_damp_cultist(rng: Rng) -> tuple[Creature, MonsterAI]:
         _deal_damage_to_player(combat, creature, dark_strike_dmg)
 
     states: dict[str, MonsterState] = {
-        "INCANTATION": MoveState("INCANTATION", incantation, [buff_intent()], follow_up_id="DARK_STRIKE"),
-        "DARK_STRIKE": MoveState("DARK_STRIKE", dark_strike, [attack_intent(dark_strike_dmg)], follow_up_id="DARK_STRIKE"),
+        "INCANTATION_MOVE": MoveState(
+            "INCANTATION_MOVE",
+            incantation,
+            [buff_intent()],
+            follow_up_id="DARK_STRIKE_MOVE",
+        ),
+        "DARK_STRIKE_MOVE": MoveState(
+            "DARK_STRIKE_MOVE",
+            dark_strike,
+            [attack_intent(dark_strike_dmg)],
+            follow_up_id="DARK_STRIKE_MOVE",
+        ),
     }
-    return creature, MonsterAI(states, "INCANTATION")
+    return creature, MonsterAI(states, "INCANTATION_MOVE")
 
 
 # ---- FossilStalker (HP 51-53 / 54-56 asc) ----
@@ -206,35 +288,54 @@ def create_fossil_stalker(rng: Rng) -> tuple[Creature, MonsterAI]:
         _deal_damage_to_player(combat, creature, lash_dmg, hits=2)
 
     rand = RandomBranchState("RAND")
-    rand.add_branch("LATCH", weight=2.0)
-    rand.add_branch("TACKLE", weight=2.0)
-    rand.add_branch("LASH", weight=2.0)
+    rand.add_branch("LATCH_MOVE", weight=2.0)
+    rand.add_branch("TACKLE_MOVE", weight=2.0)
+    rand.add_branch("LASH_MOVE", weight=2.0)
 
     states: dict[str, MonsterState] = {
         "RAND": rand,
-        "TACKLE": MoveState("TACKLE", tackle, [attack_intent(tackle_dmg), debuff_intent()], follow_up_id="RAND"),
-        "LATCH": MoveState("LATCH", latch, [attack_intent(latch_dmg)], follow_up_id="RAND"),
-        "LASH": MoveState("LASH", lash, [multi_attack_intent(lash_dmg, 2)], follow_up_id="RAND"),
+        "TACKLE_MOVE": MoveState(
+            "TACKLE_MOVE",
+            tackle,
+            [attack_intent(tackle_dmg), debuff_intent()],
+            follow_up_id="RAND",
+        ),
+        "LATCH_MOVE": MoveState("LATCH_MOVE", latch, [attack_intent(latch_dmg)], follow_up_id="RAND"),
+        "LASH_MOVE": MoveState("LASH_MOVE", lash, [multi_attack_intent(lash_dmg, 2)], follow_up_id="RAND"),
     }
 
     creature.apply_power(PowerId.SUCK, 3)
-    return creature, MonsterAI(states, "LATCH")
+    return creature, MonsterAI(states, "LATCH_MOVE")
 
 
 # ---- GremlinMerc (HP 47-49 / 51-53 asc) + SneakyGremlin + FatGremlin ----
 
 def create_sneaky_gremlin(rng: Rng) -> tuple[Creature, MonsterAI]:
-    hp = rng.next_int(9, 12)
+    hp = rng.next_int(10, 14)
     creature = Creature(max_hp=hp, monster_id="SNEAKY_GREMLIN")
-    stab_dmg = 8
+    tackle_dmg = 9
 
-    def stab(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, stab_dmg)
+    def spawned(combat: CombatState) -> None:
+        pass
+
+    def tackle(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, tackle_dmg)
 
     states: dict[str, MonsterState] = {
-        "STAB": MoveState("STAB", stab, [attack_intent(stab_dmg)], follow_up_id="STAB"),
+        "SPAWNED_MOVE": MoveState(
+            "SPAWNED_MOVE",
+            spawned,
+            [Intent(IntentType.STUN)],
+            follow_up_id="TACKLE_MOVE",
+        ),
+        "TACKLE_MOVE": MoveState(
+            "TACKLE_MOVE",
+            tackle,
+            [attack_intent(tackle_dmg)],
+            follow_up_id="TACKLE_MOVE",
+        ),
     }
-    return creature, MonsterAI(states, "STAB")
+    return creature, MonsterAI(states, "SPAWNED_MOVE")
 
 
 def create_fat_gremlin(rng: Rng) -> tuple[Creature, MonsterAI]:
@@ -248,10 +349,20 @@ def create_fat_gremlin(rng: Rng) -> tuple[Creature, MonsterAI]:
         combat.escape_creature(creature)
 
     states: dict[str, MonsterState] = {
-        "SPAWNED": MoveState("SPAWNED", spawned, [Intent(IntentType.STUN)], follow_up_id="FLEE"),
-        "FLEE": MoveState("FLEE", flee, [Intent(IntentType.ESCAPE)], follow_up_id="FLEE"),
+        "SPAWNED_MOVE": MoveState(
+            "SPAWNED_MOVE",
+            spawned,
+            [Intent(IntentType.STUN)],
+            follow_up_id="FLEE_MOVE",
+        ),
+        "FLEE_MOVE": MoveState(
+            "FLEE_MOVE",
+            flee,
+            [Intent(IntentType.ESCAPE)],
+            follow_up_id="FLEE_MOVE",
+        ),
     }
-    return creature, MonsterAI(states, "SPAWNED")
+    return creature, MonsterAI(states, "SPAWNED_MOVE")
 
 
 def create_gremlin_merc(rng: Rng) -> tuple[Creature, MonsterAI]:
@@ -273,38 +384,90 @@ def create_gremlin_merc(rng: Rng) -> tuple[Creature, MonsterAI]:
         creature.apply_power(PowerId.STRENGTH, 2)
 
     states: dict[str, MonsterState] = {
-        "GIMME": MoveState("GIMME", gimme, [multi_attack_intent(gimme_dmg, 2)], follow_up_id="DOUBLE_SMASH"),
-        "DOUBLE_SMASH": MoveState("DOUBLE_SMASH", double_smash, [multi_attack_intent(double_smash_dmg, 2), debuff_intent()], follow_up_id="HEHE"),
-        "HEHE": MoveState("HEHE", hehe, [attack_intent(hehe_dmg), buff_intent()], follow_up_id="GIMME"),
+        "GIMME_MOVE": MoveState(
+            "GIMME_MOVE",
+            gimme,
+            [multi_attack_intent(gimme_dmg, 2)],
+            follow_up_id="DOUBLE_SMASH_MOVE",
+        ),
+        "DOUBLE_SMASH_MOVE": MoveState(
+            "DOUBLE_SMASH_MOVE",
+            double_smash,
+            [multi_attack_intent(double_smash_dmg, 2), debuff_intent()],
+            follow_up_id="HEHE_MOVE",
+        ),
+        "HEHE_MOVE": MoveState(
+            "HEHE_MOVE",
+            hehe,
+            [attack_intent(hehe_dmg), buff_intent()],
+            follow_up_id="GIMME_MOVE",
+        ),
     }
 
     creature.apply_power(PowerId.SURPRISE, 1)
     creature.apply_power(PowerId.THIEVERY, 20)
-    return creature, MonsterAI(states, "GIMME")
+    return creature, MonsterAI(states, "GIMME_MOVE")
 
 
-# ---- HauntedShip (HP 58-62 / 61-65 asc) ----
+# ---- HauntedShip (HP 63 / 67 asc) ----
 
 def create_haunted_ship(rng: Rng) -> tuple[Creature, MonsterAI]:
-    hp = rng.next_int(58, 62)
+    hp = 63
     creature = Creature(max_hp=hp, monster_id="HAUNTED_SHIP")
-    broadside_dmg = 7
-    ramming_speed_dmg = 18
+    ramming_speed_dmg = 10
+    swipe_dmg = 13
+    stomp_dmg = 4
 
-    def broadside(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, broadside_dmg, hits=2)
+    def _odd_round_weight() -> float:
+        combat = creature.combat_state
+        return 1.0 if combat is None or combat.round_number % 2 != 0 else 0.0
+
+    def _even_round_weight() -> float:
+        combat = creature.combat_state
+        return 1.0 if combat is not None and combat.round_number % 2 == 0 else 0.0
 
     def ramming_speed(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, ramming_speed_dmg)
+        combat.add_status_cards_to_discard(combat.primary_player, "WOUND", 2)
+
+    def swipe(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, swipe_dmg)
+
+    def stomp(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, stomp_dmg, hits=3)
+
+    def haunt(combat: CombatState) -> None:
+        combat.apply_power_to(combat.primary_player, PowerId.WEAK, 2, applier=creature)
+        combat.apply_power_to(combat.primary_player, PowerId.FRAIL, 2, applier=creature)
+        combat.apply_power_to(combat.primary_player, PowerId.VULNERABLE, 2, applier=creature)
+
+    rand = RandomBranchState("RAND")
+    rand.add_branch("RAMMING_SPEED_MOVE", MoveRepeatType.CANNOT_REPEAT, weight=_odd_round_weight)
+    rand.add_branch("SWIPE_MOVE", MoveRepeatType.CANNOT_REPEAT, weight=_odd_round_weight)
+    rand.add_branch("STOMP_MOVE", MoveRepeatType.CANNOT_REPEAT, weight=_odd_round_weight)
+    rand.add_branch("HAUNT_MOVE", MoveRepeatType.USE_ONLY_ONCE, weight=_even_round_weight)
 
     states: dict[str, MonsterState] = {
-        "BROADSIDE": MoveState("BROADSIDE", broadside, [multi_attack_intent(broadside_dmg, 2)], follow_up_id="RAMMING_SPEED"),
-        "RAMMING_SPEED": MoveState("RAMMING_SPEED", ramming_speed, [attack_intent(ramming_speed_dmg)], follow_up_id="BROADSIDE"),
+        "RAND": rand,
+        "RAMMING_SPEED_MOVE": MoveState(
+            "RAMMING_SPEED_MOVE",
+            ramming_speed,
+            [attack_intent(ramming_speed_dmg), status_intent()],
+            follow_up_id="RAND",
+        ),
+        "SWIPE_MOVE": MoveState("SWIPE_MOVE", swipe, [attack_intent(swipe_dmg)], follow_up_id="RAND"),
+        "STOMP_MOVE": MoveState(
+            "STOMP_MOVE",
+            stomp,
+            [multi_attack_intent(stomp_dmg, 3)],
+            follow_up_id="RAND",
+        ),
+        "HAUNT_MOVE": MoveState("HAUNT_MOVE", haunt, [debuff_intent()], follow_up_id="RAND"),
     }
-    return creature, MonsterAI(states, "BROADSIDE")
+    return creature, MonsterAI(states, "RAMMING_SPEED_MOVE")
 
 
-# ---- LivingFog (HP 70-74 / 73-77 asc) + GasBomb ----
+# ---- LivingFog (HP 80 / 82 asc) + GasBomb ----
 
 def create_gas_bomb(rng: Rng) -> tuple[Creature, MonsterAI]:
     hp = 10
@@ -313,33 +476,63 @@ def create_gas_bomb(rng: Rng) -> tuple[Creature, MonsterAI]:
 
     def explode(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, explode_dmg)
-        creature.lose_hp(creature.current_hp)  # Kill self
+        combat.kill_creature(creature)
 
     states: dict[str, MonsterState] = {
-        "EXPLODE": MoveState("EXPLODE", explode, [Intent(IntentType.DEATH_BLOW)], follow_up_id="EXPLODE"),
+        "EXPLODE_MOVE": MoveState(
+            "EXPLODE_MOVE",
+            explode,
+            [Intent(IntentType.DEATH_BLOW, damage=explode_dmg)],
+            follow_up_id="EXPLODE_MOVE",
+        ),
     }
     creature.apply_power(PowerId.MINION, 1)
-    return creature, MonsterAI(states, "EXPLODE")
+    return creature, MonsterAI(states, "EXPLODE_MOVE")
 
 
 def create_living_fog(rng: Rng) -> tuple[Creature, MonsterAI]:
-    hp = rng.next_int(70, 74)
+    hp = 80
     creature = Creature(max_hp=hp, monster_id="LIVING_FOG")
-    engulf_dmg = 10
+    advanced_gas_dmg = 8
+    bloat_dmg = 5
+    super_gas_blast_dmg = 8
+    state = {"bloat_amount": 1}
 
-    def spawn(combat: CombatState) -> None:
-        bomb, bomb_ai = create_gas_bomb(rng)
-        combat.add_enemy(bomb, bomb_ai)
+    def advanced_gas(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, advanced_gas_dmg)
+        combat.apply_power_to(combat.primary_player, PowerId.SMOGGY, 1, applier=creature)
 
-    def engulf(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, engulf_dmg)
-        combat.apply_power_to(combat.primary_player, PowerId.WEAK, 1)
+    def bloat(combat: CombatState) -> None:
+        for _ in range(state["bloat_amount"]):
+            bomb, bomb_ai = create_gas_bomb(rng)
+            combat.add_enemy(bomb, bomb_ai)
+        state["bloat_amount"] = min(state["bloat_amount"] + 1, 5)
+        _deal_damage_to_player(combat, creature, bloat_dmg)
+
+    def super_gas_blast(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, super_gas_blast_dmg)
 
     states: dict[str, MonsterState] = {
-        "SPAWN": MoveState("SPAWN", spawn, [Intent(IntentType.SUMMON)], follow_up_id="ENGULF"),
-        "ENGULF": MoveState("ENGULF", engulf, [attack_intent(engulf_dmg), debuff_intent()], follow_up_id="SPAWN"),
+        "ADVANCED_GAS_MOVE": MoveState(
+            "ADVANCED_GAS_MOVE",
+            advanced_gas,
+            [attack_intent(advanced_gas_dmg), Intent(IntentType.CARD_DEBUFF)],
+            follow_up_id="BLOAT_MOVE",
+        ),
+        "BLOAT_MOVE": MoveState(
+            "BLOAT_MOVE",
+            bloat,
+            [attack_intent(bloat_dmg), Intent(IntentType.SUMMON)],
+            follow_up_id="SUPER_GAS_BLAST_MOVE",
+        ),
+        "SUPER_GAS_BLAST_MOVE": MoveState(
+            "SUPER_GAS_BLAST_MOVE",
+            super_gas_blast,
+            [attack_intent(super_gas_blast_dmg)],
+            follow_up_id="BLOAT_MOVE",
+        ),
     }
-    return creature, MonsterAI(states, "SPAWN")
+    return creature, MonsterAI(states, "ADVANCED_GAS_MOVE")
 
 
 # ---- PunchConstruct (HP 55 / 60 asc) ----
@@ -371,212 +564,473 @@ def create_punch_construct(
         combat.apply_power_to(combat.primary_player, PowerId.WEAK, 1)
 
     states: dict[str, MonsterState] = {
-        "READY": MoveState("READY", ready, [defend_intent()], follow_up_id="STRONG_PUNCH"),
-        "STRONG_PUNCH": MoveState("STRONG_PUNCH", strong_punch, [attack_intent(strong_punch_dmg)], follow_up_id="FAST_PUNCH"),
-        "FAST_PUNCH": MoveState("FAST_PUNCH", fast_punch, [multi_attack_intent(fast_punch_dmg, 2), debuff_intent()], follow_up_id="READY"),
+        "READY_MOVE": MoveState(
+            "READY_MOVE",
+            ready,
+            [defend_intent()],
+            follow_up_id="STRONG_PUNCH_MOVE",
+        ),
+        "STRONG_PUNCH_MOVE": MoveState(
+            "STRONG_PUNCH_MOVE",
+            strong_punch,
+            [attack_intent(strong_punch_dmg)],
+            follow_up_id="FAST_PUNCH_MOVE",
+        ),
+        "FAST_PUNCH_MOVE": MoveState(
+            "FAST_PUNCH_MOVE",
+            fast_punch,
+            [multi_attack_intent(fast_punch_dmg, 2), debuff_intent()],
+            follow_up_id="READY_MOVE",
+        ),
     }
-    return creature, MonsterAI(states, "STRONG_PUNCH" if starts_with_strong_punch else "READY")
+    initial = "STRONG_PUNCH_MOVE" if starts_with_strong_punch else "READY_MOVE"
+    return creature, MonsterAI(states, initial)
 
 
-# ---- SewerClam (HP 50-54 / 53-57 asc) ----
+# ---- SewerClam (HP 56 / 58 asc) ----
 
 def create_sewer_clam(rng: Rng) -> tuple[Creature, MonsterAI]:
-    hp = rng.next_int(50, 54)
+    hp = 56
     creature = Creature(max_hp=hp, monster_id="SEWER_CLAM")
-    snap_dmg = 8
-    pearl_spit_dmg = 5
-    shell_block = 10
+    jet_dmg = 10
+    pressurize_str = 4
 
-    def shell(combat: CombatState) -> None:
-        _gain_block(creature, shell_block)
+    def pressurize(combat: CombatState) -> None:
+        creature.apply_power(PowerId.STRENGTH, pressurize_str, applier=creature)
 
-    def snap(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, snap_dmg)
-
-    def pearl_spit(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, pearl_spit_dmg)
-        combat.apply_power_to(combat.primary_player, PowerId.WEAK, 1)
+    def jet(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, jet_dmg)
 
     states: dict[str, MonsterState] = {
-        "SHELL": MoveState("SHELL", shell, [defend_intent()], follow_up_id="SNAP"),
-        "SNAP": MoveState("SNAP", snap, [attack_intent(snap_dmg)], follow_up_id="PEARL_SPIT"),
-        "PEARL_SPIT": MoveState("PEARL_SPIT", pearl_spit, [attack_intent(pearl_spit_dmg), debuff_intent()], follow_up_id="SHELL"),
+        "PRESSURIZE_MOVE": MoveState(
+            "PRESSURIZE_MOVE",
+            pressurize,
+            [buff_intent()],
+            follow_up_id="JET_MOVE",
+        ),
+        "JET_MOVE": MoveState(
+            "JET_MOVE",
+            jet,
+            [attack_intent(jet_dmg)],
+            follow_up_id="PRESSURIZE_MOVE",
+        ),
     }
-    return creature, MonsterAI(states, "SHELL")
+    creature.apply_power(PowerId.PLATING, 8)
+    return creature, MonsterAI(states, "JET_MOVE")
 
 
-# ---- TwoTailedRat (HP 25-28 / 27-30 asc) ----
+# ---- TwoTailedRat (HP 17-21 / 18-22 asc) ----
 
-def create_two_tailed_rat(rng: Rng, slot: str = "first") -> tuple[Creature, MonsterAI]:
-    hp = rng.next_int(25, 28)
+def create_two_tailed_rat(rng: Rng, starter_move_idx: int = -1) -> tuple[Creature, MonsterAI]:
+    hp = rng.next_int(17, 21)
     creature = Creature(max_hp=hp, monster_id="TWO_TAILED_RAT")
-    gnaw_dmg = 6
-    tail_whip_dmg = 4
+    scratch_dmg = 8
+    disease_bite_dmg = 6
+    state = {
+        "turns_until_summonable": 2,
+        "call_for_backup_count": 0,
+    }
 
-    def gnaw(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, gnaw_dmg)
+    def can_summon(combat: CombatState | None = None) -> bool:
+        combat = combat or creature.combat_state
+        if combat is None:
+            return False
+        if state["turns_until_summonable"] > 0:
+            return False
+        if state["call_for_backup_count"] >= 3:
+            return False
+        alive_rats = [
+            enemy
+            for enemy in combat.enemies
+            if enemy.monster_id == "TWO_TAILED_RAT" and enemy.is_alive
+        ]
+        if len(alive_rats) >= 5:
+            return False
+        for enemy in alive_rats:
+            if enemy is creature:
+                continue
+            ai = combat.enemy_ais.get(enemy.combat_id)
+            if ai is not None and ai.current_move.state_id == "CALL_FOR_BACKUP_MOVE":
+                return False
+        return True
 
-    def tail_whip(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, tail_whip_dmg, hits=2)
+    def _attack_performed() -> None:
+        state["turns_until_summonable"] -= 1
+
+    def scratch(combat: CombatState) -> None:
+        _attack_performed()
+        _deal_damage_to_player(combat, creature, scratch_dmg)
+
+    def disease_bite(combat: CombatState) -> None:
+        _attack_performed()
+        _deal_damage_to_player(combat, creature, disease_bite_dmg)
+
+    def screech(combat: CombatState) -> None:
+        _attack_performed()
+        combat.apply_power_to(combat.primary_player, PowerId.FRAIL, 1, applier=creature)
+
+    def call_for_backup(combat: CombatState) -> None:
+        if can_summon(combat):
+            backup, backup_ai = create_two_tailed_rat(rng)
+            combat.add_enemy(backup, backup_ai)
+        rat_ais = [
+            combat.enemy_ais[enemy.combat_id]
+            for enemy in combat.enemies
+            if enemy.monster_id == "TWO_TAILED_RAT" and enemy.combat_id in combat.enemy_ais
+        ]
+        max_count = max(
+            getattr(ai, "_two_tailed_rat_state", {}).get("call_for_backup_count", 0) + 1
+            for ai in rat_ais
+        )
+        for ai in rat_ais:
+            rat_state = getattr(ai, "_two_tailed_rat_state", None)
+            if rat_state is not None:
+                rat_state["call_for_backup_count"] = max_count
 
     rand = RandomBranchState("RAND")
-    rand.add_branch("GNAW", MoveRepeatType.CANNOT_REPEAT)
-    rand.add_branch("TAIL_WHIP", MoveRepeatType.CANNOT_REPEAT)
+    rand.add_branch(
+        "SCRATCH_MOVE",
+        MoveRepeatType.CANNOT_REPEAT,
+        weight=lambda: 1.0 / 12.0 if can_summon() else 1.0,
+    )
+    rand.add_branch(
+        "DISEASE_BITE_MOVE",
+        MoveRepeatType.CANNOT_REPEAT,
+        weight=lambda: 1.0 / 12.0 if can_summon() else 1.0,
+    )
+    rand.add_branch(
+        "SCREECH_MOVE",
+        MoveRepeatType.CANNOT_REPEAT,
+        weight=lambda: 1.0 / 12.0 if can_summon() else 3.0,
+    )
+    rand.add_branch(
+        "CALL_FOR_BACKUP_MOVE",
+        MoveRepeatType.USE_ONLY_ONCE,
+        weight=lambda: 0.75 if can_summon() else 0.0,
+    )
 
     states: dict[str, MonsterState] = {
         "RAND": rand,
-        "GNAW": MoveState("GNAW", gnaw, [attack_intent(gnaw_dmg)], follow_up_id="TAIL_WHIP"),
-        "TAIL_WHIP": MoveState("TAIL_WHIP", tail_whip, [multi_attack_intent(tail_whip_dmg, 2)], follow_up_id="RAND"),
+        "SCRATCH_MOVE": MoveState(
+            "SCRATCH_MOVE",
+            scratch,
+            [attack_intent(scratch_dmg)],
+            follow_up_id="RAND",
+        ),
+        "DISEASE_BITE_MOVE": MoveState(
+            "DISEASE_BITE_MOVE",
+            disease_bite,
+            [attack_intent(disease_bite_dmg)],
+            follow_up_id="RAND",
+        ),
+        "SCREECH_MOVE": MoveState(
+            "SCREECH_MOVE",
+            screech,
+            [debuff_intent()],
+            follow_up_id="RAND",
+        ),
+        "CALL_FOR_BACKUP_MOVE": MoveState(
+            "CALL_FOR_BACKUP_MOVE",
+            call_for_backup,
+            [Intent(IntentType.SUMMON)],
+            follow_up_id="RAND",
+        ),
     }
 
-    initial = "GNAW" if slot == "first" else ("TAIL_WHIP" if slot == "second" else "RAND")
-    return creature, MonsterAI(states, initial)
+    starter_map = {
+        0: "SCRATCH_MOVE",
+        1: "DISEASE_BITE_MOVE",
+        2: "SCREECH_MOVE",
+    }
+    initial = starter_map.get(starter_move_idx, "RAND")
+    ai = MonsterAI(states, initial, rng)
+    ai._two_tailed_rat_state = state  # noqa: SLF001
+    return creature, ai
 
 
 # ========================================================================
 # ELITE ENCOUNTERS
 # ========================================================================
 
-# ---- PhantasmalGardener (HP 60-65 / 63-68 asc) ----
+# ---- PhantasmalGardener (HP 28-32 / 29-33 asc) ----
 
-def create_phantasmal_gardener(rng: Rng) -> tuple[Creature, MonsterAI]:
-    hp = rng.next_int(60, 65)
+def create_phantasmal_gardener(rng: Rng, slot: str = "first") -> tuple[Creature, MonsterAI]:
+    hp = rng.next_int(28, 32)
     creature = Creature(max_hp=hp, monster_id="PHANTASMAL_GARDENER")
-    prune_dmg = 10
-    uproot_dmg = 16
+    bite_dmg = 5
+    lash_dmg = 7
+    flail_dmg = 1
 
-    def prune(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, prune_dmg)
-        combat.apply_power_to(combat.primary_player, PowerId.VULNERABLE, 1)
-
-    def uproot(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, uproot_dmg)
-
-    rand = RandomBranchState("RAND")
-    rand.add_branch("PRUNE", MoveRepeatType.CANNOT_REPEAT)
-    rand.add_branch("UPROOT", MoveRepeatType.CANNOT_REPEAT)
-
-    states: dict[str, MonsterState] = {
-        "RAND": rand,
-        "PRUNE": MoveState("PRUNE", prune, [attack_intent(prune_dmg), debuff_intent()], follow_up_id="RAND"),
-        "UPROOT": MoveState("UPROOT", uproot, [attack_intent(uproot_dmg)], follow_up_id="RAND"),
-    }
-    return creature, MonsterAI(states, "RAND")
-
-
-# ---- SkulkingColony (HP 140 / 150 asc) ----
-
-def create_skulking_colony(rng: Rng) -> tuple[Creature, MonsterAI]:
-    hp = 140
-    creature = Creature(max_hp=hp, monster_id="SKULKING_COLONY")
-    lash_dmg = 6
-    devour_dmg = 20
-
-    def skulk(combat: CombatState) -> None:
-        combat.apply_power_to(combat.primary_player, PowerId.WEAK, 1)
-        combat.apply_power_to(combat.primary_player, PowerId.FRAIL, 1)
+    def bite(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, bite_dmg)
 
     def lash(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, lash_dmg, hits=3)
+        _deal_damage_to_player(combat, creature, lash_dmg)
 
-    def devour(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, devour_dmg)
+    def flail(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, flail_dmg, hits=3)
+
+    def enlarge(combat: CombatState) -> None:
+        creature.apply_power(PowerId.STRENGTH, 2, applier=creature)
+
+    init = ConditionalBranchState("INIT_MOVE")
+    init.add_branch(lambda: slot == "first", "FLAIL_MOVE")
+    init.add_branch(lambda: slot == "second", "BITE_MOVE")
+    init.add_branch(lambda: slot == "third", "LASH_MOVE")
+    init.add_branch(lambda: slot == "fourth", "ENLARGE_MOVE")
 
     states: dict[str, MonsterState] = {
-        "SKULK": MoveState("SKULK", skulk, [debuff_intent()], follow_up_id="LASH"),
-        "LASH": MoveState("LASH", lash, [multi_attack_intent(lash_dmg, 3)], follow_up_id="DEVOUR"),
-        "DEVOUR": MoveState("DEVOUR", devour, [attack_intent(devour_dmg)], follow_up_id="SKULK"),
+        "INIT_MOVE": init,
+        "BITE_MOVE": MoveState("BITE_MOVE", bite, [attack_intent(bite_dmg)], follow_up_id="LASH_MOVE"),
+        "LASH_MOVE": MoveState("LASH_MOVE", lash, [attack_intent(lash_dmg)], follow_up_id="FLAIL_MOVE"),
+        "FLAIL_MOVE": MoveState(
+            "FLAIL_MOVE",
+            flail,
+            [multi_attack_intent(flail_dmg, 3)],
+            follow_up_id="ENLARGE_MOVE",
+        ),
+        "ENLARGE_MOVE": MoveState("ENLARGE_MOVE", enlarge, [buff_intent()], follow_up_id="BITE_MOVE"),
     }
-    return creature, MonsterAI(states, "SKULK")
+    creature.apply_power(PowerId.SKITTISH, 6)
+    return creature, MonsterAI(states, "INIT_MOVE", rng)
 
 
-# ---- TerrorEel (HP 130 / 140 asc) ----
+# ---- SkulkingColony (HP 79 / 84 asc) ----
+
+def create_skulking_colony(rng: Rng) -> tuple[Creature, MonsterAI]:
+    hp = 79
+    creature = Creature(max_hp=hp, monster_id="SKULKING_COLONY")
+    super_crab_dmg = 6
+    zoom_dmg = 16
+    smash_dmg = 9
+    inertia_block = 10
+
+    def inertia(combat: CombatState) -> None:
+        _gain_block(creature, inertia_block)
+        creature.apply_power(PowerId.STRENGTH, 3, applier=creature)
+
+    def zoom(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, zoom_dmg)
+
+    def super_crab(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, super_crab_dmg, hits=2)
+
+    def smash(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, smash_dmg)
+        combat.add_status_cards_to_discard(combat.primary_player, "DAZED", 4)
+
+    states: dict[str, MonsterState] = {
+        "INERTIA_MOVE": MoveState(
+            "INERTIA_MOVE",
+            inertia,
+            [defend_intent(), buff_intent()],
+            follow_up_id="SUPER_CRAB_MOVE",
+        ),
+        "ZOOM_MOVE": MoveState("ZOOM_MOVE", zoom, [attack_intent(zoom_dmg)], follow_up_id="INERTIA_MOVE"),
+        "SUPER_CRAB_MOVE": MoveState(
+            "SUPER_CRAB_MOVE",
+            super_crab,
+            [multi_attack_intent(super_crab_dmg, 2)],
+            follow_up_id="SMASH_MOVE",
+        ),
+        "SMASH_MOVE": MoveState(
+            "SMASH_MOVE",
+            smash,
+            [attack_intent(smash_dmg), status_intent()],
+            follow_up_id="ZOOM_MOVE",
+        ),
+    }
+    creature.apply_power(PowerId.HARDENED_SHELL, 20)
+    return creature, MonsterAI(states, "SMASH_MOVE")
+
+
+# ---- TerrorEel (HP 140 / 150 asc) ----
 
 def create_terror_eel(rng: Rng) -> tuple[Creature, MonsterAI]:
-    hp = 130
+    hp = 140
     creature = Creature(max_hp=hp, monster_id="TERROR_EEL")
-    shock_dmg = 12
-    coil_dmg = 8
-    surge_dmg = 25
+    crash_dmg = 17
+    thrash_dmg = 3
 
-    def shock(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, shock_dmg)
-        combat.apply_power_to(combat.primary_player, PowerId.VULNERABLE, 1)
+    def crash(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, crash_dmg)
 
-    def coil(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, coil_dmg, hits=2)
+    def thrash(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, thrash_dmg, hits=3)
+        creature.apply_power(PowerId.VIGOR, 7, applier=creature)
 
-    def surge(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, surge_dmg)
+    def stun(combat: CombatState) -> None:
+        pass
+
+    def terror(combat: CombatState) -> None:
+        combat.apply_power_to(combat.primary_player, PowerId.VULNERABLE, 99, applier=creature)
 
     states: dict[str, MonsterState] = {
-        "SHOCK": MoveState("SHOCK", shock, [attack_intent(shock_dmg), debuff_intent()], follow_up_id="COIL"),
-        "COIL": MoveState("COIL", coil, [multi_attack_intent(coil_dmg, 2)], follow_up_id="SURGE"),
-        "SURGE": MoveState("SURGE", surge, [attack_intent(surge_dmg)], follow_up_id="SHOCK"),
+        "CRASH_MOVE": MoveState("CRASH_MOVE", crash, [attack_intent(crash_dmg)], follow_up_id="ThrashMove"),
+        "ThrashMove": MoveState(
+            "ThrashMove",
+            thrash,
+            [multi_attack_intent(thrash_dmg, 3), buff_intent()],
+            follow_up_id="CRASH_MOVE",
+        ),
+        "STUN_MOVE": MoveState("STUN_MOVE", stun, [Intent(IntentType.STUN)], follow_up_id="TERROR_MOVE"),
+        "TERROR_MOVE": MoveState("TERROR_MOVE", terror, [debuff_intent()], follow_up_id="CRASH_MOVE"),
     }
-    return creature, MonsterAI(states, "SHOCK")
+    creature.apply_power(PowerId.SHRIEK, 70)
+    return creature, MonsterAI(states, "CRASH_MOVE")
 
 
 # ========================================================================
 # BOSS ENCOUNTERS
 # ========================================================================
 
-# ---- WaterfallGiant (HP 310 / 330 asc) ----
+# ---- WaterfallGiant (HP 250 / 260 asc) ----
 
 def create_waterfall_giant(rng: Rng) -> tuple[Creature, MonsterAI]:
-    hp = 310
+    hp = 250
     creature = Creature(max_hp=hp, monster_id="WATERFALL_GIANT")
-    slam_dmg = 22
-    crush_dmg = 14
-    torrent_dmg = 35
+    stomp_dmg = 15
+    ram_dmg = 10
+    pressure_up_dmg = 13
+    pressurize_amount = 15
+    base_pressure_gun_dmg = 20
+    pressure_gun_increase = 5
+    siphon_heal = 15
 
-    def roar(combat: CombatState) -> None:
-        creature.apply_power(PowerId.STRENGTH, 3)
+    _state = {
+        "current_pressure_gun_damage": base_pressure_gun_dmg,
+        "steam_eruption_damage": 0,
+    }
+
+    def _gain_pressure(amount: int) -> None:
+        creature.apply_power(PowerId.STEAM_ERUPTION, amount)
+
+    def pressurize(combat: CombatState) -> None:
+        _gain_pressure(pressurize_amount)
+
+    def stomp(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, stomp_dmg)
         combat.apply_power_to(combat.primary_player, PowerId.WEAK, 1)
-        combat.apply_power_to(combat.primary_player, PowerId.VULNERABLE, 1)
+        _gain_pressure(3)
 
-    def slam(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, slam_dmg)
+    def ram(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, ram_dmg)
+        _gain_pressure(3)
 
-    def crush(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, crush_dmg, hits=2)
+    def siphon(combat: CombatState) -> None:
+        creature.heal(siphon_heal * len(combat.combat_player_states))
+        _gain_pressure(3)
 
-    def torrent(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, torrent_dmg)
+    def pressure_gun(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, _state["current_pressure_gun_damage"])
+        _state["current_pressure_gun_damage"] += pressure_gun_increase
+        _gain_pressure(3)
+
+    def pressure_up(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, pressure_up_dmg)
+        _gain_pressure(3)
+
+    def about_to_blow(combat: CombatState) -> None:
+        _state["steam_eruption_damage"] = creature.get_power_amount(PowerId.STEAM_ERUPTION)
+        creature.powers.pop(PowerId.STEAM_ERUPTION, None)
+
+    def explode(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, _state["steam_eruption_damage"])
+        combat.kill_creature(creature)
 
     states: dict[str, MonsterState] = {
-        "ROAR": MoveState("ROAR", roar, [buff_intent(), debuff_intent()], follow_up_id="SLAM"),
-        "SLAM": MoveState("SLAM", slam, [attack_intent(slam_dmg)], follow_up_id="CRUSH"),
-        "CRUSH": MoveState("CRUSH", crush, [multi_attack_intent(crush_dmg, 2)], follow_up_id="TORRENT"),
-        "TORRENT": MoveState("TORRENT", torrent, [attack_intent(torrent_dmg)], follow_up_id="ROAR"),
+        "PRESSURIZE_MOVE": MoveState("PRESSURIZE_MOVE", pressurize, [buff_intent()], follow_up_id="STOMP_MOVE"),
+        "STOMP_MOVE": MoveState(
+            "STOMP_MOVE",
+            stomp,
+            [attack_intent(stomp_dmg), debuff_intent(), buff_intent()],
+            follow_up_id="RAM_MOVE",
+        ),
+        "RAM_MOVE": MoveState("RAM_MOVE", ram, [attack_intent(ram_dmg), buff_intent()], follow_up_id="SIPHON_MOVE"),
+        "SIPHON_MOVE": MoveState(
+            "SIPHON_MOVE",
+            siphon,
+            [Intent(IntentType.HEAL), buff_intent()],
+            follow_up_id="PRESSURE_GUN_MOVE",
+        ),
+        "PRESSURE_GUN_MOVE": MoveState(
+            "PRESSURE_GUN_MOVE",
+            pressure_gun,
+            [attack_intent(base_pressure_gun_dmg), buff_intent()],
+            follow_up_id="PRESSURE_UP_MOVE",
+        ),
+        "PRESSURE_UP_MOVE": MoveState(
+            "PRESSURE_UP_MOVE",
+            pressure_up,
+            [attack_intent(pressure_up_dmg), buff_intent()],
+            follow_up_id="STOMP_MOVE",
+        ),
+        "ABOUT_TO_BLOW_MOVE": MoveState(
+            "ABOUT_TO_BLOW_MOVE",
+            about_to_blow,
+            [Intent(IntentType.STUN)],
+            follow_up_id="EXPLODE_MOVE",
+            must_perform_once=True,
+        ),
+        "EXPLODE_MOVE": MoveState("EXPLODE_MOVE", explode, [Intent(IntentType.DEATH_BLOW)], follow_up_id="EXPLODE_MOVE"),
     }
-    return creature, MonsterAI(states, "ROAR")
+    return creature, MonsterAI(states, "PRESSURIZE_MOVE")
 
 
-# ---- SoulFysh (HP 270 / 290 asc) ----
+# ---- SoulFysh (HP 211 / 221 asc) ----
 
 def create_soul_fysh(rng: Rng) -> tuple[Creature, MonsterAI]:
-    hp = 270
+    hp = 211
     creature = Creature(max_hp=hp, monster_id="SOUL_FYSH")
-    chomp_dmg = 16
-    soul_drain_dmg = 8
-    deep_dive_dmg = 30
+    de_gas_dmg = 16
+    scream_dmg = 11
+    gaze_dmg = 7
 
-    def chomp(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, chomp_dmg)
+    def beckon(combat: CombatState) -> None:
+        from sts2_env.cards.status import make_beckon
 
-    def soul_drain(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, soul_drain_dmg, hits=3)
+        combat.add_generated_card_to_creature_draw_pile(
+            combat.primary_player,
+            make_beckon(),
+            added_by_player=False,
+            random_position=True,
+        )
+        combat.add_generated_card_to_creature_discard(combat.primary_player, make_beckon(), added_by_player=False)
 
-    def deep_dive(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, deep_dive_dmg)
+    def de_gas(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, de_gas_dmg)
+
+    def gaze(combat: CombatState) -> None:
+        from sts2_env.cards.status import make_beckon
+
+        _deal_damage_to_player(combat, creature, gaze_dmg)
+        combat.add_generated_card_to_creature_discard(combat.primary_player, make_beckon(), added_by_player=False)
+
+    def fade(combat: CombatState) -> None:
+        creature.apply_power(PowerId.INTANGIBLE, 2, applier=creature)
+
+    def scream(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, scream_dmg)
+        combat.apply_power_to(combat.primary_player, PowerId.VULNERABLE, 3, applier=creature)
 
     states: dict[str, MonsterState] = {
-        "CHOMP": MoveState("CHOMP", chomp, [attack_intent(chomp_dmg)], follow_up_id="SOUL_DRAIN"),
-        "SOUL_DRAIN": MoveState("SOUL_DRAIN", soul_drain, [multi_attack_intent(soul_drain_dmg, 3)], follow_up_id="DEEP_DIVE"),
-        "DEEP_DIVE": MoveState("DEEP_DIVE", deep_dive, [attack_intent(deep_dive_dmg)], follow_up_id="CHOMP"),
+        "BECKON_MOVE": MoveState("BECKON_MOVE", beckon, [status_intent()], follow_up_id="DE_GAS_MOVE"),
+        "DE_GAS_MOVE": MoveState("DE_GAS_MOVE", de_gas, [attack_intent(de_gas_dmg)], follow_up_id="GAZE_MOVE"),
+        "GAZE_MOVE": MoveState(
+            "GAZE_MOVE",
+            gaze,
+            [attack_intent(gaze_dmg), status_intent()],
+            follow_up_id="FADE_MOVE",
+        ),
+        "FADE_MOVE": MoveState("FADE_MOVE", fade, [buff_intent()], follow_up_id="SCREAM_MOVE"),
+        "SCREAM_MOVE": MoveState(
+            "SCREAM_MOVE",
+            scream,
+            [attack_intent(scream_dmg), debuff_intent()],
+            follow_up_id="BECKON_MOVE",
+        ),
     }
-    return creature, MonsterAI(states, "CHOMP")
+    return creature, MonsterAI(states, "BECKON_MOVE")
 
 
 # ---- LagavulinMatriarch (HP 222 / 233 asc) ----
@@ -591,13 +1045,10 @@ def create_lagavulin_matriarch(rng: Rng) -> tuple[Creature, MonsterAI]:
     slash2_dmg = 12
     slash2_block = 12
 
-    _state = {"asleep": True}
-
     def sleep_move(combat: CombatState) -> None:
-        pass  # AsleepPower handles the wake-up logic
+        pass
 
     def slash(combat: CombatState) -> None:
-        _state["asleep"] = False
         _deal_damage_to_player(combat, creature, slash_dmg)
 
     def disembowel(combat: CombatState) -> None:
@@ -608,23 +1059,38 @@ def create_lagavulin_matriarch(rng: Rng) -> tuple[Creature, MonsterAI]:
         _gain_block(creature, slash2_block)
 
     def soul_siphon(combat: CombatState) -> None:
-        combat.apply_power_to(combat.primary_player, PowerId.STRENGTH, -1)
-        creature.apply_power(PowerId.STRENGTH, 1)
+        combat.apply_power_to(combat.primary_player, PowerId.STRENGTH, -2, applier=creature)
+        combat.apply_power_to(combat.primary_player, PowerId.DEXTERITY, -2, applier=creature)
+        creature.apply_power(PowerId.STRENGTH, 2, applier=creature)
 
-    # Sleep check
-    sleep_check = ConditionalBranchState("SLEEP_CHECK")
-    sleep_check.add_branch(lambda: _state["asleep"], "SLEEP")
-    sleep_check.add_branch(lambda: True, "SLASH")
+    sleep_branch = ConditionalBranchState("SLEEP_BRANCH")
+    sleep_branch.add_branch(lambda: creature.has_power(PowerId.ASLEEP), "SLEEP_MOVE")
+    sleep_branch.add_branch(lambda: True, "SLASH_MOVE")
 
     states: dict[str, MonsterState] = {
-        "SLEEP": MoveState("SLEEP", sleep_move, [sleep_intent()], follow_up_id="SLEEP_CHECK"),
-        "SLEEP_CHECK": sleep_check,
-        "SLASH": MoveState("SLASH", slash, [attack_intent(slash_dmg)], follow_up_id="DISEMBOWEL"),
-        "DISEMBOWEL": MoveState("DISEMBOWEL", disembowel, [multi_attack_intent(disembowel_dmg, 2)], follow_up_id="SLASH2"),
-        "SLASH2": MoveState("SLASH2", slash2, [attack_intent(slash2_dmg), defend_intent()], follow_up_id="SOUL_SIPHON"),
-        "SOUL_SIPHON": MoveState("SOUL_SIPHON", soul_siphon, [debuff_intent(), buff_intent()], follow_up_id="SLASH"),
+        "SLEEP_MOVE": MoveState("SLEEP_MOVE", sleep_move, [sleep_intent()], follow_up_id="SLEEP_BRANCH"),
+        "SLEEP_BRANCH": sleep_branch,
+        "SLASH_MOVE": MoveState("SLASH_MOVE", slash, [attack_intent(slash_dmg)], follow_up_id="DISEMBOWEL_MOVE"),
+        "DISEMBOWEL_MOVE": MoveState(
+            "DISEMBOWEL_MOVE",
+            disembowel,
+            [multi_attack_intent(disembowel_dmg, 2)],
+            follow_up_id="SLASH2_MOVE",
+        ),
+        "SLASH2_MOVE": MoveState(
+            "SLASH2_MOVE",
+            slash2,
+            [attack_intent(slash2_dmg), defend_intent()],
+            follow_up_id="SOUL_SIPHON_MOVE",
+        ),
+        "SOUL_SIPHON_MOVE": MoveState(
+            "SOUL_SIPHON_MOVE",
+            soul_siphon,
+            [debuff_intent(), buff_intent()],
+            follow_up_id="SLASH_MOVE",
+        ),
     }
 
     creature.apply_power(PowerId.PLATING, 12)
     creature.apply_power(PowerId.ASLEEP, 3)
-    return creature, MonsterAI(states, "SLEEP")
+    return creature, MonsterAI(states, "SLEEP_MOVE")

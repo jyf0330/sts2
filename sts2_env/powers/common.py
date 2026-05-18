@@ -54,6 +54,7 @@ class VulnerablePower(PowerInstance):
 
     power_type = PowerType.DEBUFF
     stack_type = PowerStackType.COUNTER
+    is_temporary = True
 
     def __init__(self, amount: int):
         super().__init__(PowerId.VULNERABLE, amount)
@@ -84,6 +85,7 @@ class WeakPower(PowerInstance):
 
     power_type = PowerType.DEBUFF
     stack_type = PowerStackType.COUNTER
+    is_temporary = True
 
     def __init__(self, amount: int):
         super().__init__(PowerId.WEAK, amount)
@@ -110,6 +112,7 @@ class FrailPower(PowerInstance):
 
     power_type = PowerType.DEBUFF
     stack_type = PowerStackType.COUNTER
+    is_temporary = True
 
     def __init__(self, amount: int):
         super().__init__(PowerId.FRAIL, amount)
@@ -184,13 +187,26 @@ class ShrinkPower(PowerInstance):
     def __init__(self, amount: int):
         super().__init__(PowerId.SHRINK, amount)
 
-    def modify_damage_additive(
+    def modify_damage_multiplicative(
         self, owner: Creature, dealer: Creature | None, target: Creature, props: ValueProp
-    ) -> int:
-        # Shrink reduces the target's damage output (applied to the creature being shrunk)
+    ) -> float:
         if dealer is owner and props.is_powered():
-            return -self.amount
-        return 0
+            return 0.7
+        return 1.0
+
+    def after_turn_end(self, owner: Creature, side: object, combat: object) -> None:
+        if self.amount >= 0 and side == owner.side:
+            self.amount -= 1
+
+    def after_death(
+        self,
+        owner: Creature,
+        creature: Creature,
+        combat: object,
+        was_removal_prevented: bool = False,
+    ) -> None:
+        if not was_removal_prevented and creature is self.applier:
+            owner.powers.pop(self.power_id, None)
 
 
 # Register all powers with the creature registry

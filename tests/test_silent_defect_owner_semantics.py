@@ -139,5 +139,7 @@ def test_ally_turbo_grants_energy_and_void_to_ally_only():
 
     assert combat.play_card_from_creature(ally, 0)
     assert ally_combat_state.energy == 2
-    assert any(current.card_id.name == "VOID" for current in ally_combat_state.discard)
+    voids = [current for current in ally_combat_state.discard if current.card_id.name == "VOID"]
+    assert len(voids) == 1
+    assert voids[0].owner is ally
     assert combat.energy == starting_primary_energy

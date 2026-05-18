@@ -2,10 +2,12 @@
 
 from sts2_env.core.combat import CombatState
 from sts2_env.cards.factory import create_card
-from sts2_env.characters.all import ALL_CHARACTERS, get_character
-from sts2_env.core.enums import CardId, CardRarity, RelicRarity, RoomType
+from sts2_env.cards.factory import eligible_character_cards
+from sts2_env.characters.all import get_character
+from sts2_env.core.enums import CardId, CardRarity, CardType, RelicRarity, RoomType, ValueProp
 from sts2_env.run.reward_objects import (
     AddCardsReward,
+    CardBundlesReward,
     CardReward,
     GoldReward,
     ObtainRelicsReward,
@@ -85,9 +87,12 @@ def test_glass_eye_enqueues_five_single_rarity_card_rewards():
     )
     for reward, rarity in zip(run_state.pending_rewards, expected_rarities):
         assert reward.forced_rarities == (rarity, rarity, rarity)
+        assert reward.generation_context is None
+        assert reward.roll_upgrade is False
         reward.populate(run_state, None)
         assert len(reward.cards) == 3
         assert all(card.rarity == rarity for card in reward.cards)
+        assert all(card.upgraded is False for card in reward.cards)
 
 
 def test_lava_rock_adds_two_relic_rewards_only_to_act_one_boss_once():
@@ -209,11 +214,20 @@ def test_fresnel_lens_and_glitter_modify_card_reward_options_late():
     assert run_state.player.obtain_relic("FRESNEL_LENS")
     assert run_state.player.obtain_relic("GLITTER")
 
-    reward = CardReward(run_state.player.player_id, cards=[create_card(CardId.ANGER)])
+    reward = CardReward(
+        run_state.player.player_id,
+        cards=[
+            create_card(CardId.SHRUG_IT_OFF),
+            create_card(CardId.ANGER),
+        ],
+    )
     reward.populate(run_state, None)
 
-    assert reward.cards[0].enchantments["Nimble"] == 2
-    assert reward.cards[0].enchantments["Glam"] == 1
+    by_id = {card.card_id: card for card in reward.cards}
+    assert by_id[CardId.SHRUG_IT_OFF].enchantments["Nimble"] == 2
+    assert "Glam" not in by_id[CardId.SHRUG_IT_OFF].enchantments
+    assert "Nimble" not in by_id[CardId.ANGER].enchantments
+    assert by_id[CardId.ANGER].enchantments["Glam"] == 1
 
 
 def test_driftwood_allows_rerolling_card_rewards():
@@ -279,36 +293,57 @@ def test_driftwood_allows_single_card_reward_reroll():
 
 
 def test_merchant_card_creation_hooks_upgrade_and_enchant_cards_for_sale():
-    run_state = RunState(seed=208, character_id="Ironclad")
+    run_state = RunState(seed=200, character_id="Ironclad")
     assert run_state.player.obtain_relic("MOLTEN_EGG")
     assert run_state.player.obtain_relic("FRESNEL_LENS")
 
     inventory = generate_shop_inventory(run_state)
     attack_entries = [entry for entry in inventory.cards if entry.card is not None and entry.card.card_type.name == "ATTACK"]
+    block_entries = [entry for entry in inventory.cards if entry.card is not None and entry.card.base_block is not None]
+    nonblock_entries = [entry for entry in inventory.cards if entry.card is not None and entry.card.base_block is None]
 
     assert attack_entries
     assert any(entry.card.upgraded for entry in attack_entries)
-    assert all("Nimble" in entry.card.enchantments for entry in inventory.cards if entry.card is not None)
+    assert block_entries
+    assert all(entry.card.enchantments.get("Nimble") == 2 for entry in block_entries)
+    assert all("Nimble" not in entry.card.enchantments for entry in nonblock_entries)
 
 
-def test_scroll_boxes_enqueues_two_fixed_card_bundles():
+def test_scroll_boxes_enqueues_choose_one_card_bundle_reward():
     run_state = RunState(seed=213, character_id="Ironclad")
     starting_gold = run_state.player.gold
 
     assert run_state.player.obtain_relic("SCROLL_BOXES")
 
-    bundles = [reward for reward in run_state.pending_rewards if isinstance(reward, CardReward)]
-    assert len(bundles) == 2
+    bundles = [reward for reward in run_state.pending_rewards if isinstance(reward, CardBundlesReward)]
+    assert len(bundles) == 1
     assert run_state.player.gold == 0
     assert starting_gold > run_state.player.gold
+    assert len(bundles[0].bundles) == 2
+    assert all(len(bundle) == 3 for bundle in bundles[0].bundles)
     assert all(
-        bundle.forced_rarities == (
-            CardRarity.COMMON,
-            CardRarity.COMMON,
-            CardRarity.UNCOMMON,
-        )
-        for bundle in bundles
+        [card.rarity for card in bundle] == [CardRarity.COMMON, CardRarity.COMMON, CardRarity.UNCOMMON]
+        for bundle in bundles[0].bundles
     )
+    assert len({card.card_id for bundle in bundles[0].bundles for card in bundle}) == 6
+
+
+def test_scroll_boxes_card_bundle_pick_adds_entire_selected_bundle():
+    mgr = RunManager(seed=213, character_id="Ironclad")
+    starting_deck = len(mgr.run_state.player.deck)
+
+    assert mgr.run_state.player.obtain_relic("SCROLL_BOXES")
+    mgr._consume_run_pending_rewards()
+
+    actions = mgr.get_available_actions()
+    bundle_actions = [action for action in actions if action["action"] == "pick_card_bundle"]
+    assert len(bundle_actions) == 2
+    picked_ids = bundle_actions[0]["card_ids"]
+    result = mgr.take_action({"action": "pick_card_bundle", "index": 0})
+
+    assert result["success"] is True
+    assert result["card_ids"] == picked_ids
+    assert len(mgr.run_state.player.deck) == starting_deck + 3
 
 
 def test_sea_glass_enqueues_fifteen_cards_from_assigned_character_pool():
@@ -318,10 +353,14 @@ def test_sea_glass_enqueues_fifteen_cards_from_assigned_character_pool():
     sea_glass = next(relic for relic in run_state.player.get_relic_objects() if relic.relic_id.name == "SEA_GLASS")
     rewards = [reward for reward in run_state.pending_rewards if isinstance(reward, CardReward)]
 
+    assert sea_glass._character_id == "Ironclad"
     assert len(rewards) == 1
     reward = rewards[0]
     assert reward.option_count == 15
+    assert reward.cards_to_pick == 15
     assert reward.character_ids == (sea_glass._character_id,)
+    assert reward.generation_context is None
+    assert reward.roll_upgrade is False
     assert reward.forced_rarities == (
         (CardRarity.COMMON,) * 5
         + (CardRarity.UNCOMMON,) * 5
@@ -334,6 +373,44 @@ def test_sea_glass_enqueues_fifteen_cards_from_assigned_character_pool():
     assert all(card.card_id in assigned_pool for card in reward.cards)
 
 
+def test_sea_glass_card_reward_can_pick_multiple_cards_before_skip():
+    mgr = RunManager(seed=214, character_id="Ironclad")
+    starting_deck_size = len(mgr.run_state.player.deck)
+
+    assert mgr.run_state.player.obtain_relic("SEA_GLASS")
+    mgr._consume_run_pending_rewards()
+
+    assert mgr.phase == RunManager.PHASE_CARD_REWARD
+    assert len([action for action in mgr.get_available_actions() if action["action"] == "pick_card"]) == 15
+    first = mgr.take_action({"action": "pick_card", "index": 0})
+    assert first["pending_more_picks"] is True
+    assert first["phase"] == RunManager.PHASE_CARD_REWARD
+    second = mgr.take_action({"action": "pick_card", "index": 0})
+    assert second["pending_more_picks"] is True
+    assert second["phase"] == RunManager.PHASE_CARD_REWARD
+    assert len(mgr.run_state.player.deck) == starting_deck_size + 2
+
+    skipped = mgr.take_action({"action": "skip"})
+    assert skipped["phase"] != RunManager.PHASE_CARD_REWARD
+
+
+def test_sea_glass_ignores_dingy_rug_and_prismatic_pool_modifiers():
+    run_state = RunState(seed=214, character_id="Ironclad")
+    assert run_state.player.obtain_relic("DINGY_RUG")
+    assert run_state.player.obtain_relic("PRISMATIC_GEM")
+    assert run_state.player.obtain_relic_with_setup("SEA_GLASS", setup_attrs={"_character_id": "Silent"})
+
+    rewards = [reward for reward in run_state.pending_rewards if isinstance(reward, CardReward)]
+    reward = rewards[-1]
+    assert reward.character_ids == ("Silent",)
+    assert reward.include_colorless is False
+    assert reward.allow_card_pool_modifications is False
+
+    reward.populate(run_state, None)
+    silent_pool = set(get_character("Silent").card_pool)
+    assert all(card.card_id in silent_pool for card in reward.cards)
+
+
 def test_massive_scroll_enqueues_multiplayer_reward_pool():
     run_state = RunState(seed=215, character_id="Ironclad")
 
@@ -343,8 +420,70 @@ def test_massive_scroll_enqueues_multiplayer_reward_pool():
     assert len(rewards) == 1
     reward = rewards[0]
     assert reward.option_count == 3
+    assert reward.include_colorless is False
+    assert reward.character_ids == ()
+    assert reward.generation_context is None
+    assert reward.has_custom_card_pool is True
+    expected_ids = {
+        CardId.BEACON_OF_HOPE,
+        CardId.BELIEVE_IN_YOU,
+        CardId.COORDINATE_CARD,
+        CardId.DEMONIC_SHIELD,
+        CardId.GANG_UP,
+        CardId.HUDDLE_UP,
+        CardId.INTERCEPT_CARD,
+        CardId.KNOCKDOWN,
+        CardId.LIFT,
+        CardId.MIMIC,
+        CardId.RALLY,
+        CardId.TAG_TEAM,
+        CardId.TANK_CARD,
+    }
+    assert set(reward.custom_card_ids) == expected_ids
+    reward.populate(run_state, None)
+    assert len(reward.cards) == 3
+    assert all(card.card_id in expected_ids for card in reward.cards)
+
+
+def test_lead_paperweight_enqueues_colorless_other_source_reward():
+    run_state = RunState(seed=216, character_id="Ironclad")
+
+    assert run_state.player.obtain_relic("LEAD_PAPERWEIGHT")
+    rewards = [reward for reward in run_state.pending_rewards if isinstance(reward, CardReward)]
+
+    assert len(rewards) == 1
+    reward = rewards[0]
+    assert reward.option_count == 2
     assert reward.include_colorless is True
-    assert reward.character_ids == tuple(character.character_id for character in ALL_CHARACTERS)
+    assert reward.use_default_character_pool is False
+    assert reward.generation_context is None
+    assert reward.has_custom_card_pool is True
+
+
+def test_prismatic_gem_does_not_expand_lead_paperweight_colorless_pool():
+    run_state = RunState(seed=216, character_id="Ironclad")
+    assert run_state.player.obtain_relic("PRISMATIC_GEM")
+    assert run_state.player.obtain_relic("LEAD_PAPERWEIGHT")
+
+    reward = [reward for reward in run_state.pending_rewards if isinstance(reward, CardReward)][0]
+    reward.populate(run_state, None)
+
+    ironclad_pool = set(get_character("Ironclad").card_pool)
+    assert all(card.card_id not in ironclad_pool for card in reward.cards)
+
+
+def test_orrery_and_lost_coffer_card_rewards_use_other_source_pool():
+    orrery_state = RunState(seed=217, character_id="Ironclad")
+    assert orrery_state.player.obtain_relic("ORRERY")
+    orrery_rewards = [reward for reward in orrery_state.pending_rewards if isinstance(reward, CardReward)]
+    assert len(orrery_rewards) == 5
+    assert all(reward.generation_context is None for reward in orrery_rewards)
+
+    lost_coffer_state = RunState(seed=218, character_id="Ironclad")
+    assert lost_coffer_state.player.obtain_relic("LOST_COFFER")
+    lost_coffer_rewards = [reward for reward in lost_coffer_state.pending_rewards if isinstance(reward, CardReward)]
+    assert len(lost_coffer_rewards) == 1
+    assert lost_coffer_rewards[0].generation_context is None
 
 
 def test_treasure_room_uses_relic_reward_object_and_followup_rewards():
@@ -467,6 +606,25 @@ def test_amethyst_aubergine_adds_bonus_gold_reward_object():
     assert len(gold_rewards) == 2
     assert any(reward.min_gold == 10 and reward.max_gold == 10 for reward in gold_rewards)
 
+    run_state.current_act_index = 0
+    boss_rewards = RewardsSet(run_state.player.player_id).with_rewards_from_room(create_room(RoomType.BOSS), run_state)
+    boss_generated = boss_rewards.generate_without_offering(run_state)
+    assert any(
+        isinstance(reward, GoldReward) and reward.min_gold == 10 and reward.max_gold == 10
+        for reward in boss_generated
+    )
+
+    run_state.current_act_index = len(run_state.acts) - 1
+    final_boss_rewards = RewardsSet(run_state.player.player_id).with_rewards_from_room(
+        create_room(RoomType.BOSS),
+        run_state,
+    )
+    final_boss_generated = final_boss_rewards.generate_without_offering(run_state)
+    assert not any(
+        isinstance(reward, GoldReward) and reward.min_gold == 10 and reward.max_gold == 10
+        for reward in final_boss_generated
+    )
+
 
 def test_lasting_candy_adds_extra_power_reward_every_second_combat():
     run_state = RunState(seed=218, character_id="Ironclad")
@@ -484,18 +642,58 @@ def test_lasting_candy_adds_extra_power_reward_every_second_combat():
     assert any(card.card_type.name == "POWER" for card in reward.cards)
 
 
+def test_lasting_candy_does_not_modify_other_source_card_rewards():
+    run_state = RunState(seed=218, character_id="Ironclad")
+    assert run_state.player.obtain_relic("LASTING_CANDY")
+    relic = next(relic for relic in run_state.player.get_relic_objects() if relic.relic_id.name == "LASTING_CANDY")
+    relic._combats_seen = 2
+
+    assert run_state.player.obtain_relic("ORRERY")
+    reward = [reward for reward in run_state.pending_rewards if isinstance(reward, CardReward)][0]
+    reward.populate(run_state, None)
+
+    assert reward.card_creation_source == "other"
+    assert len(reward.cards) == 3
+
+
+def test_lasting_candy_does_not_duplicate_existing_power_reward_options():
+    run_state = RunState(seed=218, character_id="Ironclad")
+    assert run_state.player.obtain_relic("LASTING_CANDY")
+    relic = next(relic for relic in run_state.player.get_relic_objects() if relic.relic_id.name == "LASTING_CANDY")
+    relic._combats_seen = 2
+    existing_powers = [
+        create_card(card_id)
+        for card_id in eligible_character_cards(
+            "Ironclad",
+            card_type=CardType.POWER,
+            generation_context="modifier",
+        )
+    ]
+
+    reward = CardReward(run_state.player.player_id, cards=existing_powers)
+    reward.populate(run_state, create_room(RoomType.MONSTER))
+
+    assert len(reward.cards) == len(existing_powers)
+    assert len({card.card_id for card in reward.cards}) == len(existing_powers)
+
+
 def test_wing_charm_enchants_one_random_reward_card_with_swift():
     run_state = RunState(seed=219, character_id="Ironclad")
     assert run_state.player.obtain_relic("WING_CHARM")
+    anger = create_card(CardId.ANGER)
+    anger.add_enchantment("Glam", 1)
+    inflame = create_card(CardId.INFLAME)
+    inflame.add_enchantment("Glam", 1)
 
     reward = CardReward(
         run_state.player.player_id,
-        cards=[create_card(CardId.ANGER), create_card(CardId.SHRUG_IT_OFF), create_card(CardId.INFLAME)],
+        cards=[anger, create_card(CardId.SHRUG_IT_OFF), inflame],
     )
     reward.populate(run_state, create_room(RoomType.MONSTER))
 
     swift_cards = [card for card in reward.cards if card.enchantments.get("Swift") == 1]
     assert len(swift_cards) == 1
+    assert swift_cards[0].card_id == CardId.SHRUG_IT_OFF
 
 
 def test_wongos_mystery_ticket_adds_three_relic_rewards_once_after_threshold():
@@ -521,6 +719,29 @@ def test_wongos_mystery_ticket_adds_three_relic_rewards_once_after_threshold():
     generated = rewards.generate_without_offering(run_state)
     relic_rewards = [reward for reward in generated if isinstance(reward, RelicReward)]
     assert len(relic_rewards) == 0
+
+
+def test_relic_grab_bag_respects_before_act3_treasure_chest_filters():
+    run_state = RunState(seed=221, character_id="Ironclad")
+    run_state.initialize_run()
+    run_state.player.relic_grab_bag_by_rarity = {
+        RelicRarity.COMMON: ["AMETHYST_AUBERGINE"],
+        RelicRarity.UNCOMMON: [],
+        RelicRarity.RARE: [],
+        RelicRarity.SHOP: [],
+    }
+    run_state.player.relic_grab_bag = ["AMETHYST_AUBERGINE"]
+    run_state.player.relic_grab_bag_fallback = []
+
+    run_state.total_floor = 40
+    assert run_state.player.has_available_relics() is True
+    assert run_state.player.pull_next_relic_reward_id(rarity=RelicRarity.COMMON) == "AMETHYST_AUBERGINE"
+
+    run_state.player.relic_grab_bag_by_rarity[RelicRarity.COMMON] = ["AMETHYST_AUBERGINE"]
+    run_state.player.relic_grab_bag = ["AMETHYST_AUBERGINE"]
+    run_state.total_floor = 41
+    assert run_state.player.has_available_relics() is False
+    assert run_state.player.pull_next_relic_reward_id(rarity=RelicRarity.COMMON) == "CIRCLET"
 
 
 def test_dingy_rug_adds_colorless_cards_to_reward_pool():
@@ -556,6 +777,28 @@ def test_lava_lamp_upgrades_only_no_damage_combat_rewards():
     )
     reward.populate(run_state, create_room(RoomType.MONSTER))
     assert not any(card.upgraded for card in reward.cards)
+
+
+def test_lava_lamp_ignores_unblockable_damage_for_reward_upgrade():
+    run_state = RunState(seed=210, character_id="Ironclad")
+    assert run_state.player.obtain_relic("LAVA_LAMP")
+    lava_lamp = next(relic for relic in run_state.player.get_relic_objects() if relic.relic_id.name == "LAVA_LAMP")
+
+    lava_lamp.after_damage_received(
+        run_state.player,
+        run_state.player,
+        None,
+        5,
+        ValueProp.UNBLOCKABLE,
+        None,
+    )
+    reward = CardReward(
+        run_state.player.player_id,
+        cards=[create_card(CardId.ANGER), create_card(CardId.SHRUG_IT_OFF)],
+    )
+    reward.populate(run_state, create_room(RoomType.MONSTER))
+
+    assert all(card.upgraded for card in reward.cards)
 
 
 def test_silver_crucible_upgrades_first_three_card_rewards_only():

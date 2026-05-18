@@ -8,7 +8,12 @@ from sts2_env.cards.ironclad import create_ironclad_starter_deck
 from sts2_env.cards.ironclad_basic import make_strike_ironclad
 from sts2_env.core.combat import CombatState
 from sts2_env.core.enums import CombatSide, PowerId, RoomType, ValueProp
-from sts2_env.core.hooks import fire_after_turn_end, fire_before_side_turn_start, fire_before_turn_end
+from sts2_env.core.hooks import (
+    fire_after_block_cleared,
+    fire_after_turn_end,
+    fire_before_side_turn_start,
+    fire_before_turn_end,
+)
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle, create_twig_slime_s
 from sts2_env.run.rooms import RoomVisitContext
@@ -129,6 +134,60 @@ class TestRelicParityUncommonExtra4:
 
         assert len(toad_potions) == 1
 
+    def test_petrified_toad_runs_after_regular_combat_start_potion_fillers(self):
+        """Matches Hook.BeforeCombatStart: BeforeCombatStartLate runs after all regular combat-start hooks."""
+        combat = CombatState(
+            player_hp=80,
+            player_max_hp=80,
+            deck=create_ironclad_starter_deck(),
+            rng_seed=914,
+            character_id="Ironclad",
+            relics=["PetrifiedToad", "DelicateFrond"],
+            max_potion_slots=1,
+        )
+        creature, ai = create_shrinker_beetle(Rng(914))
+        combat.add_enemy(creature, ai)
+        combat.start_combat()
+
+        held_potions = [p for p in combat.potions if p is not None]
+        assert len(held_potions) == 1
+        assert held_potions[0].potion_id != "PotionShapedRock"
+
+    def test_delicate_frond_uses_out_of_combat_potion_pool(self):
+        """Matches DelicateFrond.cs: CreateRandomPotionOutOfCombat at combat start."""
+        combat = CombatState(
+            player_hp=80,
+            player_max_hp=80,
+            deck=[],
+            rng_seed=24,
+            character_id="Ironclad",
+            relics=["DelicateFrond"],
+            max_potion_slots=1,
+        )
+        creature, ai = create_shrinker_beetle(Rng(24))
+        combat.add_enemy(creature, ai)
+
+        combat.start_combat()
+
+        assert [p.potion_id for p in combat.held_potions(combat.player)] == ["RegenPotion"]
+
+    def test_sozu_blocks_delicate_frond_combat_start_procurement(self):
+        combat = CombatState(
+            player_hp=80,
+            player_max_hp=80,
+            deck=[],
+            rng_seed=24,
+            character_id="Ironclad",
+            relics=["Sozu", "DelicateFrond"],
+            max_potion_slots=1,
+        )
+        creature, ai = create_shrinker_beetle(Rng(24))
+        combat.add_enemy(creature, ai)
+
+        combat.start_combat()
+
+        assert combat.held_potions(combat.player) == []
+
     def test_ripple_basin_requires_no_attacks_and_resets_each_turn(self):
         """Matches RippleBasin.cs: if no owner attacks this turn, gain 4 block at turn end."""
         combat = _make_ironclad_combat(["RippleBasin"], seed=905)
@@ -144,26 +203,44 @@ class TestRelicParityUncommonExtra4:
         fire_before_turn_end(CombatSide.PLAYER, combat)
         assert combat.player.block == 4
 
-    def test_self_forming_clay_applies_block_next_turn_only_on_unblocked_damage(self):
-        """Matches relic trigger contract: only unblocked damage applies the follow-up block power."""
+    def test_self_forming_clay_applies_own_power_only_on_unblocked_damage(self):
+        """Matches SelfFormingClay.cs: unblocked damage applies SelfFormingClayPower."""
         combat = _make_ironclad_combat(["SelfFormingClay"], seed=906)
         enemy = combat.enemies[0]
 
         combat.player.block = 0
         combat.deal_damage(enemy, combat.player, 5, ValueProp.UNPOWERED)
-        assert combat.player.get_power_amount(PowerId.BLOCK_NEXT_TURN) == 3
+        assert combat.player.get_power_amount(PowerId.SELF_FORMING_CLAY) == 3
+        assert combat.player.get_power_amount(PowerId.BLOCK_NEXT_TURN) == 0
+
+        combat.deal_damage(enemy, combat.player, 1, ValueProp.UNPOWERED)
+        assert combat.player.block == 0
+        assert combat.player.get_power_amount(PowerId.SELF_FORMING_CLAY) == 6
+
+        fire_after_block_cleared(combat.player, combat)
+        assert combat.player.block == 6
+        assert PowerId.SELF_FORMING_CLAY not in combat.player.powers
 
         combat2 = _make_ironclad_combat(["SelfFormingClay"], seed=907)
         enemy2 = combat2.enemies[0]
         combat2.player.block = 99
         combat2.deal_damage(enemy2, combat2.player, 5, ValueProp.UNPOWERED)
-        assert combat2.player.get_power_amount(PowerId.BLOCK_NEXT_TURN) == 0
+        assert combat2.player.get_power_amount(PowerId.SELF_FORMING_CLAY) == 0
 
     def test_twisted_funnel_applies_poison_only_on_round_one(self):
         """Matches TwistedFunnel.cs: before side turn start, round-1 poison all enemies."""
-        combat = _make_ironclad_combat(["TwistedFunnel"], seed=908, enemies=2)
+        combat = _make_ironclad_combat(["TwistedFunnel"], seed=908, enemies=3)
         for enemy in combat.enemies:
             assert enemy.get_power_amount(PowerId.POISON) == 4
+            enemy.powers.pop(PowerId.POISON, None)
+            enemy.max_hp = 100
+            enemy.current_hp = 100
+
+        combat.apply_power_to(combat.player, PowerId.OUTBREAK, 11)
+        fire_before_side_turn_start(CombatSide.PLAYER, combat)
+        for enemy in combat.enemies:
+            assert enemy.get_power_amount(PowerId.POISON) == 4
+            assert enemy.current_hp == 89
             enemy.powers.pop(PowerId.POISON, None)
 
         combat.round_number = 2
@@ -185,3 +262,20 @@ class TestRelicParityUncommonExtra4:
 
         assert baseline.player.block == 2
         assert with_cables.player.block == 4
+
+    def test_metronome_triggers_once_on_seventh_orb_channeled(self):
+        """Matches Metronome.cs: damages at exactly seven orbs, without resetting the counter."""
+        combat = _make_defect_combat(["Metronome"], seed=910)
+        enemy = combat.enemies[0]
+        enemy.max_hp = 200
+        enemy.current_hp = 200
+
+        for _ in range(7):
+            combat.channel_orb(combat.player, "FROST")
+
+        assert enemy.current_hp == 170
+
+        for _ in range(7):
+            combat.channel_orb(combat.player, "FROST")
+
+        assert enemy.current_hp == 170

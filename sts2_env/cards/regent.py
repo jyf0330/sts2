@@ -37,7 +37,9 @@ def _deal_damage_single(card: CardInstance, combat: CombatState, target: Creatur
 
 def _deal_damage_all(card: CardInstance, combat: CombatState) -> None:
     owner = _owner(card, combat)
-    for enemy in list(combat.alive_enemies):
+    if owner.is_dead:
+        return
+    for enemy in list(combat.hittable_enemies):
         damage = calculate_damage(card.base_damage, owner, enemy, ValueProp.MOVE, combat)
         apply_damage(enemy, damage, ValueProp.MOVE, combat, owner)
 
@@ -116,6 +118,8 @@ def celestial_might(card: CardInstance, combat: CombatState, target: Creature | 
     owner = _owner(card, combat)
     hits = card.effect_vars.get("hits", 3)
     for _ in range(hits):
+        if owner.is_dead or target.is_dead:
+            break
         damage = calculate_damage(card.base_damage, owner, target, ValueProp.MOVE, combat)
         apply_damage(target, damage, ValueProp.MOVE, combat, owner)
         if target.is_dead:
@@ -204,7 +208,7 @@ def guiding_star(card: CardInstance, combat: CombatState, target: Creature | Non
 
 @register_effect(CardId.HIDDEN_CACHE)
 def hidden_cache(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    star_next = card.effect_vars.get("star_next", 3)
+    star_next = card.effect_vars.get("star_next_turn_power", 3)
     combat.apply_power_to(_owner(card, combat), PowerId.STAR_NEXT_TURN, star_next)
     combat.gain_stars(_owner(card, combat), card.effect_vars.get("stars", 1))
 
@@ -387,10 +391,6 @@ def kingly_kick(card: CardInstance, combat: CombatState, target: Creature | None
 def kingly_punch(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
     _deal_damage_single(card, combat, target)
-    # Damage permanently increases — persistent state
-    increase = card.effect_vars.get("increase", 3)
-    if card.base_damage is not None:
-        card.base_damage += increase
 
 
 @register_effect(CardId.KNOCKOUT_BLOW)
@@ -406,12 +406,12 @@ def largesse(card: CardInstance, combat: CombatState, target: Creature | None) -
     if target is None:
         return
     colorless_ids = eligible_registered_cards(module_name="sts2_env.cards.colorless", generation_context="modifier")
-    generated = create_cards_from_ids(colorless_ids, combat.rng, 1, distinct=True)
+    generated = create_cards_from_ids(colorless_ids, combat.combat_card_generation_rng, 1, distinct=True)
     if not generated:
         return
     if card.upgraded:
         combat.upgrade_card(generated[0])
-    combat.move_card_to_creature_hand(target, generated[0])
+    combat.add_generated_card_to_creature_hand(target, generated[0])
 
 
 @register_effect(CardId.LUNAR_BLAST)
@@ -421,6 +421,8 @@ def lunar_blast(card: CardInstance, combat: CombatState, target: Creature | None
     owner = _owner(card, combat)
     hits = combat.count_cards_played_this_turn(owner, card_type=CardType.SKILL)
     for _ in range(hits):
+        if owner.is_dead or target.is_dead:
+            break
         damage = calculate_damage(card.base_damage, owner, target, ValueProp.MOVE, combat)
         apply_damage(target, damage, ValueProp.MOVE, combat, owner)
         if target.is_dead:
@@ -431,11 +433,11 @@ def lunar_blast(card: CardInstance, combat: CombatState, target: Creature | None
 def manifest_authority(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     _gain_block(card, combat)
     colorless_ids = eligible_registered_cards(module_name="sts2_env.cards.colorless", generation_context="modifier")
-    generated = create_cards_from_ids(colorless_ids, combat.rng, 1, distinct=True)
+    generated = create_cards_from_ids(colorless_ids, combat.combat_card_generation_rng, 1, distinct=True)
     if generated:
         if card.upgraded:
             combat.upgrade_card(generated[0])
-        combat.move_card_to_hand(generated[0])
+        combat.add_generated_card_to_creature_hand(_owner(card, combat), generated[0])
 
 
 @register_effect(CardId.MONOLOGUE_CARD)
@@ -481,7 +483,7 @@ def prophesize(card: CardInstance, combat: CombatState, target: Creature | None)
 @register_effect(CardId.QUASAR)
 def quasar(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     colorless_ids = eligible_registered_cards(module_name="sts2_env.cards.colorless", generation_context="modifier")
-    generated = create_cards_from_ids(colorless_ids, combat.rng, 3, distinct=True)
+    generated = create_cards_from_ids(colorless_ids, combat.combat_card_generation_rng, 3, distinct=True)
     for generated_card in generated:
         if card.upgraded:
             combat.upgrade_card(generated_card)
@@ -499,8 +501,11 @@ def quasar(card: CardInstance, combat: CombatState, target: Creature | None) -> 
 @register_effect(CardId.RADIATE)
 def radiate(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     """Deal damage to all enemies multiple times — scales."""
-    hits = combat.count_stars_gained_this_turn(_owner(card, combat))
+    owner = _owner(card, combat)
+    hits = combat.count_stars_gained_this_turn(owner)
     for _ in range(hits):
+        if owner.is_dead:
+            break
         _deal_damage_all(card, combat)
 
 
@@ -514,7 +519,7 @@ def reflect_card(card: CardInstance, combat: CombatState, target: Creature | Non
 def resonance(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     strength = card.effect_vars.get("strength", 1)
     combat.apply_power_to(_owner(card, combat), PowerId.STRENGTH, strength)
-    for enemy in list(combat.alive_enemies):
+    for enemy in list(combat.hittable_enemies):
         combat.apply_power_to(enemy, PowerId.STRENGTH, -1)
 
 
@@ -542,15 +547,20 @@ def stardust(card: CardInstance, combat: CombatState, target: Creature | None) -
     """Deal damage multiple times to random enemy using all current Stars."""
     owner = _owner(card, combat)
     owner_state = combat.combat_player_state_for(owner)
-    hits = owner_state.stars if owner_state is not None else combat.stars
+    stars_spent = owner_state.stars if owner_state is not None else combat.stars
+    hits = stars_spent
+    for relic in combat.relics_for_creature(owner):
+        hits = relic.modify_x_value(owner, hits, card)
     if hits <= 0:
         return
-    combat.spend_stars(owner, hits)
+    combat.spend_stars(owner, stars_spent)
     for _ in range(hits):
-        alive = combat.alive_enemies
+        if owner.is_dead:
+            break
+        alive = combat.hittable_enemies
         if not alive:
             break
-        t = combat.rng.choice(alive)
+        t = combat.combat_targets_rng.choice(alive)
         damage = calculate_damage(card.base_damage, owner, t, ValueProp.MOVE, combat)
         apply_damage(t, damage, ValueProp.MOVE, combat, owner)
 
@@ -602,7 +612,7 @@ def beat_into_shape(card: CardInstance, combat: CombatState, target: Creature | 
     owner = _owner(card, combat)
     prior_hits = combat.count_powered_hits_this_turn(owner, target)
     _deal_damage_single(card, combat, target)
-    forge_amount = card.effect_vars.get("forge_base", 5) + prior_hits * card.effect_vars.get("forge_per_hit", 5)
+    forge_amount = card.effect_vars.get("calc_base", card.base_damage or 5) + prior_hits * card.effect_vars.get("calc_extra", 5)
     combat.forge(owner, forge_amount, source=card)
 
 
@@ -627,12 +637,12 @@ def bundle_of_joy(card: CardInstance, combat: CombatState, target: Creature | No
     colorless_ids = eligible_registered_cards(module_name="sts2_env.cards.colorless", generation_context="modifier")
     generated = create_cards_from_ids(
         colorless_ids,
-        combat.rng,
+        combat.combat_card_generation_rng,
         card.effect_vars.get("cards", 3),
         distinct=True,
     )
     for generated_card in generated:
-        combat.move_card_to_hand(generated_card)
+        combat.add_generated_card_to_creature_hand(_owner(card, combat), generated_card)
 
 
 @register_effect(CardId.COMET)
@@ -652,7 +662,7 @@ def crash_landing(card: CardInstance, combat: CombatState, target: Creature | No
 
     to_add = max(0, 10 - len(combat.hand))
     for _ in range(to_add):
-        combat.move_card_to_hand(make_debris())
+        combat.add_generated_card_to_creature_hand(_owner(card, combat), make_debris())
 
 
 @register_effect(CardId.DECISIONS_DECISIONS)
@@ -683,7 +693,7 @@ def decisions_decisions(card: CardInstance, combat: CombatState, target: Creatur
 def dying_star(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     _deal_damage_all(card, combat)
     strength_loss = card.effect_vars.get("strength_loss", 9)
-    for enemy in list(combat.alive_enemies):
+    for enemy in list(combat.hittable_enemies):
         combat.apply_power_to(enemy, PowerId.DYING_STAR, strength_loss)
 
 
@@ -736,6 +746,8 @@ def heavenly_drill(card: CardInstance, combat: CombatState, target: Creature | N
     if x >= card.effect_vars.get("energy", 4):
         x *= 2
     for _ in range(x):
+        if owner.is_dead or target.is_dead:
+            break
         damage = calculate_damage(card.base_damage, owner, target, ValueProp.MOVE, combat)
         apply_damage(target, damage, ValueProp.MOVE, combat, owner)
         if target.is_dead:
@@ -820,7 +832,10 @@ def seeking_edge(card: CardInstance, combat: CombatState, target: Creature | Non
 @register_effect(CardId.SEVEN_STARS)
 def seven_stars(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     """Deal damage to all enemies 7 times."""
+    owner = _owner(card, combat)
     for _ in range(7):
+        if owner.is_dead:
+            break
         _deal_damage_all(card, combat)
 
 
@@ -841,7 +856,7 @@ def tyranny_card(card: CardInstance, combat: CombatState, target: Creature | Non
 
 @register_effect(CardId.VOID_FORM)
 def void_form(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    amount = card.effect_vars.get("void_form", 2)
+    amount = card.effect_vars.get("void_form_power", 2)
     combat.apply_power_to(_owner(card, combat), PowerId.VOID_FORM, amount)
     combat.request_end_turn_after_current_play()
 
@@ -855,7 +870,7 @@ def meteor_shower(card: CardInstance, combat: CombatState, target: Creature | No
     _deal_damage_all(card, combat)
     vuln = card.effect_vars.get("vulnerable", 2)
     weak = card.effect_vars.get("weak", 2)
-    for enemy in list(combat.alive_enemies):
+    for enemy in list(combat.hittable_enemies):
         combat.apply_power_to(enemy, PowerId.WEAK, weak)
         combat.apply_power_to(enemy, PowerId.VULNERABLE, vuln)
 
@@ -923,7 +938,7 @@ def make_beat_into_shape(upgraded: bool = False) -> CardInstance:
         card_id=CardId.BEAT_INTO_SHAPE, cost=1, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.RARE,
         upgraded=upgraded, base_damage=7 if upgraded else 5,
-        effect_vars={"forge_base": 7 if upgraded else 5, "forge_per_hit": 7 if upgraded else 5},
+        effect_vars={"calc_base": 7 if upgraded else 5, "calc_extra": 7 if upgraded else 5},
         instance_id=_get_next_id(),
     )
 
@@ -1031,7 +1046,7 @@ def make_photon_cut(upgraded: bool = False) -> CardInstance:
         card_id=CardId.PHOTON_CUT, cost=1, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.COMMON,
         base_damage=13 if upgraded else 10, upgraded=upgraded,
-        effect_vars={"cards": 2 if upgraded else 1},
+        effect_vars={"cards": 2 if upgraded else 1, "put_back": 1},
         instance_id=_get_next_id(),
     )
 
@@ -1200,7 +1215,7 @@ def make_hidden_cache(upgraded: bool = False) -> CardInstance:
         card_id=CardId.HIDDEN_CACHE, cost=1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.COMMON,
         upgraded=upgraded,
-        effect_vars={"stars": 1, "star_next": 4 if upgraded else 3},
+        effect_vars={"stars": 1, "star_next_turn_power": 4 if upgraded else 3},
         instance_id=_get_next_id(),
     )
 
@@ -1219,7 +1234,7 @@ def make_summon_forth(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.SUMMON_FORTH, cost=1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
-        upgraded=upgraded, keywords=frozenset({"retain"}),
+        upgraded=upgraded,
         effect_vars={"forge": 11 if upgraded else 8},
         instance_id=_get_next_id(),
     )
@@ -1269,7 +1284,7 @@ def make_void_form(upgraded: bool = False) -> CardInstance:
         card_id=CardId.VOID_FORM, cost=3, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
         upgraded=upgraded,
-        effect_vars={"void_form": 3 if upgraded else 2},
+        effect_vars={"void_form_power": 3 if upgraded else 2},
         instance_id=_get_next_id(),
     )
 

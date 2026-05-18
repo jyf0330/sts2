@@ -8,7 +8,7 @@ import pytest
 
 from sts2_env.core.enums import MapPointType
 from sts2_env.core.rng import Rng
-from sts2_env.map.generator import generate_act_map, ActMap, MAP_WIDTH
+from sts2_env.map.generator import generate_act_map, ActMap, MAP_WIDTH, _map_point_type_counts
 from sts2_env.map.map_point import MapCoord, MapPoint
 
 
@@ -187,6 +187,48 @@ class TestRoomTypeConstraints:
 
 
 class TestRoomTypeCounts:
+    def test_act1_and_act2_counts_roll_special_rest_before_base_counts(self):
+        """Matches Overgrowth.cs / Underdocks.cs GetMapPointTypes order."""
+
+        class ScriptedRng:
+            def __init__(self):
+                self.calls = []
+                self.values = iter([7, 12, 5])
+
+            def next_gaussian_int(self, **kwargs):
+                self.calls.append(kwargs)
+                return next(self.values)
+
+        rng = ScriptedRng()
+
+        assert _map_point_type_counts(rng, ascension_level=0, act_index=0) == (5, 3, 12, 7)
+        assert rng.calls == [
+            {"mean": 7, "stddev": 1, "min_val": 6, "max_val": 7},
+            {"mean": 12, "stddev": 1, "min_val": 10, "max_val": 14},
+            {"mean": 5, "stddev": 1, "min_val": 3, "max_val": 6},
+        ]
+
+    def test_act3_counts_copy_rng_for_unknowns_before_rest_roll(self):
+        """Matches Glory.cs: clone map RNG for unknowns, then roll rests on map RNG."""
+        seed = 42
+        expected_unknown_rng = Rng(seed)
+        expected_unknowns = expected_unknown_rng.next_gaussian_int(
+            mean=12, stddev=1, min_val=10, max_val=14
+        ) - 1
+        expected_rng = Rng(seed)
+        expected_rests = expected_rng.next_int_exclusive(5, 7)
+        expected_rng.next_gaussian_int(mean=12, stddev=1, min_val=10, max_val=14)
+        expected_rng.next_gaussian_int(mean=5, stddev=1, min_val=3, max_val=6)
+        expected_next = expected_rng.next_int(0, 100)
+
+        rng = Rng(seed)
+
+        assert _map_point_type_counts(rng, ascension_level=0, act_index=2) == (
+            5, 3, expected_unknowns, expected_rests
+        )
+        assert rng.counter == 1
+        assert rng.next_int(0, 100) == expected_next
+
     def test_shop_count(self):
         """Should have exactly 3 shops."""
         m = _gen()

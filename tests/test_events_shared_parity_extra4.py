@@ -21,6 +21,22 @@ from sts2_env.events.shared import (
 from sts2_env.run.run_state import RunState
 
 
+class _SeaGlassRng:
+    def next_float(self) -> float:
+        return 0.9
+
+    def choice(self, seq):
+        first = seq[0]
+        if isinstance(first, str):
+            return seq[0]
+        if isinstance(first, tuple):
+            for entry in seq:
+                if entry[0] == "SEA_GLASS":
+                    return entry
+            return seq[0]
+        return seq[0]
+
+
 def _make_run_state(seed: int = 501, character_id: str = "Ironclad") -> RunState:
     run_state = RunState(seed=seed, character_id=character_id)
     run_state.initialize_run()
@@ -172,7 +188,9 @@ def test_self_help_book_enchants_attack_and_skill_cards():
     locked_state.player.deck = [make_decay(), make_doubt()]
     locked_options = event.generate_initial_options(locked_state)
     assert [option.option_id for option in locked_options] == ["skip_book"]
-    assert locked_options[0].enabled is False
+    assert locked_options[0].enabled is True
+    skipped = event.choose(locked_state, "skip_book")
+    assert skipped.finished
 
     read_back = event.choose(run_state, "read_back")
     assert read_back.finished is False
@@ -278,21 +296,7 @@ def test_zen_weaver_applies_gold_card_gain_and_card_removal_costs():
 def test_orobas_assigns_off_character_for_sea_glass_when_selected():
     run_state = _make_run_state(516)
     event = Orobas()
-
-    run_state.rng.up_front.next_float = lambda: 0.9
-
-    def choose(seq):
-        first = seq[0]
-        if isinstance(first, str):
-            return seq[0]
-        if isinstance(first, tuple):
-            for entry in seq:
-                if entry[0] == "SEA_GLASS":
-                    return entry
-            return seq[0]
-        return seq[0]
-
-    run_state.rng.up_front.choice = choose
+    event.rng = _SeaGlassRng()
     options = event.generate_initial_options(run_state)
     assert options
 

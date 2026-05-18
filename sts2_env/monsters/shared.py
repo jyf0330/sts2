@@ -32,6 +32,7 @@ from sts2_env.monsters.intents import (
 from sts2_env.monsters.state_machine import (
     ConditionalBranchState, MonsterAI, MonsterState, MoveState, RandomBranchState,
 )
+from sts2_env.cards.status import make_infection
 
 if TYPE_CHECKING:
     from sts2_env.core.combat import CombatState
@@ -178,25 +179,25 @@ def create_mysterious_knight(rng: Rng) -> tuple[Creature, MonsterAI]:
 
     rand = RandomBranchState("RAND")
     rand.add_branch("WAR_CHANT", MoveRepeatType.CANNOT_REPEAT)
-    rand.add_branch("FLAIL", MoveRepeatType.CAN_REPEAT_FOREVER, weight=2.0)
-    rand.add_branch("RAM", MoveRepeatType.CAN_REPEAT_FOREVER, weight=2.0)
+    rand.add_branch("FLAIL_MOVE", MoveRepeatType.CAN_REPEAT_FOREVER, weight=2.0)
+    rand.add_branch("RAM_MOVE", MoveRepeatType.CAN_REPEAT_FOREVER, weight=2.0)
 
     states: dict[str, MonsterState] = {
         "RAND": rand,
         "WAR_CHANT": MoveState("WAR_CHANT", war_chant, [buff_intent()], follow_up_id="RAND"),
-        "FLAIL": MoveState("FLAIL", flail, [multi_attack_intent(flail_dmg, 2)], follow_up_id="RAND"),
-        "RAM": MoveState("RAM", ram, [attack_intent(ram_dmg)], follow_up_id="RAND"),
+        "FLAIL_MOVE": MoveState("FLAIL_MOVE", flail, [multi_attack_intent(flail_dmg, 2)], follow_up_id="RAND"),
+        "RAM_MOVE": MoveState("RAM_MOVE", ram, [attack_intent(ram_dmg)], follow_up_id="RAND"),
     }
 
     # AfterAddedToRoom: +6 Strength, +6 Plating
     creature.apply_power(PowerId.STRENGTH, 6)
     creature.apply_power(PowerId.PLATING, 6)
-    return creature, MonsterAI(states, "RAM")
+    return creature, MonsterAI(states, "RAM_MOVE")
 
 
 # ---- DenseVegetationWriggler (event combat, Dense Vegetation) ----
-# Full Wriggler for the Dense Vegetation event (not the minion spawned by LouseProgenitor).
-# HP 17-21, BiteDamage=6, Wriggle=+2STR + status card.
+# Full Wriggler for the Dense Vegetation event.
+# HP 17-21, BiteDamage=6, Wriggle=+2STR + Infection.
 # Slot-based initial move: wriggler1/wriggler3 start with BITE, wriggler2/wriggler4 with WRIGGLE.
 # StartStunned=false in the event.
 
@@ -212,24 +213,31 @@ def create_dense_vegetation_wriggler(
         _deal_damage_to_player(combat, creature, bite_dmg)
 
     def wriggle(combat: CombatState) -> None:
+        combat.add_card_to_discard(make_infection())
         creature.apply_power(PowerId.STRENGTH, wriggle_str)
 
+    init = ConditionalBranchState("INIT_MOVE")
+    init.add_branch(lambda: slot in ("wriggler1", "wriggler3"), "NASTY_BITE_MOVE")
+    init.add_branch(lambda: slot in ("wriggler2", "wriggler4"), "WRIGGLE_MOVE")
+    init.add_branch(lambda: True, "NASTY_BITE_MOVE")
+
     states: dict[str, MonsterState] = {
-        "NASTY_BITE": MoveState(
-            "NASTY_BITE", nasty_bite, [attack_intent(bite_dmg)], follow_up_id="WRIGGLE",
+        "INIT_MOVE": init,
+        "NASTY_BITE_MOVE": MoveState(
+            "NASTY_BITE_MOVE",
+            nasty_bite,
+            [attack_intent(bite_dmg)],
+            follow_up_id="WRIGGLE_MOVE",
         ),
-        "WRIGGLE": MoveState(
-            "WRIGGLE", wriggle, [buff_intent(), status_intent()], follow_up_id="NASTY_BITE",
+        "WRIGGLE_MOVE": MoveState(
+            "WRIGGLE_MOVE",
+            wriggle,
+            [buff_intent(), status_intent()],
+            follow_up_id="NASTY_BITE_MOVE",
         ),
     }
 
-    # Slot determines starting move: wriggler1/3 -> bite, wriggler2/4 -> wriggle
-    if slot in ("wriggler2", "wriggler4"):
-        initial_state = "WRIGGLE"
-    else:
-        initial_state = "NASTY_BITE"
-
-    return creature, MonsterAI(states, initial_state)
+    return creature, MonsterAI(states, "INIT_MOVE")
 
 
 # ========================================================================
@@ -237,7 +245,8 @@ def create_dense_vegetation_wriggler(
 # ========================================================================
 
 # ---- TorchHeadAmalgam (HP 199, minion) ----
-# Cycle: TACKLE_1(18) -> TACKLE_2(18) -> BEAM(8x3) -> TACKLE_3(14) -> TACKLE_4(14) -> BEAM -> ...
+# Cycle: TACKLE_1_MOVE(18) -> TACKLE_2_MOVE(18) -> BEAM_MOVE(8x3)
+# -> TACKLE_3_MOVE(14) -> TACKLE_4_MOVE(14) -> BEAM_MOVE -> ...
 # AfterAddedToRoom: Minion power
 
 def create_torch_head_amalgam(rng: Rng) -> tuple[Creature, MonsterAI]:
@@ -258,15 +267,15 @@ def create_torch_head_amalgam(rng: Rng) -> tuple[Creature, MonsterAI]:
         _deal_damage_to_player(combat, creature, soul_beam_dmg, hits=soul_beam_hits)
 
     states: dict[str, MonsterState] = {
-        "TACKLE_1": MoveState("TACKLE_1", tackle, [attack_intent(tackle_dmg)], follow_up_id="TACKLE_2"),
-        "TACKLE_2": MoveState("TACKLE_2", tackle, [attack_intent(tackle_dmg)], follow_up_id="BEAM"),
-        "BEAM": MoveState("BEAM", soul_beam, [multi_attack_intent(soul_beam_dmg, soul_beam_hits)], follow_up_id="TACKLE_3"),
-        "TACKLE_3": MoveState("TACKLE_3", weak_tackle, [attack_intent(weak_tackle_dmg)], follow_up_id="TACKLE_4"),
-        "TACKLE_4": MoveState("TACKLE_4", weak_tackle, [attack_intent(weak_tackle_dmg)], follow_up_id="BEAM"),
+        "TACKLE_1_MOVE": MoveState("TACKLE_1_MOVE", tackle, [attack_intent(tackle_dmg)], follow_up_id="TACKLE_2_MOVE"),
+        "TACKLE_2_MOVE": MoveState("TACKLE_2_MOVE", tackle, [attack_intent(tackle_dmg)], follow_up_id="BEAM_MOVE"),
+        "BEAM_MOVE": MoveState("BEAM_MOVE", soul_beam, [multi_attack_intent(soul_beam_dmg, soul_beam_hits)], follow_up_id="TACKLE_3_MOVE"),
+        "TACKLE_3_MOVE": MoveState("TACKLE_3_MOVE", weak_tackle, [attack_intent(weak_tackle_dmg)], follow_up_id="TACKLE_4_MOVE"),
+        "TACKLE_4_MOVE": MoveState("TACKLE_4_MOVE", weak_tackle, [attack_intent(weak_tackle_dmg)], follow_up_id="BEAM_MOVE"),
     }
 
     creature.apply_power(PowerId.MINION, 1)
-    return creature, MonsterAI(states, "TACKLE_1")
+    return creature, MonsterAI(states, "TACKLE_1_MOVE")
 
 
 # ========================================================================

@@ -10,7 +10,12 @@ from sts2_env.monsters.act1_weak import create_shrinker_beetle
 from sts2_env.run.rest_site import CloneOption
 from sts2_env.run.reward_objects import RelicReward
 from sts2_env.run.run_manager import RunManager
-from sts2_env.run.run_state import PlayerState
+from sts2_env.run.run_state import PlayerState, RunState
+
+
+class _ReverseShuffleRng:
+    def shuffle(self, values):
+        values.reverse()
 
 
 def _make_combat(deck, character_id="Ironclad") -> CombatState:
@@ -29,7 +34,30 @@ def test_player_state_enchant_helpers_mark_cards():
 
     basic_strikes = [card for card in player.deck if card.rarity.name == "BASIC" and "STRIKE" in card.card_id.name]
     player.enchant_basic_strikes("TezcatarasEmber")
-    assert all(card.has_enchantment("TezcatarasEmber") for card in basic_strikes)
+    assert all(
+        card.has_enchantment("TezcatarasEmber")
+        for card in basic_strikes
+        if can_enchant_card(card, "TezcatarasEmber")
+    )
+
+
+def test_player_state_enchant_helpers_skip_invalid_cards():
+    enchanted_strike = make_strike_ironclad()
+    enchanted_strike.add_enchantment("Sharp", 1)
+    plain_strike = make_strike_ironclad()
+    defend = make_defend_ironclad()
+    player = PlayerState(
+        character_id="Ironclad",
+        deck=[enchanted_strike, plain_strike, defend],
+    )
+
+    assert player.enchant_basic_strikes("TezcatarasEmber") == 1
+    assert "TezcatarasEmber" not in enchanted_strike.enchantments
+    assert plain_strike.enchantments["TezcatarasEmber"] == 1
+
+    assert player.enchant_all_cards("Goopy") == 1
+    assert defend.enchantments["Goopy"] == 1
+    assert "Goopy" not in plain_strike.enchantments
 
 
 def test_clone_rest_option_duplicates_clone_enchanted_cards():
@@ -57,8 +85,6 @@ def test_obtain_relic_triggers_after_obtained_enchantments():
 
 
 def test_shop_enchant_relics_apply_expected_enchantments():
-    from sts2_env.run.run_state import RunState
-
     run_state = RunState(seed=61, character_id="Ironclad")
     run_state.initialize_run()
     player = run_state.player
@@ -77,9 +103,20 @@ def test_shop_enchant_relics_apply_expected_enchantments():
     assert sum(1 for card in player.deck if card.has_enchantment("RoyallyApproved")) == 1
 
 
-def test_event_enchant_relics_apply_expected_enchantments():
-    from sts2_env.run.run_state import RunState
+def test_royal_stamp_uses_niche_rng_for_candidate_order():
+    run_state = RunState(seed=6601, character_id="Ironclad")
+    strike = make_strike_ironclad()
+    defend = make_defend_ironclad()
+    run_state.player.deck = [strike, defend]
+    run_state.rng.niche = _ReverseShuffleRng()
 
+    assert run_state.player.obtain_relic("ROYAL_STAMP")
+
+    assert defend.has_enchantment("RoyallyApproved")
+    assert not strike.has_enchantment("RoyallyApproved")
+
+
+def test_event_enchant_relics_apply_expected_enchantments():
     run_state = RunState(seed=67, character_id="Ironclad")
     run_state.initialize_run()
     player = run_state.player
@@ -89,8 +126,15 @@ def test_event_enchant_relics_apply_expected_enchantments():
     basic_strikes = [card for card in player.deck if card.rarity.name == "BASIC" and "STRIKE" in card.card_id.name]
     assert all(card.has_enchantment("TezcatarasEmber") for card in basic_strikes)
 
+    goopy_candidates = [card for card in player.deck if can_enchant_card(card, "Goopy")]
     assert player.obtain_relic("PAELS_CLAW")
-    assert all(card.has_enchantment("Goopy") for card in player.deck)
+    assert goopy_candidates
+    assert all(card.has_enchantment("Goopy") for card in goopy_candidates)
+    assert all(
+        not card.has_enchantment("Goopy")
+        for card in player.deck
+        if card not in goopy_candidates
+    )
 
 
 def test_relic_reward_can_enqueue_followup_rewards_via_after_obtained():

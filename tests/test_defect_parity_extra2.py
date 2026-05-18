@@ -8,6 +8,7 @@ from sts2_env.cards.defect import (
     make_barrage,
     make_capacitor,
     make_chaos,
+    make_chill,
     make_compile_driver,
     make_defragment,
     make_glacier,
@@ -84,6 +85,18 @@ class TestDefectParityExtra2:
         assert {orb.orb_type for orb in combat.orb_queue.orbs}.issubset(
             {OrbType.LIGHTNING, OrbType.FROST, OrbType.DARK, OrbType.PLASMA, OrbType.GLASS}
         )
+
+    def test_chill_channels_frost_once_per_hittable_enemy(self):
+        """Matches Chill.cs: channel one Frost per current hittable enemy."""
+        combat = _make_combat()
+        second, second_ai = create_shrinker_beetle(Rng(43))
+        combat.add_enemy(second, second_ai)
+        combat.hand = [make_chill()]
+        combat.energy = 0
+
+        assert combat.play_card(0)
+        assert len(combat.orb_queue.orbs) == 2
+        assert all(orb.orb_type == OrbType.FROST for orb in combat.orb_queue.orbs)
 
     def test_compile_driver_draws_for_distinct_orb_types_only(self):
         """Matches CompileDriver.cs: draw count uses distinct orb ids, not total orb count."""

@@ -52,6 +52,13 @@ class MinionPower(PowerInstance):
     def __init__(self, amount: int = 1):
         super().__init__(PowerId.MINION, amount)
 
+    def should_power_be_removed_after_owner_death(
+        self,
+        owner: Creature,
+        combat: CombatState,
+    ) -> bool:
+        return False
+
     def should_owner_death_trigger_fatal(
         self,
         owner: Creature,
@@ -99,7 +106,9 @@ class SlipperyPower(PowerInstance):
         props: ValueProp,
         combat: CombatState,
     ) -> None:
-        if target is owner and damage > 0:
+        result = getattr(combat, "_active_damage_result", None)
+        total_damage = getattr(result, "total_damage", damage)
+        if target is owner and total_damage != 0:
             self.amount -= 1
             if self.amount <= 0:
                 owner.powers.pop(self.power_id, None)
@@ -128,13 +137,21 @@ class RavenousPower(PowerInstance):
         super().__init__(PowerId.RAVENOUS, amount)
 
     def on_ally_death(
-        self, owner: Creature, dead_creature: Creature, combat: CombatState
+        self,
+        owner: Creature,
+        dead_creature: Creature,
+        combat: CombatState,
+        was_removal_prevented: bool = False,
     ) -> None:
         """Called by the combat system when an allied creature dies."""
-        if dead_creature is not owner and dead_creature.side == owner.side:
+        if (
+            not was_removal_prevented
+            and dead_creature is not owner
+            and dead_creature.side == owner.side
+        ):
             if owner.is_alive:
                 owner.apply_power(PowerId.STRENGTH, self.amount)
-                # Stun is handled by the monster AI setting the next move
+                combat.stun_enemy(owner)
 
 
 # ---------------------------------------------------------------------------
@@ -181,7 +198,7 @@ class HardenedShellPower(PowerInstance):
         super().__init__(PowerId.HARDENED_SHELL, amount)
         self._damage_taken_this_turn: int = 0
 
-    def modify_hp_lost(
+    def modify_hp_lost_before_osty_late(
         self,
         owner: Creature,
         target: Creature,
@@ -226,8 +243,6 @@ class SkittishPower(PowerInstance):
     - AfterTurnEnd (opposing side): reset triggered flag.
     StackType.Counter.
 
-    Simplified: Triggers on after_damage_received when unblocked damage > 0
-    from a powered attack, once per turn.
     """
 
     power_type = PowerType.BUFF
@@ -237,23 +252,18 @@ class SkittishPower(PowerInstance):
         super().__init__(PowerId.SKITTISH, amount)
         self._triggered_this_turn: bool = False
 
-    def after_damage_received(
-        self,
-        owner: Creature,
-        target: Creature,
-        dealer: Creature | None,
-        damage: int,
-        props: ValueProp,
-        combat: CombatState,
-    ) -> None:
-        if (
-            target is owner
-            and not self._triggered_this_turn
-            and damage > 0
-            and bool(props & ValueProp.MOVE)
-        ):
-            self._triggered_this_turn = True
-            owner.gain_block(self.amount)
+    def after_attack(self, owner: Creature, attack: object, combat: CombatState) -> None:
+        if self._triggered_this_turn:
+            return
+        if not bool(getattr(attack, "damage_props", ValueProp.NONE) & ValueProp.MOVE):
+            return
+        if getattr(getattr(attack, "model_source", None), "card_id", None) is None:
+            return
+        for result in getattr(attack, "results", ()):
+            if getattr(result, "target", None) is owner and getattr(result, "unblocked_damage", 0) != 0:
+                self._triggered_this_turn = True
+                owner.gain_block(self.amount)
+                return
 
     def after_turn_end(
         self, owner: Creature, side: CombatSide, combat: CombatState
@@ -273,8 +283,8 @@ class ThieveryPower(PowerInstance):
     - Steal(): steal min(Amount, player.Gold) from target player.
     StackType.Counter. Instanced per target.
 
-    Simplified: The monster AI calls steal() when executing a theft move.
-    Gold tracking is handled by the run state.
+    In the simulator, this is resolved from the finished attack context so
+    every distinct player hit by the owner's move loses gold once.
     """
 
     power_type = PowerType.BUFF
@@ -283,17 +293,48 @@ class ThieveryPower(PowerInstance):
     def __init__(self, amount: int):
         super().__init__(PowerId.THIEVERY, amount)
         self.gold_stolen: int = 0
+        self.gold_stolen_by_player: dict[Creature, int] = {}
+
+    def _player_gold(self, target_player: object) -> int:
+        if hasattr(target_player, "gold"):
+            return int(getattr(target_player, "gold", 0))
+        combat = getattr(target_player, "combat_state", None)
+        state_for = getattr(combat, "combat_player_state_for", None) if combat is not None else None
+        if callable(state_for):
+            state = state_for(target_player)
+            if state is not None:
+                return int(state.player_state.gold)
+        return 0
 
     def steal(self, owner: Creature, target_player: object) -> int:
         """Steal gold from the target player. Returns amount stolen."""
-        player_gold = getattr(target_player, "gold", 0)
+        player_gold = self._player_gold(target_player)
         if player_gold <= 0:
             return 0
         stolen = min(self.amount, player_gold)
-        if hasattr(target_player, "gold"):
+        lose_gold = getattr(target_player, "lose_gold", None)
+        if callable(lose_gold):
+            stolen = lose_gold(stolen)
+        elif hasattr(target_player, "gold"):
             target_player.gold -= stolen
         self.gold_stolen += stolen
+        if getattr(target_player, "is_player", False):
+            self.gold_stolen_by_player[target_player] = self.gold_stolen_by_player.get(target_player, 0) + stolen
         return stolen
+
+    def after_attack(self, owner: Creature, attack: object, combat: CombatState) -> None:
+        if getattr(attack, "attacker", None) is not owner:
+            return
+        seen_targets: set[int] = set()
+        for result in getattr(attack, "results", ()):
+            target = getattr(result, "target", None)
+            if target is None or not getattr(target, "is_player", False):
+                continue
+            target_key = id(target)
+            if target_key in seen_targets:
+                continue
+            seen_targets.add(target_key)
+            self.steal(owner, target)
 
 
 # ---------------------------------------------------------------------------
@@ -321,6 +362,17 @@ class SurprisePower(PowerInstance):
 
     def should_stop_combat_ending(self) -> bool:
         return True
+
+    def after_death(
+        self,
+        owner: Creature,
+        creature: Creature,
+        combat: CombatState,
+        was_removal_prevented: bool = False,
+    ) -> None:
+        if was_removal_prevented or creature is not owner:
+            return
+        combat.spawn_surprise_replacements(owner)
 
 
 # ---------------------------------------------------------------------------
@@ -365,7 +417,7 @@ class PlowPower(PowerInstance):
                 del owner.powers[PowerId.STRENGTH]
             # Remove this power
             owner.powers.pop(self.power_id, None)
-            # Stun is handled by the monster AI
+            combat.stun_enemy(owner)
 
 
 # ---------------------------------------------------------------------------
@@ -393,26 +445,65 @@ class SmoggyPower(PowerInstance):
         super().__init__(PowerId.SMOGGY, amount)
         self.skills_locked: bool = False
 
+    def _afflict_skill(self, owner: Creature, card: object) -> None:
+        card_owner = getattr(card, "owner", None)
+        if card_owner is None:
+            card.owner = owner
+            card_owner = owner
+        if card_owner is owner and getattr(card, "card_type", None) == CardType.SKILL:
+            afflict = getattr(card, "afflict", None)
+            if callable(afflict) and not afflict("smog"):
+                return
+            card.combat_vars["_smoggy"] = True
+
+    def _afflict_all_skills(self, owner: Creature, combat: CombatState) -> None:
+        state = combat.combat_player_state_for(owner)
+        if state is None:
+            return
+        for pile in state.all_piles:
+            for card in pile:
+                self._afflict_skill(owner, card)
+
     def after_card_played(
         self, owner: Creature, card: object, combat: CombatState
     ) -> None:
-        if getattr(card, "card_type", None) == CardType.SKILL:
+        if getattr(card, "owner", None) is owner and getattr(card, "card_type", None) == CardType.SKILL:
             self.skills_locked = True
+            self._afflict_all_skills(owner, combat)
+
+    def after_card_entered_combat(self, owner: Creature, card: object, combat: CombatState) -> None:
+        if getattr(card, "owner", None) is not owner or getattr(card, "card_type", None) != CardType.SKILL:
+            return
+        if self.skills_locked or any(
+            getattr(played, "owner", None) is owner and getattr(played, "card_type", None) == CardType.SKILL
+            for played in getattr(combat, "_played_cards_this_turn", ())
+        ):
+            self._afflict_skill(owner, card)
 
     def should_card_be_playable(self, owner: Creature, card: object) -> bool:
         """Return False to block skill plays after first skill this turn."""
-        if (
-            self.skills_locked
-            and getattr(card, "card_type", None) == CardType.SKILL
-        ):
-            return False
-        return True
+        if getattr(card, "owner", None) is not owner:
+            return True
+        has_affliction = getattr(card, "has_affliction", None)
+        if callable(has_affliction):
+            if has_affliction("smog"):
+                return False
+            if self.skills_locked and getattr(card, "card_type", None) == CardType.SKILL:
+                return getattr(card, "affliction", None) is not None
+            return True
+        return not bool(getattr(card, "combat_vars", {}).get("_smoggy"))
 
-    def before_side_turn_start(
-        self, owner: Creature, side: CombatSide, combat: CombatState
-    ) -> None:
+    def after_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         if side == owner.side:
             self.skills_locked = False
+            state = combat.combat_player_state_for(owner)
+            if state is not None:
+                for pile in state.all_piles:
+                    for card in pile:
+                        clear_affliction = getattr(card, "clear_affliction", None)
+                        if callable(clear_affliction):
+                            clear_affliction("smog")
+                        card.combat_vars.pop("_smoggy", None)
 
 
 # ---------------------------------------------------------------------------
@@ -439,6 +530,16 @@ class InfestedPower(PowerInstance):
 
     def should_stop_combat_ending(self) -> bool:
         return True
+
+    def after_death(
+        self,
+        owner: Creature,
+        creature: Creature,
+        combat: CombatState,
+        was_removal_prevented: bool = False,
+    ) -> None:
+        if not was_removal_prevented and creature is owner:
+            combat.spawn_infested_wrigglers(4)
 
 
 # ---------------------------------------------------------------------------
@@ -467,30 +568,97 @@ class IllusionPower(PowerInstance):
     def __init__(self, amount: int = 1):
         super().__init__(PowerId.ILLUSION, amount)
         self.is_reviving: bool = False
+        self.follow_up_state_id: str | None = None
 
-    def on_owner_death(self, owner: Creature, combat: CombatState) -> bool:
-        """Called when the owner dies. Returns True if death should be
-        prevented (creature revives)."""
-        if not self.is_reviving:
-            self.is_reviving = True
-            # Remove debuffs
-            debuff_ids = [
-                pid
-                for pid, p in owner.powers.items()
-                if p.power_type == PowerType.DEBUFF
-            ]
-            for pid in debuff_ids:
-                del owner.powers[pid]
-            return True  # Prevent removal from combat
-        return False
+    def after_power_amount_changed(
+        self,
+        owner: Creature,
+        target: Creature,
+        power_id: PowerId,
+        amount: int,
+        applier: Creature | None,
+        source: object | None,
+        combat: CombatState,
+    ) -> None:
+        if owner is target and power_id == self.power_id and amount > 0 and not owner.has_power(PowerId.MINION):
+            owner.apply_power(PowerId.MINION, 1, applier=applier, source=source)
+
+    def after_death(
+        self,
+        owner: Creature,
+        creature: Creature,
+        combat: CombatState,
+        was_removal_prevented: bool = False,
+    ) -> None:
+        if was_removal_prevented or creature is not owner:
+            return
+        from sts2_env.core.enums import IntentType
+        from sts2_env.monsters.intents import Intent
+        from sts2_env.monsters.state_machine import MoveState
+
+        self.is_reviving = True
+        debuff_ids = [
+            pid
+            for pid, p in owner.powers.items()
+            if p.power_type == PowerType.DEBUFF
+        ]
+        for pid in debuff_ids:
+            del owner.powers[pid]
+        ai = combat.enemy_ais.get(owner.combat_id)
+        if ai is None:
+            return
+        follow_up_id = self.follow_up_state_id or (ai.state_log[-1] if ai.state_log else ai.current_move.state_id)
+
+        def _revive_move(_: CombatState) -> None:
+            self.revive(owner)
+
+        ai.states["REVIVE_MOVE"] = MoveState(
+            "REVIVE_MOVE",
+            _revive_move,
+            [Intent(IntentType.HEAL)],
+            follow_up_id=follow_up_id,
+            must_perform_once=True,
+        )
+        ai._current_state_id = "REVIVE_MOVE"  # noqa: SLF001
 
     def revive(self, owner: Creature) -> None:
         """Called by the monster AI to complete the revive."""
         self.is_reviving = False
         owner.current_hp = owner.max_hp
+        owner.escaped = False
+        owner._death_processed = False
+
+    def should_stop_combat_ending(
+        self,
+        owner: Creature | None = None,
+        combat: CombatState | None = None,
+    ) -> bool:
+        return self.is_reviving
 
     def should_allow_hitting(self, owner: Creature, combat: CombatState) -> bool:
         return not self.is_reviving
+
+    def should_creature_be_removed_from_combat_after_death(
+        self,
+        owner: Creature,
+        combat: CombatState,
+    ) -> bool:
+        return False
+
+    def should_power_be_removed_after_owner_death(
+        self,
+        owner: Creature,
+        combat: CombatState,
+    ) -> bool:
+        return False
+
+    def should_other_power_be_removed_on_owner_death(
+        self,
+        owner: Creature,
+        power: PowerInstance,
+        combat: CombatState,
+    ) -> bool | None:
+        return power.power_type == PowerType.DEBUFF
 
 
 # ---------------------------------------------------------------------------
@@ -507,8 +675,8 @@ class AsleepPower(PowerInstance):
     - AfterTurnEnd (owner's side): decrement; if 0, wake up.
     StackType.Counter.
 
-    Simplified: Plating removal and wake-up stun are applied. The specific
-    LagavulinMatriarch state machine is not modeled.
+    LagavulinMatriarch damage wake inserts the original stun before SLASH_MOVE;
+    natural wake transitions directly to SLASH_MOVE.
     """
 
     power_type = PowerType.BUFF
@@ -528,10 +696,31 @@ class AsleepPower(PowerInstance):
         combat: CombatState,
     ) -> None:
         if target is owner and damage > 0:
-            # Remove Plating
             owner.powers.pop(PowerId.PLATING, None)
             self.is_awake = True
-            # Remove this power (woken up by damage)
+            if owner.monster_id == "LAGAVULIN_MATRIARCH":
+                ai = combat.enemy_ais.get(owner.combat_id)
+                if ai is not None and "SLASH_MOVE" in ai.states:
+                    from sts2_env.core.enums import IntentType
+                    from sts2_env.monsters.intents import Intent
+                    from sts2_env.monsters.state_machine import MoveState
+
+                    def _stunned(_: CombatState) -> None:
+                        return
+
+                    ai.states["STUNNED"] = MoveState(
+                        "STUNNED",
+                        _stunned,
+                        [Intent(IntentType.STUN)],
+                        follow_up_id="SLASH_MOVE",
+                        must_perform_once=True,
+                    )
+                    ai._current_state_id = "STUNNED"  # noqa: SLF001
+                    ai._performed_first_move = True  # noqa: SLF001
+                else:
+                    combat.stun_enemy(owner)
+            else:
+                combat.stun_enemy(owner)
             owner.powers.pop(self.power_id, None)
 
     def after_turn_end(
@@ -540,12 +729,15 @@ class AsleepPower(PowerInstance):
         if side == owner.side:
             self.amount -= 1
             if self.amount <= 0:
-                # About to wake up naturally, remove Plating first
                 owner.powers.pop(PowerId.PLATING, None)
                 self.is_awake = True
                 owner.powers.pop(self.power_id, None)
+                if owner.monster_id == "LAGAVULIN_MATRIARCH":
+                    combat.set_enemy_state(owner, "SLASH_MOVE")
+                else:
+                    combat.stun_enemy(owner)
 
-    def before_turn_end(
+    def before_turn_end_very_early(
         self, owner: Creature, side: CombatSide, combat: CombatState
     ) -> None:
         if side == owner.side and self.amount <= 1:
@@ -568,8 +760,8 @@ class SteamEruptionPower(PowerInstance):
     - ShouldPowerBeRemovedAfterOwnerDeath: false.
     StackType.Counter.
 
-    Simplified: This is a flag. The monster AI handles the explosion
-    sequence.
+    The simulator transitions the owner into the ABOUT_TO_BLOW_MOVE state and
+    keeps it in combat until EXPLODE resolves.
     """
 
     power_type = PowerType.BUFF
@@ -578,8 +770,37 @@ class SteamEruptionPower(PowerInstance):
     def __init__(self, amount: int):
         super().__init__(PowerId.STEAM_ERUPTION, amount)
 
+    def after_death(
+        self,
+        owner: Creature,
+        creature: Creature,
+        combat: CombatState,
+        was_removal_prevented: bool = False,
+    ) -> None:
+        if was_removal_prevented or creature is not owner or owner.monster_id != "WATERFALL_GIANT":
+            return
+        owner.max_hp = 999_999_999
+        owner.current_hp = 999_999_999
+        owner.escaped = False
+        owner._death_processed = False
+        combat.set_enemy_state(owner, "ABOUT_TO_BLOW_MOVE")
+
     def should_stop_combat_ending(self) -> bool:
         return True
+
+    def should_power_be_removed_after_owner_death(
+        self,
+        owner: Creature,
+        combat: CombatState,
+    ) -> bool:
+        return False
+
+    def should_creature_be_removed_from_combat_after_death(
+        self,
+        owner: Creature,
+        combat: CombatState,
+    ) -> bool:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -611,7 +832,15 @@ class ShriekPower(PowerInstance):
         combat: CombatState,
     ) -> None:
         if target is owner and damage > 0 and owner.current_hp <= self.amount:
-            # Stun is handled by the monster AI
+            if owner.monster_id == "TERROR_EEL":
+                ai = combat.enemy_ais.get(owner.combat_id)
+                if ai is not None and "STUN_MOVE" in ai.states:
+                    ai._current_state_id = "STUN_MOVE"  # noqa: SLF001
+                    ai._performed_first_move = True  # noqa: SLF001
+                else:
+                    combat.stun_enemy(owner)
+            else:
+                combat.stun_enemy(owner)
             owner.powers.pop(self.power_id, None)
 
 
@@ -619,15 +848,13 @@ class ShriekPower(PowerInstance):
 # SuckPower
 # ---------------------------------------------------------------------------
 class SuckPower(PowerInstance):
-    """After dealing unblocked powered-attack damage, gain Amount Strength
-    per unique player hit.
+    """After a powered attack resolves, gain Amount Strength per qualifying
+    damage result.
 
     C# ref: SuckPower.cs
-    - AfterAttack: count unique players that took unblocked damage, gain
-      Amount * count Strength.
+    - AfterAttack: count unblocked results, but if a pet was hit remove the
+      corresponding pet-owner result from the count.
     StackType.Counter.
-
-    Simplified: We trigger on after_damage_given for each unique target hit.
     """
 
     power_type = PowerType.BUFF
@@ -636,17 +863,25 @@ class SuckPower(PowerInstance):
     def __init__(self, amount: int):
         super().__init__(PowerId.SUCK, amount)
 
-    def after_damage_given(
-        self,
-        owner: Creature,
-        dealer: Creature,
-        target: Creature,
-        damage: int,
-        props: ValueProp,
-        combat: CombatState,
-    ) -> None:
-        if dealer is owner and props.is_powered() and damage > 0:
-            owner.apply_power(PowerId.STRENGTH, self.amount)
+    def after_attack(self, owner: Creature, attack: object, combat: CombatState) -> None:
+        if getattr(attack, "attacker", None) is not owner:
+            return
+        if not getattr(attack, "damage_props", ValueProp.NONE).is_powered():
+            return
+        results = [
+            result
+            for result in getattr(attack, "results", ())
+            if getattr(getattr(result, "target", None), "side", None) != owner.side
+        ]
+        if not results:
+            return
+        for pet_hit in [result for result in results if getattr(getattr(result, "target", None), "is_pet", False)]:
+            pet_owner = getattr(getattr(pet_hit, "target", None), "pet_owner", None)
+            if pet_owner is not None:
+                results = [result for result in results if getattr(result, "target", None) is not pet_owner]
+        results = [result for result in results if getattr(result, "unblocked_damage", 0) > 0]
+        if results:
+            owner.apply_power(PowerId.STRENGTH, self.amount * len(results))
 
 
 # ---------------------------------------------------------------------------
@@ -672,7 +907,11 @@ class CrabRagePower(PowerInstance):
         super().__init__(PowerId.CRAB_RAGE, amount)
 
     def on_ally_death(
-        self, owner: Creature, dead_creature: Creature, combat: CombatState
+        self,
+        owner: Creature,
+        dead_creature: Creature,
+        combat: CombatState,
+        was_removal_prevented: bool = False,
     ) -> None:
         """Called when an allied creature dies."""
         if dead_creature is not owner and dead_creature.side == owner.side:
@@ -701,12 +940,16 @@ class SpinnerPower(PowerInstance):
     def __init__(self, amount: int):
         super().__init__(PowerId.SPINNER, amount)
 
+    def after_energy_reset(self, owner: Creature, combat: CombatState) -> None:
+        if hasattr(combat, "channel_orb"):
+            for _ in range(self.amount):
+                combat.channel_orb(owner, "GLASS")
+
     def after_side_turn_start(
         self, owner: Creature, side: CombatSide, combat: CombatState
     ) -> None:
-        if side == owner.side and hasattr(combat, "channel_orb"):
-            for _ in range(self.amount):
-                combat.channel_orb(owner, "GLASS")
+        if side == owner.side and owner not in getattr(combat, "_after_energy_reset_owners_this_turn", set()):
+            self.after_energy_reset(owner, combat)
 
 
 # ---------------------------------------------------------------------------
@@ -790,9 +1033,12 @@ class BurrowedPower(PowerInstance):
 
     def on_block_broken(self, owner: Creature, combat: CombatState) -> None:
         """Called when the owner's block drops to 0."""
-        owner.powers.pop(self.power_id, None)
-        owner.block = 0  # Lose all block on removal
-        # Stun into bite move is handled by monster AI
+        if not combat.set_enemy_state(owner, "DIZZY_MOVE"):
+            combat.stun_enemy(owner)
+        combat._remove_power(owner, self.power_id)
+
+    def on_removed(self, owner: Creature, combat: CombatState) -> None:
+        owner.block = 0
 
 
 # ---------------------------------------------------------------------------
@@ -808,9 +1054,9 @@ class SurroundedPower(PowerInstance):
     - BeforeCardPlayed: update facing direction toward target.
     StackType.Single.
 
-    Simplified: Facing direction is tracked. The damage multiplier applies
-    when the player is facing the wrong way. BackAttackLeft/Right powers
-    on enemies determine which side they attack from.
+    Facing direction is tracked and updated from the exact target chosen by
+    cards and potions. When only one attacking side remains, the player turns
+    toward it automatically.
     """
 
     power_type = PowerType.DEBUFF
@@ -823,6 +1069,14 @@ class SurroundedPower(PowerInstance):
     def __init__(self, amount: int = 1):
         super().__init__(PowerId.SURROUNDED, amount)
         self.facing: int = self.FACING_RIGHT
+
+    def _update_facing_toward_target(self, target: Creature | None) -> None:
+        if target is None:
+            return
+        if target.has_power(PowerId.BACK_ATTACK_LEFT):
+            self.facing = self.FACING_LEFT
+        elif target.has_power(PowerId.BACK_ATTACK_RIGHT):
+            self.facing = self.FACING_RIGHT
 
     def modify_damage_multiplicative(
         self,
@@ -846,15 +1100,35 @@ class SurroundedPower(PowerInstance):
     def before_card_played(
         self, owner: Creature, card: object, combat: CombatState
     ) -> None:
-        # Update facing direction toward the card's target
-        target = getattr(card, "target", None)
-        if target is not None:
-            if self.facing == self.FACING_RIGHT:
-                if target.has_power(PowerId.BACK_ATTACK_LEFT):
-                    self.facing = self.FACING_LEFT
-            elif self.facing == self.FACING_LEFT:
-                if target.has_power(PowerId.BACK_ATTACK_RIGHT):
-                    self.facing = self.FACING_RIGHT
+        if getattr(card, "owner", None) is not owner:
+            return
+        self._update_facing_toward_target(getattr(combat, "active_card_target", None) or getattr(card, "target", None))
+
+    def before_potion_used(
+        self,
+        owner: Creature,
+        potion: object,
+        target: Creature | None,
+        combat: CombatState,
+    ) -> None:
+        self._update_facing_toward_target(target)
+
+    def on_ally_death(
+        self,
+        owner: Creature,
+        dead_creature: Creature,
+        combat: CombatState,
+        was_removal_prevented: bool = False,
+    ) -> None:
+        if was_removal_prevented or dead_creature.side == owner.side:
+            return
+        hittable_enemies = combat.hittable_enemies
+        if not hittable_enemies:
+            return
+        if all(enemy.has_power(PowerId.BACK_ATTACK_LEFT) for enemy in hittable_enemies) or all(
+            enemy.has_power(PowerId.BACK_ATTACK_RIGHT) for enemy in hittable_enemies
+        ):
+            self._update_facing_toward_target(hittable_enemies[0])
 
 
 # ---------------------------------------------------------------------------
@@ -879,6 +1153,40 @@ class CoveredPower(PowerInstance):
         super().__init__(PowerId.COVERED, amount)
         self.covering_creature: Creature | None = None
 
+    def _detach_cover(self, owner: Creature) -> None:
+        coverer = self.covering_creature
+        if coverer is None:
+            return
+        intercept = coverer.powers.get(PowerId.INTERCEPT)
+        remove_covered_creature = getattr(intercept, "remove_covered_creature", None)
+        if callable(remove_covered_creature):
+            remove_covered_creature(owner)
+        self.covering_creature = None
+
+    def after_power_amount_changed(
+        self,
+        owner: Creature,
+        target: Creature,
+        power_id: PowerId,
+        amount: int,
+        applier: Creature | None,
+        source: object | None,
+        combat: CombatState,
+    ) -> None:
+        if owner is not target or power_id != self.power_id or amount <= 0 or applier is None:
+            return
+        if self.covering_creature is applier:
+            return
+        if self.covering_creature is not None:
+            self._detach_cover(owner)
+        self.covering_creature = applier
+        if not applier.has_power(PowerId.INTERCEPT):
+            applier.apply_power(PowerId.INTERCEPT, 1, applier=applier, source=source)
+        intercept = applier.powers.get(PowerId.INTERCEPT)
+        add_covered_creature = getattr(intercept, "add_covered_creature", None)
+        if callable(add_covered_creature):
+            add_covered_creature(owner)
+
     def modify_damage_multiplicative(
         self,
         owner: Creature,
@@ -894,7 +1202,23 @@ class CoveredPower(PowerInstance):
         self, owner: Creature, side: CombatSide, combat: CombatState
     ) -> None:
         if side == CombatSide.ENEMY:
+            self._detach_cover(owner)
             owner.powers.pop(self.power_id, None)
+
+    def on_ally_death(
+        self,
+        owner: Creature,
+        dead_creature: Creature,
+        combat: CombatState,
+        was_removal_prevented: bool = False,
+    ) -> None:
+        if not was_removal_prevented and dead_creature is self.covering_creature:
+            self._detach_cover(owner)
+            owner.powers.pop(self.power_id, None)
+
+    def before_death(self, owner: Creature, creature: Creature, combat: CombatState) -> None:
+        if creature is owner:
+            self._detach_cover(owner)
 
 
 # ---------------------------------------------------------------------------
@@ -924,23 +1248,70 @@ class DoorRevivalPower(PowerInstance):
     def __init__(self, amount: int = 1):
         super().__init__(PowerId.DOOR_REVIVAL, amount)
         self.is_half_dead: bool = False
+        self.return_count: int = 0
+        self.initial_max_hp: int | None = None
 
-    def on_owner_death(self, owner: Creature, combat: CombatState) -> bool:
-        """Returns True to prevent creature removal."""
+    def before_death(self, owner: Creature, creature: Creature, combat: CombatState) -> None:
+        if creature is not owner:
+            return
+        if self.initial_max_hp is None:
+            self.initial_max_hp = owner.max_hp
         self.is_half_dead = True
-        return True
+
+    def after_death(
+        self,
+        owner: Creature,
+        creature: Creature,
+        combat: CombatState,
+        was_removal_prevented: bool = False,
+    ) -> None:
+        if creature is not owner:
+            return
+        if was_removal_prevented:
+            self.is_half_dead = False
+            return
+        combat.spawn_doormaker()
+        combat.set_enemy_state(owner, "DEAD_MOVE")
 
     def revive(self, owner: Creature, min_hp: int) -> None:
         """Called by the encounter system to revive the Door."""
         self.is_half_dead = False
         owner.max_hp = min_hp
         owner.current_hp = min_hp
+        owner.escaped = False
+        owner._death_processed = False
 
-    def should_stop_combat_ending(self) -> bool:
-        return self.is_half_dead
+    def should_stop_combat_ending(
+        self,
+        owner: Creature | None = None,
+        combat: CombatState | None = None,
+    ) -> bool:
+        if not self.is_half_dead:
+            return False
+        current_combat = combat or getattr(owner, "combat_state", None)
+        if current_combat is None:
+            return True
+        return any(
+            enemy.monster_id == "DOORMAKER" and enemy.is_alive
+            for enemy in current_combat.enemies
+        )
 
     def should_allow_hitting(self, owner: Creature, combat: CombatState) -> bool:
         return not self.is_half_dead
+
+    def should_creature_be_removed_from_combat_after_death(
+        self,
+        owner: Creature,
+        combat: CombatState,
+    ) -> bool:
+        return False
+
+    def should_power_be_removed_after_owner_death(
+        self,
+        owner: Creature,
+        combat: CombatState,
+    ) -> bool:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -972,12 +1343,18 @@ class PersonalHivePower(PowerInstance):
         combat: CombatState,
     ) -> None:
         if target is owner and dealer is not None and props.is_powered():
-            # Add Dazed status cards to the attacker's draw pile
-            from sts2_env.core.enums import CardId
+            from sts2_env.cards.status import make_dazed
 
+            dazed_owner = dealer
+            if getattr(dealer, "is_pet", False) and getattr(dealer, "pet_owner", None) is not None:
+                dazed_owner = dealer.pet_owner
             for _ in range(self.amount):
-                if hasattr(combat, "add_status_to_draw_pile"):
-                    combat.add_status_to_draw_pile(dealer, CardId.DAZED)
+                combat.add_generated_card_to_creature_draw_pile(
+                    dazed_owner,
+                    make_dazed(),
+                    added_by_player=False,
+                    random_position=True,
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -993,6 +1370,7 @@ class CoordinatePower(PowerInstance):
 
     power_type = PowerType.BUFF
     stack_type = PowerStackType.COUNTER
+    is_temporary = True
 
     def __init__(self, amount: int):
         super().__init__(PowerId.COORDINATE, amount)
@@ -1029,9 +1407,16 @@ class SlothPower(PowerInstance):
         """Return False if card play limit reached."""
         return self._cards_played_this_turn < self.amount
 
+    def should_play(self, owner: Creature, card: object, combat: CombatState) -> bool:
+        if (getattr(card, "owner", None) or owner) is not owner:
+            return True
+        return self._cards_played_this_turn < self.amount
+
     def before_card_played(
         self, owner: Creature, card: object, combat: CombatState
     ) -> None:
+        if getattr(card, "owner", None) is not owner:
+            return
         self._cards_played_this_turn += 1
 
     def before_side_turn_start(
@@ -1069,12 +1454,22 @@ class MonologuePower(PowerInstance):
         super().__init__(PowerId.MONOLOGUE, amount)
         self._strength_applied: int = 0
         self.strength_per_card: int = self.STRENGTH_PER_CARD
+        self._amounts_for_played_cards: dict[int, int] = {}
+
+    def before_card_played(
+        self, owner: Creature, card: object, combat: CombatState
+    ) -> None:
+        if getattr(card, "owner", None) is owner:
+            self._amounts_for_played_cards[id(card)] = self.strength_per_card
 
     def after_card_played(
         self, owner: Creature, card: object, combat: CombatState
     ) -> None:
-        owner.apply_power(PowerId.STRENGTH, self.strength_per_card)
-        self._strength_applied += self.strength_per_card
+        amount = self._amounts_for_played_cards.pop(id(card), 0)
+        if amount <= 0:
+            return
+        owner.apply_power(PowerId.STRENGTH, amount)
+        self._strength_applied += amount
 
     def after_turn_end(
         self, owner: Creature, side: CombatSide, combat: CombatState

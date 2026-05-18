@@ -3,9 +3,25 @@
 import pytest
 
 from sts2_env.core.creature import Creature
-from sts2_env.core.enums import CardId, CombatSide, PowerId, ValueProp
-from sts2_env.core.damage import calculate_block, calculate_damage
-from sts2_env.powers.remaining_c import SandpitPower
+from sts2_env.core.enums import CardId, CombatSide, PowerId, RoomType, ValueProp
+from sts2_env.core.damage import apply_damage, calculate_block, calculate_damage
+from sts2_env.core.hooks import fire_after_block_cleared, fire_after_turn_end, fire_before_combat_start
+from sts2_env.cards.defect import make_beam_cell, make_feral, make_subroutine
+from sts2_env.cards.ironclad import make_inflame, make_juggling, make_sword_boomerang
+from sts2_env.cards.ironclad_basic import make_bash, make_defend_ironclad, make_strike_ironclad
+from sts2_env.cards.silent import _make_shiv, make_afterimage, make_serpent_form
+from sts2_env.cards.status import make_rebound
+from sts2_env.powers.base import PowerInstance
+from sts2_env.powers.monster import BurrowedPower, SkittishPower, SmoggyPower
+from sts2_env.powers.remaining_c import SandpitPower, ToricToughnessPower
+from sts2_env.run.reward_objects import GoldReward, RemoveCardReward
+from sts2_env.run.rooms import CombatRoom
+from sts2_env.run.run_state import PlayerState
+
+
+class _FirstChoiceRng:
+    def choice(self, values):
+        return list(values)[0]
 
 
 class TestPowerApplication:
@@ -39,6 +55,147 @@ class TestPowerApplication:
         assert not player.has_power(PowerId.VULNERABLE)
         assert not player.has_power(PowerId.WEAK)
         assert not player.has_power(PowerId.ARTIFACT)  # 2 consumed
+
+    def test_artifact_blocks_negative_strength(self, player):
+        player.apply_power(PowerId.ARTIFACT, 1)
+        player.apply_power(PowerId.STRENGTH, -2)
+
+        assert not player.has_power(PowerId.STRENGTH)
+        assert not player.has_power(PowerId.ARTIFACT)
+
+    def test_artifact_does_not_block_positive_strength(self, player):
+        player.apply_power(PowerId.ARTIFACT, 1)
+        player.apply_power(PowerId.STRENGTH, 2)
+
+        assert player.get_power_amount(PowerId.STRENGTH) == 2
+        assert player.get_power_amount(PowerId.ARTIFACT) == 1
+
+    def test_curl_up_triggers_after_multi_hit_card_finishes(self, simple_combat):
+        enemy = simple_combat.enemies[0]
+        enemy.current_hp = enemy.max_hp = 39
+        simple_combat.apply_power_to(enemy, PowerId.CURL_UP, 12)
+        simple_combat.hand = [make_sword_boomerang()]
+        simple_combat.energy = 1
+
+        assert simple_combat.play_card(0)
+        assert enemy.current_hp == 30
+        assert enemy.block == 12
+
+    def test_curl_up_does_not_trigger_when_hit_kills_owner(self, simple_combat):
+        enemy = simple_combat.enemies[0]
+        enemy.current_hp = enemy.max_hp = 6
+        simple_combat.apply_power_to(enemy, PowerId.CURL_UP, 12)
+        simple_combat.hand = [make_strike_ironclad()]
+        simple_combat.energy = 1
+
+        assert simple_combat.play_card(0, 0)
+        assert enemy.is_dead
+        assert enemy.block == 0
+
+    def test_sloth_limits_owner_card_plays_and_resets_on_player_turn_start(self, simple_combat):
+        simple_combat.hand = [make_strike_ironclad() for _ in range(4)]
+        simple_combat.energy = 10
+        simple_combat.apply_power_to(simple_combat.player, PowerId.SLOTH, 3)
+
+        assert simple_combat.play_card(0, 0)
+        assert simple_combat.play_card(0, 0)
+        assert simple_combat.play_card(0, 0)
+        assert simple_combat.can_play_card(simple_combat.hand[0]) is False
+        assert simple_combat.play_card(0, 0) is False
+
+        sloth = simple_combat.player.powers[PowerId.SLOTH]
+        sloth.before_side_turn_start(simple_combat.player, CombatSide.PLAYER, simple_combat)
+
+        assert simple_combat.can_play_card(simple_combat.hand[0]) is True
+
+    def test_ringing_allows_only_one_owner_card_until_turn_end(self, simple_combat):
+        simple_combat.hand = [make_strike_ironclad() for _ in range(2)]
+        simple_combat.energy = 10
+        simple_combat.apply_power_to(simple_combat.player, PowerId.RINGING, 1)
+
+        assert simple_combat.play_card(0, 0)
+        assert simple_combat.can_play_card(simple_combat.hand[0]) is False
+        assert simple_combat.play_card(0, 0) is False
+
+        ringing = simple_combat.player.powers[PowerId.RINGING]
+        ringing.after_turn_end(simple_combat.player, CombatSide.PLAYER, simple_combat)
+
+        assert simple_combat.can_play_card(simple_combat.hand[0]) is True
+
+    def test_entropy_requests_hand_transform_with_combat_selection_rng(self, simple_combat):
+        card = make_strike_ironclad()
+        simple_combat.hand = [card]
+        simple_combat.rng = _FirstChoiceRng()
+        simple_combat.apply_power_to(simple_combat.player, PowerId.ENTROPY, 1)
+
+        simple_combat.player.powers[PowerId.ENTROPY].after_player_turn_start(simple_combat.player, simple_combat)
+
+        assert simple_combat.pending_choice is not None
+        assert simple_combat.resolve_pending_choice(0)
+        assert simple_combat.pending_choice is None
+        assert simple_combat.hand[0] is not card
+        assert simple_combat.hand[0].card_id != CardId.STRIKE_IRONCLAD
+
+    def test_ringing_counts_cards_played_before_it_was_applied(self, simple_combat):
+        simple_combat.hand = [make_strike_ironclad() for _ in range(2)]
+        simple_combat.energy = 10
+
+        assert simple_combat.play_card(0, 0)
+
+        simple_combat.apply_power_to(simple_combat.player, PowerId.RINGING, 1)
+
+        assert simple_combat.can_play_card(simple_combat.hand[0]) is False
+        assert simple_combat.play_card(0, 0) is False
+
+    def test_ringing_only_blocks_cards_it_afflicted(self, simple_combat):
+        ringed = make_strike_ironclad()
+        already_afflicted = make_strike_ironclad()
+        already_afflicted.afflict("hexed")
+        simple_combat.hand = [ringed, already_afflicted]
+        simple_combat.energy = 10
+
+        simple_combat.apply_power_to(simple_combat.player, PowerId.RINGING, 1)
+
+        assert ringed.has_affliction("ringing")
+        assert already_afflicted.has_affliction("hexed")
+        assert simple_combat.play_card(0, 0)
+        assert simple_combat.can_play_card(simple_combat.hand[0]) is True
+
+    def test_tangled_increases_attack_energy_cost_for_playability_and_spend(self, simple_combat):
+        simple_combat.hand = [make_strike_ironclad()]
+        simple_combat.energy = 1
+        simple_combat.apply_power_to(simple_combat.player, PowerId.TANGLED, 1)
+
+        assert simple_combat.modified_card_cost(simple_combat.player, simple_combat.hand[0]) == 2
+        assert simple_combat.can_play_card(simple_combat.hand[0]) is False
+
+        simple_combat.energy = 2
+
+        assert simple_combat.play_card(0, 0)
+        assert simple_combat.energy == 0
+
+    def test_tangled_only_increases_cards_it_afflicted(self, simple_combat):
+        already_afflicted = make_strike_ironclad()
+        already_afflicted.afflict("hexed")
+        simple_combat.hand = [already_afflicted]
+        simple_combat.energy = 1
+
+        simple_combat.apply_power_to(simple_combat.player, PowerId.TANGLED, 1)
+
+        assert already_afflicted.has_affliction("hexed")
+        assert simple_combat.modified_card_cost(simple_combat.player, already_afflicted) == 1
+        assert simple_combat.can_play_card(already_afflicted) is True
+
+    def test_corruption_makes_owner_skills_free_and_exhaust_after_play(self, simple_combat):
+        defend = make_defend_ironclad()
+        simple_combat.hand = [defend]
+        simple_combat.energy = 0
+        simple_combat.apply_power_to(simple_combat.player, PowerId.CORRUPTION, 1)
+
+        assert simple_combat.modified_card_cost(simple_combat.player, defend) == 0
+        assert simple_combat.play_card(0)
+        assert defend in simple_combat.exhaust_pile
+        assert defend not in simple_combat.discard_pile
 
 
 class TestDebuffTicking:
@@ -107,6 +264,18 @@ class TestDebuffTickTiming:
         simple_combat.end_player_turn()
         assert not enemy.has_power(PowerId.VULNERABLE)
 
+    def test_vulnerable_is_removed_when_duration_reaches_zero(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        enemy.apply_power(PowerId.VULNERABLE, 1)
+
+        assert calculate_damage(10, player, enemy, ValueProp.MOVE, simple_combat) == 15
+
+        fire_after_turn_end(CombatSide.ENEMY, simple_combat)
+
+        assert PowerId.VULNERABLE not in enemy.powers
+        assert calculate_damage(10, player, enemy, ValueProp.MOVE, simple_combat) == 10
+
     def test_strength_persists_across_turns(self, simple_combat):
         """Strength never ticks down across multiple turns."""
         simple_combat.player.apply_power(PowerId.STRENGTH, 5)
@@ -153,6 +322,152 @@ class TestDamageModifierInteractions:
         player.apply_power(PowerId.WEAK, 1)
         assert calculate_damage(10, player, enemy, ValueProp.MOVE, simple_combat) == 5
 
+    def test_debilitate_decrements_on_owner_turn_end_without_skip(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        simple_combat.apply_power_to(player, PowerId.DEBILITATE, 2, applier=enemy)
+
+        fire_after_turn_end(CombatSide.ENEMY, simple_combat)
+
+        assert player.get_power_amount(PowerId.DEBILITATE) == 2
+
+        fire_after_turn_end(CombatSide.PLAYER, simple_combat)
+
+        assert player.get_power_amount(PowerId.DEBILITATE) == 1
+
+    def test_shrink_reduces_owner_powered_attack_damage_by_thirty_percent_and_ticks(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        simple_combat.apply_power_to(player, PowerId.SHRINK, 1, applier=enemy)
+
+        assert calculate_damage(10, player, enemy, ValueProp.MOVE, simple_combat) == 7
+        assert calculate_damage(10, enemy, player, ValueProp.MOVE, simple_combat) == 10
+
+        fire_after_turn_end(CombatSide.PLAYER, simple_combat)
+
+        assert PowerId.SHRINK not in player.powers
+        assert calculate_damage(10, player, enemy, ValueProp.MOVE, simple_combat) == 10
+
+    def test_infinite_shrink_does_not_tick_down(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        simple_combat.apply_power_to(player, PowerId.SHRINK, -1, applier=enemy)
+
+        fire_after_turn_end(CombatSide.PLAYER, simple_combat)
+
+        assert player.get_power_amount(PowerId.SHRINK) == -1
+
+    def test_flanking_is_removed_at_target_turn_end(self, simple_combat):
+        player = simple_combat.player
+        ally = simple_combat.add_ally_player(PlayerState(player_id=2, character_id="Ironclad", max_hp=70, current_hp=70))
+        enemy = simple_combat.enemies[0]
+        simple_combat.apply_power_to(enemy, PowerId.FLANKING, 2, applier=player)
+
+        assert calculate_damage(10, ally, enemy, ValueProp.MOVE, simple_combat) == 20
+
+        fire_after_turn_end(CombatSide.ENEMY, simple_combat)
+
+        assert PowerId.FLANKING not in enemy.powers
+        assert calculate_damage(10, ally, enemy, ValueProp.MOVE, simple_combat) == 10
+
+    def test_knockdown_is_removed_at_target_turn_end(self, simple_combat):
+        player = simple_combat.player
+        ally = simple_combat.add_ally_player(PlayerState(player_id=2, character_id="Ironclad", max_hp=70, current_hp=70))
+        enemy = simple_combat.enemies[0]
+        simple_combat.apply_power_to(enemy, PowerId.KNOCKDOWN, 2, applier=player)
+
+        assert calculate_damage(10, ally, enemy, ValueProp.MOVE, simple_combat) == 20
+
+        fire_after_turn_end(CombatSide.ENEMY, simple_combat)
+
+        assert PowerId.KNOCKDOWN not in enemy.powers
+        assert calculate_damage(10, ally, enemy, ValueProp.MOVE, simple_combat) == 10
+
+    def test_diamond_diadem_is_removed_at_enemy_turn_end(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        simple_combat.apply_power_to(player, PowerId.DIAMOND_DIADEM, 1)
+
+        assert calculate_damage(10, enemy, player, ValueProp.MOVE, simple_combat) == 5
+
+        fire_after_turn_end(CombatSide.ENEMY, simple_combat)
+
+        assert PowerId.DIAMOND_DIADEM not in player.powers
+        assert calculate_damage(10, enemy, player, ValueProp.MOVE, simple_combat) == 10
+
+    def test_imbalanced_triggers_only_when_damage_was_fully_blocked(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        enemy.apply_power(PowerId.IMBALANCED, 1)
+        imbalanced = enemy.powers[PowerId.IMBALANCED]
+
+        simple_combat.deal_damage(enemy, player, 0, ValueProp.MOVE)
+        assert imbalanced.was_fully_blocked is False
+
+        player.block = 5
+        simple_combat.deal_damage(enemy, player, 3, ValueProp.MOVE)
+        assert imbalanced.was_fully_blocked is True
+
+    def test_slippery_decrements_when_damage_is_blocked(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        enemy.apply_power(PowerId.SLIPPERY, 2)
+        enemy.block = 5
+
+        simple_combat.deal_damage(player, enemy, 3, ValueProp.MOVE)
+
+        assert enemy.get_power_amount(PowerId.SLIPPERY) == 1
+
+    def test_vital_spark_triggers_on_non_fully_blocked_zero_damage(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        enemy.apply_power(PowerId.VITAL_SPARK, 1)
+        simple_combat.energy = 0
+
+        simple_combat.deal_damage(player, enemy, 0, ValueProp.MOVE)
+
+        assert simple_combat.energy == 1
+
+    def test_vital_spark_does_not_trigger_on_fully_blocked_damage(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        enemy.apply_power(PowerId.VITAL_SPARK, 1)
+        enemy.block = 5
+        simple_combat.energy = 0
+
+        simple_combat.deal_damage(player, enemy, 3, ValueProp.MOVE)
+
+        assert simple_combat.energy == 0
+
+    def test_vital_spark_triggers_once_per_player_each_turn(self, simple_combat):
+        player = simple_combat.player
+        ally = simple_combat.add_ally_player(PlayerState(player_id=2, character_id="Ironclad", max_hp=70, current_hp=70))
+        ally_state = simple_combat.combat_player_state_for(ally)
+        assert ally_state is not None
+        enemy = simple_combat.enemies[0]
+        enemy.apply_power(PowerId.VITAL_SPARK, 1)
+        simple_combat.energy = 0
+        ally_state.energy = 0
+
+        simple_combat.deal_damage(player, enemy, 0, ValueProp.MOVE)
+        simple_combat.deal_damage(player, enemy, 0, ValueProp.MOVE)
+        simple_combat.deal_damage(ally, enemy, 0, ValueProp.MOVE)
+
+        assert simple_combat.energy == 1
+        assert ally_state.energy == 1
+
+    def test_personal_hive_adds_dazed_to_osty_owner_draw_pile(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        enemy.apply_power(PowerId.PERSONAL_HIVE, 2)
+        osty = simple_combat.summon_osty(player, 5)
+        assert osty is not None
+
+        simple_combat.deal_damage(osty, enemy, 1, ValueProp.MOVE)
+
+        dazed_count = sum(card.card_id == CardId.DAZED for card in simple_combat.draw_pile)
+        assert dazed_count == 2
+
 
 class TestSandpitPower:
     def test_sandpit_kills_target_player_when_count_reaches_zero(self, simple_combat):
@@ -165,6 +480,107 @@ class TestSandpitPower:
         sandpit.after_side_turn_start(enemy, CombatSide.ENEMY, simple_combat)
 
         assert player.is_dead
+        assert PowerId.SANDPIT not in enemy.powers
+
+
+class TestBurrowedPower:
+    def test_burrowed_clears_block_when_removed(self, simple_combat):
+        enemy = simple_combat.enemies[0]
+        enemy.block = 12
+        enemy.powers[PowerId.BURROWED] = BurrowedPower()
+
+        simple_combat._remove_power(enemy, PowerId.BURROWED)
+
+        assert enemy.block == 0
+        assert PowerId.BURROWED not in enemy.powers
+
+    def test_burrowed_removes_itself_when_block_is_broken(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        enemy.block = 5
+        enemy.powers[PowerId.BURROWED] = BurrowedPower()
+
+        apply_damage(enemy, 5, ValueProp.MOVE, simple_combat, player)
+
+        assert enemy.block == 0
+        assert PowerId.BURROWED not in enemy.powers
+
+
+class TestDieForYouPower:
+    def test_osty_takes_unblocked_attack_damage_for_owner(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        simple_combat.summon_osty(player, 3)
+        osty = simple_combat.get_osty(player)
+        assert osty is not None
+        player.block = 2
+
+        apply_damage(player, 5, ValueProp.MOVE, simple_combat, enemy)
+
+        assert player.current_hp == player.max_hp
+        assert osty.is_dead
+        assert not osty.escaped
+
+    def test_osty_overkill_damage_spills_back_to_owner(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        simple_combat.summon_osty(player, 2)
+        osty = simple_combat.get_osty(player)
+        assert osty is not None
+        player.block = 1
+
+        apply_damage(player, 5, ValueProp.MOVE, simple_combat, enemy)
+
+        assert osty.is_dead
+        assert player.current_hp == player.max_hp - 2
+
+    def test_hardened_shell_caps_damage_before_osty_redirect(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        simple_combat.summon_osty(player, 10)
+        osty = simple_combat.get_osty(player)
+        assert osty is not None
+        player.apply_power(PowerId.HARDENED_SHELL, 3)
+
+        apply_damage(player, 8, ValueProp.MOVE, simple_combat, enemy)
+
+        assert osty.current_hp == 7
+        assert player.current_hp == player.max_hp
+
+    def test_revived_osty_can_die_again(self, simple_combat):
+        player = simple_combat.player
+        simple_combat.summon_osty(player, 2)
+        osty = simple_combat.get_osty(player)
+        assert osty is not None
+
+        assert simple_combat.kill_osty(player)
+        simple_combat.summon_osty(player, 4)
+
+        assert osty.is_alive
+        assert not osty.escaped
+        assert not osty._death_processed
+        assert simple_combat.kill_osty(player)
+
+
+class TestSkittishPower:
+    def test_skittish_does_not_trigger_from_non_card_damage(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        enemy.powers[PowerId.SKITTISH] = SkittishPower(6)
+
+        simple_combat.deal_damage(player, enemy, 3, ValueProp.MOVE)
+
+        assert enemy.block == 0
+
+    def test_skittish_triggers_after_card_attack_damage(self, simple_combat):
+        enemy = simple_combat.enemies[0]
+        simple_combat.hand = [make_strike_ironclad()]
+        simple_combat.energy = 1
+        enemy.powers[PowerId.SKITTISH] = SkittishPower(6)
+
+        assert simple_combat.play_card(0, 0)
+
+        assert enemy.block == 6
 
 
 class TestPowerAmountChangedHooks:
@@ -200,6 +616,887 @@ class TestPowerAmountChangedHooks:
         simple_combat.apply_power_to(enemy, PowerId.POISON, 1)
         assert enemy.current_hp == starting_hp - 4
 
+    def test_monarchs_gaze_strength_down_is_temporary(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        player.apply_power(PowerId.MONARCHS_GAZE, 2)
+        player.apply_power(PowerId.SLEIGHT_OF_FLESH, 5)
+        starting_hp = enemy.current_hp
+
+        simple_combat.deal_damage(
+            dealer=player,
+            target=enemy,
+            amount=4,
+            props=ValueProp.MOVE,
+        )
+
+        assert enemy.current_hp == starting_hp - 4
+        assert enemy.get_power_amount(PowerId.MONARCHS_GAZE_STRENGTH_DOWN) == 2
+        assert enemy.get_power_amount(PowerId.STRENGTH) == -2
+
+        power = enemy.powers[PowerId.MONARCHS_GAZE_STRENGTH_DOWN]
+        power.after_turn_end(enemy, CombatSide.ENEMY, simple_combat)
+        assert enemy.get_power_amount(PowerId.STRENGTH) == 0
+
+    def test_enemy_ritual_skips_first_turn_end_after_application(self, simple_combat):
+        enemy = simple_combat.enemies[0]
+
+        enemy.apply_power(PowerId.RITUAL, 3)
+        fire_after_turn_end(CombatSide.ENEMY, simple_combat)
+        assert enemy.get_power_amount(PowerId.STRENGTH) == 0
+
+        fire_after_turn_end(CombatSide.ENEMY, simple_combat)
+        assert enemy.get_power_amount(PowerId.STRENGTH) == 3
+
+    def test_tank_applies_guarded_to_other_player_teammates(self, simple_combat):
+        ally_state = PlayerState(player_id=2, character_id="Ironclad", max_hp=70, current_hp=70)
+        ally = simple_combat.add_ally_player(ally_state)
+
+        simple_combat.apply_power_to(simple_combat.player, PowerId.TANK, 1)
+
+        assert ally.get_power_amount(PowerId.GUARDED) == 1
+        assert simple_combat.player.get_power_amount(PowerId.GUARDED) == 0
+
+    def test_enemy_plating_decrements_by_player_count(self, simple_combat):
+        enemy = simple_combat.enemies[0]
+        simple_combat.add_ally_player(PlayerState(player_id=2, character_id="Ironclad", max_hp=70, current_hp=70))
+        enemy.apply_power(PowerId.PLATING, 6)
+
+        fire_after_turn_end(CombatSide.ENEMY, simple_combat)
+
+        assert enemy.get_power_amount(PowerId.PLATING) == 4
+
+    def test_juggling_counts_attacks_played_before_it_was_applied(self, simple_combat):
+        simple_combat.hand = [
+            make_strike_ironclad(),
+            make_strike_ironclad(),
+            make_juggling(),
+            make_strike_ironclad(),
+        ]
+        simple_combat.energy = 10
+
+        assert simple_combat.play_card(0, 0)
+        assert simple_combat.play_card(0, 0)
+        assert simple_combat.play_card(0)
+        assert simple_combat.play_card(0, 0)
+
+        assert len(simple_combat.hand) == 1
+        assert simple_combat.hand[0].card_id == CardId.STRIKE_IRONCLAD
+
+    def test_feral_returns_limited_zero_cost_attacks_to_hand(self, simple_combat):
+        simple_combat.hand = [make_feral(), make_beam_cell(), make_beam_cell()]
+        simple_combat.energy = 10
+
+        assert simple_combat.play_card(0)
+        assert simple_combat.play_card(0, 0)
+        assert len(simple_combat.hand) == 2
+
+        assert simple_combat.play_card(0, 0)
+        assert len(simple_combat.hand) == 1
+        assert simple_combat.hand[0].card_id == CardId.BEAM_CELL
+
+    def test_feral_counts_zero_cost_attacks_played_before_it_was_applied(self, simple_combat):
+        simple_combat.hand = [make_beam_cell(), make_feral(), make_beam_cell()]
+        simple_combat.energy = 10
+
+        assert simple_combat.play_card(0, 0)
+        assert simple_combat.play_card(0)
+        assert simple_combat.play_card(0, 0)
+
+        assert simple_combat.hand == []
+
+    def test_rebound_moves_its_card_to_draw_top_after_play(self, simple_combat):
+        rebound = make_rebound()
+        simple_combat.hand = [rebound]
+        simple_combat.draw_pile = []
+        simple_combat.discard_pile = []
+        simple_combat.energy = 1
+
+        assert simple_combat.play_card(0, 0)
+
+        assert simple_combat.draw_pile == [rebound]
+        assert simple_combat.discard_pile == []
+        assert PowerId.REBOUND not in simple_combat.player.powers
+
+    def test_nostalgia_moves_first_attack_or_skill_to_draw_top(self, simple_combat):
+        first = make_strike_ironclad()
+        second = make_defend_ironclad()
+        simple_combat.hand = [first, second]
+        simple_combat.draw_pile = []
+        simple_combat.discard_pile = []
+        simple_combat.energy = 2
+        simple_combat.apply_power_to(simple_combat.player, PowerId.NOSTALGIA, 1)
+
+        assert simple_combat.play_card(0, 0)
+        assert simple_combat.draw_pile == [first]
+
+        assert simple_combat.play_card(0)
+        assert second in simple_combat.discard_pile
+        assert simple_combat.draw_pile == [first]
+
+    def test_nostalgia_counts_qualifying_cards_played_before_it_was_applied(self, simple_combat):
+        first = make_strike_ironclad()
+        second = make_defend_ironclad()
+        simple_combat.hand = [first, second]
+        simple_combat.draw_pile = []
+        simple_combat.discard_pile = []
+        simple_combat.energy = 2
+
+        assert simple_combat.play_card(0, 0)
+
+        simple_combat.apply_power_to(simple_combat.player, PowerId.NOSTALGIA, 1)
+
+        assert simple_combat.play_card(0)
+        assert second in simple_combat.discard_pile
+        assert second not in simple_combat.draw_pile
+
+    def test_block_next_turn_triggers_on_block_cleared_hook(self, simple_combat):
+        simple_combat.player.apply_power(PowerId.BLOCK_NEXT_TURN, 6)
+
+        fire_after_block_cleared(simple_combat.player, simple_combat)
+
+        assert simple_combat.player.block == 6
+        assert simple_combat.player.get_power_amount(PowerId.BLOCK_NEXT_TURN) == 0
+
+    def test_toric_toughness_triggers_on_block_cleared_hook(self, simple_combat):
+        power = ToricToughnessPower(1)
+        power.set_block(7)
+        simple_combat.player.powers[PowerId.TORIC_TOUGHNESS] = power
+
+        fire_after_block_cleared(simple_combat.player, simple_combat)
+
+        assert simple_combat.player.block == 7
+        assert PowerId.TORIC_TOUGHNESS not in simple_combat.player.powers
+
+    def test_self_forming_clay_power_triggers_on_block_cleared_hook(self, simple_combat):
+        simple_combat.player.apply_power(PowerId.SELF_FORMING_CLAY, 4)
+
+        fire_after_block_cleared(simple_combat.player, simple_combat)
+
+        assert simple_combat.player.block == 4
+        assert PowerId.SELF_FORMING_CLAY not in simple_combat.player.powers
+
+    def test_after_energy_reset_runs_before_hand_draw_modifiers(self, simple_combat):
+        class DrawProbePower(PowerInstance):
+            def __init__(self):
+                super().__init__(PowerId.ACCURACY, 1)
+                self.energy_reset_seen = False
+
+            def after_energy_reset(self, owner, combat):
+                self.energy_reset_seen = True
+
+            def modify_hand_draw(self, owner, draw):
+                return draw + 1 if self.energy_reset_seen else draw
+
+        probe = DrawProbePower()
+        simple_combat.player.powers[PowerId.ACCURACY] = probe
+        simple_combat.hand = []
+        simple_combat.draw_pile = [make_strike_ironclad() for _ in range(6)]
+
+        simple_combat._start_player_turn()
+
+        assert probe.energy_reset_seen is True
+        assert len(simple_combat.hand) == 6
+
+    def test_energy_and_star_next_turn_trigger_once_during_energy_reset(self, simple_combat):
+        simple_combat.hand = []
+        simple_combat.draw_pile = []
+        simple_combat.energy = 0
+        simple_combat.stars = 0
+        simple_combat.apply_power_to(simple_combat.player, PowerId.ENERGY_NEXT_TURN, 2)
+        simple_combat.apply_power_to(simple_combat.player, PowerId.STAR_NEXT_TURN, 3)
+
+        simple_combat._start_player_turn()
+
+        assert simple_combat.energy == simple_combat.max_energy + 2
+        assert simple_combat.stars == 3
+        assert PowerId.ENERGY_NEXT_TURN not in simple_combat.player.powers
+        assert PowerId.STAR_NEXT_TURN not in simple_combat.player.powers
+
+    def test_genesis_gains_stars_once_during_energy_reset(self, simple_combat):
+        simple_combat.hand = []
+        simple_combat.draw_pile = []
+        simple_combat.stars = 0
+        simple_combat.apply_power_to(simple_combat.player, PowerId.GENESIS, 2)
+
+        simple_combat._start_player_turn()
+
+        assert simple_combat.stars == 2
+        assert simple_combat.player.get_power_amount(PowerId.GENESIS) == 2
+
+    def test_combat_end_runs_before_combat_victory(self, simple_combat):
+        calls: list[str] = []
+
+        class RecordingPower(PowerInstance):
+            def after_combat_end(self, owner, combat):
+                calls.append("end")
+
+            def after_combat_victory(self, owner, combat):
+                calls.append("victory")
+
+        simple_combat.player.powers[PowerId.STRENGTH] = RecordingPower(PowerId.STRENGTH, 1)
+
+        simple_combat._end_combat(player_won=True)
+
+        assert calls == ["end", "victory"]
+
+    def test_royalties_adds_gold_reward_after_combat_end(self, simple_combat):
+        room = CombatRoom(room_type=RoomType.MONSTER)
+        simple_combat.room = room
+        simple_combat.apply_power_to(simple_combat.player, PowerId.ROYALTIES, 17)
+
+        simple_combat._end_combat(player_won=True)
+
+        rewards = room.extra_rewards[simple_combat.player_id]
+        assert len(rewards) == 1
+        assert isinstance(rewards[0], GoldReward)
+        assert rewards[0].min_gold == 17
+        assert rewards[0].max_gold == 17
+
+    def test_forbidden_grimoire_adds_card_removal_rewards_after_combat_end(self, simple_combat):
+        room = CombatRoom(room_type=RoomType.MONSTER)
+        simple_combat.room = room
+        simple_combat.apply_power_to(simple_combat.player, PowerId.FORBIDDEN_GRIMOIRE, 2)
+
+        simple_combat._end_combat(player_won=True)
+
+        rewards = room.extra_rewards[simple_combat.player_id]
+        assert len(rewards) == 2
+        assert all(isinstance(reward, RemoveCardReward) for reward in rewards)
+
+    def test_improvement_upgrades_random_deck_cards_after_combat_end(self, simple_combat):
+        first = make_bash()
+        second = make_strike_ironclad()
+        simple_combat.current_player_state.player_state.deck = [first, second]
+        simple_combat.apply_power_to(simple_combat.player, PowerId.IMPROVEMENT, 1)
+
+        simple_combat._end_combat(player_won=True)
+
+        assert sum(card.upgraded for card in [first, second]) == 1
+
+    def test_orbit_gains_energy_after_every_four_energy_spent(self, simple_combat):
+        simple_combat.hand = [make_defend_ironclad() for _ in range(4)]
+        simple_combat.energy = 4
+        simple_combat.apply_power_to(simple_combat.player, PowerId.ORBIT, 1)
+
+        assert simple_combat.play_card(0)
+        assert simple_combat.play_card(0)
+        assert simple_combat.play_card(0)
+        assert simple_combat.play_card(0)
+
+        assert simple_combat.energy == 1
+
+    def test_chains_of_binding_allows_only_one_bound_card_per_turn(self, simple_combat):
+        first = make_strike_ironclad()
+        second = make_strike_ironclad()
+        first.bound = True
+        second.bound = True
+        simple_combat.hand = [first, second]
+        simple_combat.energy = 10
+        simple_combat.apply_power_to(simple_combat.player, PowerId.CHAINS_OF_BINDING, 2)
+
+        assert simple_combat.play_card(0, 0)
+        assert simple_combat.can_play_card(simple_combat.hand[0]) is False
+        assert simple_combat.play_card(0, 0) is False
+
+    def test_chains_of_binding_clears_bound_cards_at_turn_end(self, simple_combat):
+        card = make_strike_ironclad()
+        card.owner = simple_combat.player
+        card.bound = True
+        simple_combat.hand = [card]
+        simple_combat.apply_power_to(simple_combat.player, PowerId.CHAINS_OF_BINDING, 2)
+
+        power = simple_combat.player.powers[PowerId.CHAINS_OF_BINDING]
+        power.before_turn_end(simple_combat.player, CombatSide.PLAYER, simple_combat)
+
+        assert card.bound is False
+        assert simple_combat.can_play_card(card) is True
+
+    def test_smoggy_only_tracks_owners_skill_plays(self, simple_combat):
+        ally = simple_combat.add_ally_player(PlayerState(player_id=2, character_id="Ironclad", max_hp=70, current_hp=70))
+        ally_state = simple_combat.combat_player_state_for(ally)
+        assert ally_state is not None
+        primary_skill = make_defend_ironclad()
+        ally_skill = make_defend_ironclad()
+        primary_skill.owner = simple_combat.player
+        ally_skill.owner = ally
+        simple_combat.hand = [primary_skill]
+        simple_combat.energy = 1
+        ally_state.hand = [ally_skill]
+        ally_state.zone_map["hand"] = ally_state.hand
+        ally_state.energy = 1
+        simple_combat.player.powers[PowerId.SMOGGY] = SmoggyPower()
+
+        assert simple_combat.play_card_from_creature(ally, 0)
+
+        assert simple_combat.can_play_card(primary_skill) is True
+
+    def test_smoggy_does_not_block_teammate_skills(self, simple_combat):
+        ally = simple_combat.add_ally_player(PlayerState(player_id=2, character_id="Ironclad", max_hp=70, current_hp=70))
+        ally_state = simple_combat.combat_player_state_for(ally)
+        assert ally_state is not None
+        primary_skill = make_defend_ironclad()
+        ally_skill = make_defend_ironclad()
+        primary_skill.owner = simple_combat.player
+        ally_skill.owner = ally
+        simple_combat.hand = [primary_skill]
+        simple_combat.energy = 1
+        ally_state.hand = [ally_skill]
+        ally_state.zone_map["hand"] = ally_state.hand
+        ally_state.energy = 1
+        simple_combat.player.powers[PowerId.SMOGGY] = SmoggyPower()
+
+        assert simple_combat.play_card(0)
+
+        assert simple_combat.can_play_card(ally_skill) is True
+
+    def test_smoggy_marks_new_skills_after_prior_skill_play_this_turn(self, simple_combat):
+        first_skill = make_defend_ironclad()
+        existing_skill = make_defend_ironclad()
+        first_skill.owner = simple_combat.player
+        existing_skill.owner = simple_combat.player
+        simple_combat.hand = [first_skill, existing_skill]
+        simple_combat.energy = 2
+
+        assert simple_combat.play_card(0)
+
+        simple_combat.player.powers[PowerId.SMOGGY] = SmoggyPower()
+
+        assert simple_combat.can_play_card(existing_skill) is True
+
+        new_skill = make_defend_ironclad()
+        simple_combat.move_card_to_hand(new_skill)
+
+        assert simple_combat.can_play_card(new_skill) is False
+
+    def test_smoggy_does_not_block_new_skill_with_existing_affliction(self, simple_combat):
+        first_skill = make_defend_ironclad()
+        first_skill.owner = simple_combat.player
+        simple_combat.hand = [first_skill]
+        simple_combat.energy = 2
+
+        assert simple_combat.play_card(0)
+
+        simple_combat.player.powers[PowerId.SMOGGY] = SmoggyPower()
+        new_skill = make_defend_ironclad()
+        new_skill.afflict("hexed")
+        simple_combat.move_card_to_hand(new_skill)
+
+        assert new_skill.has_affliction("hexed")
+        assert simple_combat.can_play_card(new_skill) is True
+
+    def test_free_card_powers_only_decrement_for_owner_cards(self, simple_combat):
+        ally = simple_combat.add_ally_player(PlayerState(player_id=2, character_id="Ironclad", max_hp=70, current_hp=70))
+        ally_state = simple_combat.combat_player_state_for(ally)
+        assert ally_state is not None
+        ally_state.hand = [make_strike_ironclad(), make_defend_ironclad(), make_afterimage()]
+        ally_state.zone_map["hand"] = ally_state.hand
+        ally_state.energy = 3
+        simple_combat.apply_power_to(simple_combat.player, PowerId.FREE_ATTACK, 1)
+        simple_combat.apply_power_to(simple_combat.player, PowerId.FREE_SKILL, 1)
+        simple_combat.apply_power_to(simple_combat.player, PowerId.FREE_POWER, 1)
+
+        assert simple_combat.play_card_from_creature(ally, 0, 0)
+        assert simple_combat.play_card_from_creature(ally, 0)
+        assert simple_combat.play_card_from_creature(ally, 0)
+
+        assert ally_state.energy == 0
+        assert simple_combat.player.get_power_amount(PowerId.FREE_ATTACK) == 1
+        assert simple_combat.player.get_power_amount(PowerId.FREE_SKILL) == 1
+        assert simple_combat.player.get_power_amount(PowerId.FREE_POWER) == 1
+
+    def test_spirit_of_ash_triggers_for_string_ethereal_keyword(self, simple_combat):
+        ethereal = make_defend_ironclad()
+        ethereal.keywords = frozenset({"ethereal"})
+        simple_combat.hand = [ethereal]
+        simple_combat.energy = 1
+        simple_combat.apply_power_to(simple_combat.player, PowerId.SPIRIT_OF_ASH, 4)
+
+        assert simple_combat.play_card(0)
+
+        assert simple_combat.player.block == 9
+
+    def test_tag_team_replays_non_applier_attack_against_target(self, simple_combat):
+        ally = simple_combat.add_ally_player(PlayerState(player_id=2, character_id="Ironclad", max_hp=70, current_hp=70))
+        ally_state = simple_combat.combat_player_state_for(ally)
+        assert ally_state is not None
+        enemy = simple_combat.enemies[0]
+        starting_hp = enemy.current_hp
+        simple_combat.hand = [make_strike_ironclad()]
+        simple_combat.energy = 1
+        ally_state.hand = [make_strike_ironclad()]
+        ally_state.zone_map["hand"] = ally_state.hand
+        ally_state.energy = 1
+        simple_combat.apply_power_to(enemy, PowerId.TAG_TEAM, 1, applier=simple_combat.player)
+
+        assert simple_combat.play_card(0, 0)
+        assert enemy.current_hp == starting_hp - 6
+        assert enemy.get_power_amount(PowerId.TAG_TEAM) == 1
+
+        assert simple_combat.play_card_from_creature(ally, 0, 0)
+
+        assert enemy.current_hp == starting_hp - 18
+        assert not enemy.has_power(PowerId.TAG_TEAM)
+
+    def test_echo_form_ignores_teammate_cards(self, simple_combat):
+        ally = simple_combat.add_ally_player(PlayerState(player_id=2, character_id="Ironclad", max_hp=70, current_hp=70))
+        ally_state = simple_combat.combat_player_state_for(ally)
+        assert ally_state is not None
+        enemy = simple_combat.enemies[0]
+        starting_hp = enemy.current_hp
+        simple_combat.hand = [make_strike_ironclad()]
+        simple_combat.energy = 2
+        ally_state.hand = [make_strike_ironclad()]
+        ally_state.zone_map["hand"] = ally_state.hand
+        ally_state.energy = 1
+        simple_combat.apply_power_to(simple_combat.player, PowerId.ECHO_FORM, 1)
+
+        assert simple_combat.play_card_from_creature(ally, 0, 0)
+        assert enemy.current_hp == starting_hp - 6
+
+        assert simple_combat.play_card(0, 0)
+
+        assert enemy.current_hp == starting_hp - 18
+
+    def test_echo_form_counts_cards_played_before_it_was_applied(self, simple_combat):
+        enemy = simple_combat.enemies[0]
+        starting_hp = enemy.current_hp
+        simple_combat.hand = [make_strike_ironclad(), make_strike_ironclad()]
+        simple_combat.energy = 10
+
+        assert simple_combat.play_card(0, 0)
+
+        simple_combat.apply_power_to(simple_combat.player, PowerId.ECHO_FORM, 1)
+
+        assert simple_combat.play_card(0, 0)
+        assert enemy.current_hp == starting_hp - 12
+
+    def test_replay_powers_do_not_affect_teammate_attacks(self, simple_combat):
+        ally = simple_combat.add_ally_player(PlayerState(player_id=2, character_id="Ironclad", max_hp=70, current_hp=70))
+        ally_state = simple_combat.combat_player_state_for(ally)
+        assert ally_state is not None
+        enemy = simple_combat.enemies[0]
+        starting_hp = enemy.current_hp
+        ally_state.hand = [make_strike_ironclad()]
+        ally_state.zone_map["hand"] = ally_state.hand
+        ally_state.energy = 1
+        simple_combat.apply_power_to(simple_combat.player, PowerId.ONE_TWO_PUNCH, 1)
+        simple_combat.apply_power_to(simple_combat.player, PowerId.DUPLICATION, 1)
+
+        assert simple_combat.play_card_from_creature(ally, 0, 0)
+
+        assert enemy.current_hp == starting_hp - 6
+        assert simple_combat.player.get_power_amount(PowerId.ONE_TWO_PUNCH) == 1
+        assert simple_combat.player.get_power_amount(PowerId.DUPLICATION) == 1
+
+    def test_burst_does_not_decrement_for_teammate_skills(self, simple_combat):
+        ally = simple_combat.add_ally_player(PlayerState(player_id=2, character_id="Ironclad", max_hp=70, current_hp=70))
+        ally_state = simple_combat.combat_player_state_for(ally)
+        assert ally_state is not None
+        ally_state.hand = [make_defend_ironclad()]
+        ally_state.zone_map["hand"] = ally_state.hand
+        ally_state.energy = 1
+        simple_combat.apply_power_to(simple_combat.player, PowerId.BURST, 1)
+
+        assert simple_combat.play_card_from_creature(ally, 0)
+
+        assert ally.block == 5
+        assert simple_combat.player.get_power_amount(PowerId.BURST) == 1
+
+    def test_phantom_blades_ignores_teammate_shivs_for_first_shiv_bonus(self, simple_combat):
+        ally = simple_combat.add_ally_player(PlayerState(player_id=2, character_id="Silent", max_hp=70, current_hp=70))
+        ally_state = simple_combat.combat_player_state_for(ally)
+        assert ally_state is not None
+        enemy = simple_combat.enemies[0]
+        starting_hp = enemy.current_hp
+        simple_combat.hand = [_make_shiv()]
+        simple_combat.energy = 0
+        ally_state.hand = [_make_shiv()]
+        ally_state.zone_map["hand"] = ally_state.hand
+        ally_state.energy = 0
+        simple_combat.apply_power_to(simple_combat.player, PowerId.PHANTOM_BLADES, 3)
+
+        assert simple_combat.play_card_from_creature(ally, 0, 0)
+        assert enemy.current_hp == starting_hp - 4
+
+        assert simple_combat.play_card(0, 0)
+
+        assert enemy.current_hp == starting_hp - 11
+
+    def test_phantom_blades_counts_shivs_played_before_it_was_applied(self, simple_combat):
+        enemy = simple_combat.enemies[0]
+        starting_hp = enemy.current_hp
+        simple_combat.hand = [_make_shiv(), _make_shiv()]
+        simple_combat.energy = 0
+
+        assert simple_combat.play_card(0, 0)
+
+        simple_combat.apply_power_to(simple_combat.player, PowerId.PHANTOM_BLADES, 3)
+
+        assert simple_combat.play_card(0, 0)
+        assert enemy.current_hp == starting_hp - 8
+
+    def test_phantom_blades_gives_existing_owner_shivs_retain_on_application(self, simple_combat):
+        ally = simple_combat.add_ally_player(PlayerState(player_id=2, character_id="Silent", max_hp=70, current_hp=70))
+        ally_state = simple_combat.combat_player_state_for(ally)
+        assert ally_state is not None
+        owner_shiv = _make_shiv()
+        ally_shiv = _make_shiv()
+        owner_shiv.owner = simple_combat.player
+        ally_shiv.owner = ally
+        simple_combat.hand = [owner_shiv]
+        ally_state.hand = [ally_shiv]
+        ally_state.zone_map["hand"] = ally_state.hand
+
+        simple_combat.apply_power_to(simple_combat.player, PowerId.PHANTOM_BLADES, 3)
+
+        assert owner_shiv.is_retain
+        assert not ally_shiv.is_retain
+
+    def test_rage_ignores_teammate_attacks(self, simple_combat):
+        ally = simple_combat.add_ally_player(PlayerState(player_id=2, character_id="Ironclad", max_hp=70, current_hp=70))
+        ally_state = simple_combat.combat_player_state_for(ally)
+        assert ally_state is not None
+        ally_state.hand = [make_strike_ironclad()]
+        ally_state.zone_map["hand"] = ally_state.hand
+        ally_state.energy = 1
+        simple_combat.apply_power_to(simple_combat.player, PowerId.RAGE, 5)
+
+        assert simple_combat.play_card_from_creature(ally, 0, 0)
+
+        assert simple_combat.player.block == 0
+
+    def test_star_powers_ignore_teammate_star_changes(self, simple_combat):
+        ally = simple_combat.add_ally_player(PlayerState(player_id=2, character_id="Regent", max_hp=60, current_hp=60))
+        enemy = simple_combat.enemies[0]
+        starting_hp = enemy.current_hp
+        simple_combat.apply_power_to(simple_combat.player, PowerId.BLACK_HOLE, 3)
+        simple_combat.apply_power_to(simple_combat.player, PowerId.CHILD_OF_THE_STARS, 2)
+
+        simple_combat.gain_stars(ally, 2)
+        simple_combat.spend_stars(ally, 2)
+
+        assert enemy.current_hp == starting_hp
+        assert simple_combat.player.block == 0
+
+    def test_gigantification_tracks_attack_context_and_decrements_after_attack(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        card = make_strike_ironclad()
+        card.owner = player
+        simple_combat.apply_power_to(player, PowerId.GIGANTIFICATION, 1)
+        starting_hp = enemy.current_hp
+
+        with simple_combat.attack_context(player, enemy, ValueProp.MOVE, model_source=card):
+            damage = calculate_damage(3, player, enemy, ValueProp.MOVE, simple_combat)
+            apply_damage(enemy, damage, ValueProp.MOVE, simple_combat, player)
+
+        assert enemy.current_hp == starting_hp - 9
+        assert not player.has_power(PowerId.GIGANTIFICATION)
+
+    def test_black_hole_damages_only_after_star_cost_card_play(self, simple_combat):
+        enemy = simple_combat.enemies[0]
+        enemy.current_hp = enemy.max_hp = 100
+        simple_combat.apply_power_to(simple_combat.player, PowerId.BLACK_HOLE, 3)
+        simple_combat.stars = 1
+        simple_combat.player.stars = 1
+
+        assert simple_combat.spend_stars(simple_combat.player, 1) == 1
+
+        assert enemy.current_hp == 100
+
+        card = make_defend_ironclad()
+        card.star_cost = 1
+        simple_combat.hand = [card]
+        simple_combat.energy = 1
+        simple_combat.stars = 1
+        simple_combat.player.stars = 1
+
+        assert simple_combat.play_card(0)
+
+        assert enemy.current_hp == 97
+
+    def test_dampen_downgrades_cards_then_restores_when_caster_dies(self, simple_combat):
+        enemy = simple_combat.enemies[0]
+        bash = make_bash()
+        simple_combat.upgrade_card(bash)
+        simple_combat.hand = [bash]
+
+        simple_combat.apply_power_to(simple_combat.player, PowerId.DAMPEN, 1, applier=enemy)
+        dampen = simple_combat.player.powers[PowerId.DAMPEN]
+        dampen.add_caster(enemy)
+
+        assert bash.upgraded is False
+        assert bash.base_damage == 8
+        assert bash.effect_vars["vulnerable"] == 2
+
+        assert simple_combat.kill_creature(enemy)
+
+        assert PowerId.DAMPEN not in simple_combat.player.powers
+        assert bash.upgraded is True
+        assert bash.base_damage == 10
+        assert bash.effect_vars["vulnerable"] == 3
+
+    def test_hex_applies_ethereal_to_existing_and_new_cards_then_restores(self, simple_combat):
+        enemy = simple_combat.enemies[0]
+        normal = make_defend_ironclad()
+        already_ethereal = make_defend_ironclad()
+        already_ethereal.keywords = frozenset({"ethereal"})
+        simple_combat.hand = [normal, already_ethereal]
+
+        simple_combat.apply_power_to(simple_combat.player, PowerId.HEX, 2, applier=enemy)
+
+        assert normal.is_ethereal
+        assert already_ethereal.is_ethereal
+
+        new_card = make_defend_ironclad()
+        simple_combat.move_card_to_hand(new_card)
+
+        assert new_card.is_ethereal
+
+        assert simple_combat.kill_creature(enemy)
+
+        assert PowerId.HEX not in simple_combat.player.powers
+        assert not normal.is_ethereal
+        assert not new_card.is_ethereal
+        assert already_ethereal.is_ethereal
+
+    def test_hex_skips_cards_with_existing_affliction(self, simple_combat):
+        enemy = simple_combat.enemies[0]
+        blocked = make_defend_ironclad()
+        normal = make_defend_ironclad()
+        blocked.afflict("smog")
+        simple_combat.hand = [blocked, normal]
+
+        simple_combat.apply_power_to(simple_combat.player, PowerId.HEX, 2, applier=enemy)
+
+        assert blocked.has_affliction("smog")
+        assert not blocked.is_ethereal
+        assert normal.has_affliction("hexed")
+        assert normal.is_ethereal
+
+    def test_dampen_restore_keeps_hex_ethereal_until_hex_is_removed(self, simple_combat):
+        enemy = simple_combat.enemies[0]
+        bash = make_bash()
+        simple_combat.upgrade_card(bash)
+        simple_combat.hand = [bash]
+        simple_combat.apply_power_to(simple_combat.player, PowerId.HEX, 1, applier=enemy)
+        simple_combat.apply_power_to(simple_combat.player, PowerId.DAMPEN, 1, applier=enemy)
+
+        assert not bash.upgraded
+        assert bash.is_ethereal
+
+        simple_combat._remove_power(simple_combat.player, PowerId.DAMPEN)
+
+        assert bash.upgraded
+        assert bash.is_ethereal
+
+        simple_combat._remove_power(simple_combat.player, PowerId.HEX)
+
+        assert not bash.is_ethereal
+
+    def test_galvanic_damages_only_galvanized_power_card_owner(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        starting_hp = player.current_hp
+        existing_power = make_inflame()
+        simple_combat.hand = [existing_power]
+        simple_combat.energy = 1
+
+        simple_combat.apply_power_to(enemy, PowerId.GALVANIC, 3)
+
+        assert simple_combat.play_card(0)
+        assert player.current_hp == starting_hp
+
+        new_power = make_inflame()
+        simple_combat.move_card_to_hand(new_power)
+        simple_combat.energy = 1
+
+        assert simple_combat.play_card(0)
+
+        assert player.current_hp == starting_hp - 3
+
+    def test_galvanic_marks_existing_power_cards_before_combat_start(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        starting_hp = player.current_hp
+        existing_power = make_inflame()
+        simple_combat.hand = [existing_power]
+        simple_combat.energy = 1
+        simple_combat.apply_power_to(enemy, PowerId.GALVANIC, 3)
+
+        fire_before_combat_start(simple_combat)
+
+        assert simple_combat.play_card(0)
+        assert player.current_hp == starting_hp - 3
+
+    def test_galvanic_skips_power_cards_with_existing_affliction(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        starting_hp = player.current_hp
+        existing_power = make_inflame()
+        existing_power.afflict("hexed")
+        simple_combat.hand = [existing_power]
+        simple_combat.energy = 1
+        simple_combat.apply_power_to(enemy, PowerId.GALVANIC, 3)
+
+        fire_before_combat_start(simple_combat)
+
+        assert existing_power.has_affliction("hexed")
+        assert simple_combat.play_card(0)
+        assert player.current_hp == starting_hp
+
+    def test_dark_embrace_draws_for_owner_exhausts_only(self, simple_combat):
+        ally = simple_combat.add_ally_player(PlayerState(player_id=2, character_id="Ironclad", max_hp=70, current_hp=70))
+        ally_state = simple_combat.combat_player_state_for(ally)
+        assert ally_state is not None
+        owner_card = make_defend_ironclad()
+        owner_card.owner = simple_combat.player
+        ally_card = make_defend_ironclad()
+        ally_card.owner = ally
+        owner_draw = make_bash()
+        ally_ignored_draw = make_strike_ironclad()
+        simple_combat.hand = [owner_card]
+        ally_state.hand = [ally_card]
+        ally_state.zone_map["hand"] = ally_state.hand
+        simple_combat.draw_pile = [owner_draw, ally_ignored_draw]
+        simple_combat.apply_power_to(simple_combat.player, PowerId.DARK_EMBRACE, 1)
+
+        simple_combat.exhaust_card(ally_card)
+
+        assert owner_draw in simple_combat.draw_pile
+
+        simple_combat.exhaust_card(owner_card)
+
+        assert owner_draw in simple_combat.hand
+        assert ally_ignored_draw in simple_combat.draw_pile
+
+    def test_dark_embrace_defers_ethereal_exhaust_draw_until_after_hand_flush(self, simple_combat):
+        ethereal = make_defend_ironclad()
+        ethereal.owner = simple_combat.player
+        ethereal.keywords = frozenset({"ethereal"})
+        marker = make_bash()
+        simple_combat.hand = [ethereal]
+        simple_combat.draw_pile = [marker]
+        simple_combat.discard_pile = []
+        simple_combat.apply_power_to(simple_combat.player, PowerId.DARK_EMBRACE, 1)
+
+        simple_combat.end_player_turn()
+
+        assert ethereal in simple_combat.exhaust_pile
+        assert marker in simple_combat.hand
+        assert marker not in simple_combat.discard_pile
+
+    def test_gravity_uses_amount_from_before_card_played(self, simple_combat):
+        class GravityMutator(PowerInstance):
+            def __init__(self):
+                super().__init__(PowerId.VIGOR, 1)
+
+            def before_card_played(self, owner: Creature, card: object, combat) -> None:
+                owner.powers[PowerId.GRAVITY].amount = 10
+
+        enemy = simple_combat.enemies[0]
+        starting_hp = enemy.current_hp
+        simple_combat.hand = [make_defend_ironclad()]
+        simple_combat.energy = 1
+        simple_combat.apply_power_to(simple_combat.player, PowerId.GRAVITY, 3)
+        simple_combat.player.powers[PowerId.VIGOR] = GravityMutator()
+
+        assert simple_combat.play_card(0)
+
+        assert enemy.current_hp == starting_hp - 3
+
+    def test_strangle_damages_owner_when_any_card_is_played(self, simple_combat):
+        enemy = simple_combat.enemies[0]
+        starting_hp = enemy.current_hp
+        simple_combat.hand = [make_defend_ironclad()]
+        simple_combat.energy = 1
+        simple_combat.apply_power_to(enemy, PowerId.STRANGLE, 2, applier=simple_combat.player)
+
+        assert simple_combat.play_card(0)
+
+        assert enemy.current_hp == starting_hp - 2
+
+    def test_strangle_uses_amount_from_before_card_played(self, simple_combat):
+        class StrangleMutator(PowerInstance):
+            def __init__(self):
+                super().__init__(PowerId.VIGOR, 1)
+
+            def before_card_played(self, owner: Creature, card: object, combat) -> None:
+                owner.powers[PowerId.STRANGLE].amount = 8
+
+        enemy = simple_combat.enemies[0]
+        starting_hp = enemy.current_hp
+        simple_combat.hand = [make_defend_ironclad()]
+        simple_combat.energy = 1
+        simple_combat.apply_power_to(enemy, PowerId.STRANGLE, 2, applier=simple_combat.player)
+        enemy.powers[PowerId.VIGOR] = StrangleMutator()
+
+        assert simple_combat.play_card(0)
+
+        assert enemy.current_hp == starting_hp - 2
+
+    def test_subroutine_does_not_refund_itself_when_first_played(self, simple_combat):
+        simple_combat.hand = [make_subroutine()]
+        simple_combat.energy = 1
+
+        assert simple_combat.play_card(0)
+
+        assert simple_combat.energy == 0
+        assert simple_combat.player.get_power_amount(PowerId.SUBROUTINE) == 1
+
+    def test_subroutine_uses_amount_from_before_card_played(self, simple_combat):
+        simple_combat.apply_power_to(simple_combat.player, PowerId.SUBROUTINE, 2)
+        simple_combat.hand = [make_subroutine()]
+        simple_combat.energy = 1
+
+        assert simple_combat.play_card(0)
+
+        assert simple_combat.energy == 2
+        assert simple_combat.player.get_power_amount(PowerId.SUBROUTINE) == 3
+
+    def test_afterimage_does_not_trigger_from_first_afterimage_play(self, simple_combat):
+        simple_combat.hand = [make_afterimage()]
+        simple_combat.energy = 1
+
+        assert simple_combat.play_card(0)
+
+        assert simple_combat.player.block == 0
+        assert simple_combat.player.get_power_amount(PowerId.AFTERIMAGE) == 1
+
+    def test_afterimage_uses_amount_from_before_card_played(self, simple_combat):
+        simple_combat.apply_power_to(simple_combat.player, PowerId.AFTERIMAGE, 2)
+        simple_combat.hand = [make_afterimage()]
+        simple_combat.energy = 1
+
+        assert simple_combat.play_card(0)
+
+        assert simple_combat.player.block == 2
+        assert simple_combat.player.get_power_amount(PowerId.AFTERIMAGE) == 3
+
+    def test_serpent_form_does_not_trigger_from_first_serpent_form_play(self, simple_combat):
+        enemy = simple_combat.enemies[0]
+        starting_hp = enemy.current_hp
+        simple_combat.hand = [make_serpent_form()]
+        simple_combat.energy = 3
+
+        assert simple_combat.play_card(0)
+
+        assert enemy.current_hp == starting_hp
+        assert simple_combat.player.get_power_amount(PowerId.SERPENT_FORM) == 4
+
+    def test_serpent_form_uses_amount_from_before_card_played(self, simple_combat):
+        enemy = simple_combat.enemies[0]
+        starting_hp = enemy.current_hp
+        simple_combat.apply_power_to(simple_combat.player, PowerId.SERPENT_FORM, 2)
+        simple_combat.hand = [make_serpent_form()]
+        simple_combat.energy = 3
+
+        assert simple_combat.play_card(0)
+
+        assert enemy.current_hp == starting_hp - 2
+        assert simple_combat.player.get_power_amount(PowerId.SERPENT_FORM) == 6
+
     def test_painful_stabs_adds_wounds_to_player_discard_on_unblocked_hit(self, simple_combat):
         enemy = simple_combat.enemies[0]
         player = simple_combat.player
@@ -214,6 +1511,15 @@ class TestPowerAmountChangedHooks:
 
         wounds = [card for card in simple_combat.discard_pile if card.card_id == CardId.WOUND]
         assert len(wounds) == 2
+
+    def test_painful_stabs_keeps_owner_on_field_after_death(self, simple_combat):
+        enemy = simple_combat.enemies[0]
+        enemy.apply_power(PowerId.PAINFUL_STABS, 2)
+
+        assert simple_combat.kill_creature(enemy)
+
+        assert PowerId.PAINFUL_STABS in enemy.powers
+        assert enemy.escaped is False
 
     def test_poison_triggers_multiple_times_with_opponent_accelerant(self, simple_combat):
         player = simple_combat.player
@@ -244,6 +1550,100 @@ class TestPowerAmountChangedHooks:
 
         assert enemy.current_hp == starting_enemy_hp - 3
 
+    def test_reflect_runs_in_normal_after_damage_received_order(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        observed_enemy_hp = []
+
+        class ObserveBeforeReflectPower(PowerInstance):
+            def __init__(self):
+                super().__init__(PowerId.STRENGTH, 1)
+
+            def after_damage_received(self, owner, target, dealer, damage, props, combat):
+                if target is owner and dealer is not None:
+                    observed_enemy_hp.append(dealer.current_hp)
+
+        player.powers[PowerId.STRENGTH] = ObserveBeforeReflectPower()
+        player.apply_power(PowerId.REFLECT, 1)
+        player.block = 3
+        starting_enemy_hp = enemy.current_hp
+
+        simple_combat.deal_damage(
+            dealer=enemy,
+            target=player,
+            amount=5,
+            props=ValueProp.MOVE,
+        )
+
+        assert observed_enemy_hp == [starting_enemy_hp]
+        assert enemy.current_hp == starting_enemy_hp - 3
+
+    def test_reflect_does_not_trigger_when_owner_dies_to_same_hit(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        player.apply_power(PowerId.REFLECT, 1)
+        player.current_hp = 2
+        player.block = 3
+        starting_enemy_hp = enemy.current_hp
+
+        simple_combat.deal_damage(
+            dealer=enemy,
+            target=player,
+            amount=5,
+            props=ValueProp.MOVE,
+        )
+
+        assert player.is_dead
+        assert enemy.current_hp == starting_enemy_hp
+
+    def test_reflect_does_not_trigger_when_teammate_blocks_damage(self, simple_combat):
+        player = simple_combat.player
+        ally = simple_combat.add_ally_player(PlayerState(player_id=2, character_id="Ironclad", max_hp=70, current_hp=70))
+        enemy = simple_combat.enemies[0]
+        player.apply_power(PowerId.REFLECT, 1)
+        ally.block = 3
+        starting_enemy_hp = enemy.current_hp
+
+        simple_combat.deal_damage(
+            dealer=enemy,
+            target=ally,
+            amount=5,
+            props=ValueProp.MOVE,
+        )
+
+        assert enemy.current_hp == starting_enemy_hp
+
+    def test_the_gambit_runs_full_death_flow(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        events = []
+
+        class DeathObserverPower(PowerInstance):
+            def __init__(self):
+                super().__init__(PowerId.STRENGTH, 1)
+
+            def after_current_hp_changed(self, owner, creature, delta, combat):
+                if creature is owner:
+                    events.append(("hp", delta))
+
+            def after_death(self, owner, creature, combat, was_removal_prevented):
+                if creature is owner and not was_removal_prevented:
+                    events.append(("death", creature))
+
+        player.powers[PowerId.STRENGTH] = DeathObserverPower()
+        player.apply_power(PowerId.THE_GAMBIT, 1)
+
+        simple_combat.deal_damage(
+            dealer=enemy,
+            target=player,
+            amount=1,
+            props=ValueProp.MOVE,
+        )
+
+        assert player.is_dead
+        assert events == [("hp", -1), ("hp", -79), ("death", player)]
+        assert not player.has_power(PowerId.THE_GAMBIT)
+
     def test_no_block_only_blocks_card_sourced_block(self, simple_combat):
         player = simple_combat.player
         player.apply_power(PowerId.NO_BLOCK, 1)
@@ -253,6 +1653,32 @@ class TestPowerAmountChangedHooks:
 
         assert card_block == 0
         assert non_card_block == 8
+
+    def test_no_block_decrements_at_enemy_turn_end_without_skip(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        simple_combat.apply_power_to(player, PowerId.NO_BLOCK, 2, applier=enemy)
+
+        fire_after_turn_end(CombatSide.ENEMY, simple_combat)
+
+        assert player.get_power_amount(PowerId.NO_BLOCK) == 1
+
+        fire_after_turn_end(CombatSide.ENEMY, simple_combat)
+
+        assert PowerId.NO_BLOCK not in player.powers
+        assert calculate_block(8, player, ValueProp.MOVE, simple_combat, card_source=object()) == 8
+
+    def test_intangible_is_removed_when_duration_reaches_zero(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        player.apply_power(PowerId.INTANGIBLE, 1)
+
+        assert calculate_damage(10, enemy, player, ValueProp.MOVE, simple_combat) == 1
+
+        fire_after_turn_end(CombatSide.ENEMY, simple_combat)
+
+        assert PowerId.INTANGIBLE not in player.powers
+        assert calculate_damage(10, enemy, player, ValueProp.MOVE, simple_combat) == 10
 
 
 class TestDexterityBlock:

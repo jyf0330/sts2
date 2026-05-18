@@ -9,7 +9,7 @@ from sts2_env.cards.factory import create_card
 from sts2_env.cards.ironclad import create_ironclad_starter_deck
 from sts2_env.cards.ironclad_basic import make_defend_ironclad, make_strike_ironclad
 from sts2_env.core.combat import CombatState
-from sts2_env.core.enums import CardId, CardType, CombatSide, OrbType, PowerId
+from sts2_env.core.enums import CardId, CardType, CombatSide, OrbType, PowerId, ValueProp
 from sts2_env.core.hooks import (
     fire_after_block_cleared,
     fire_after_card_discarded,
@@ -107,6 +107,18 @@ class TestRelicParityUncommonExtra6:
         assert hits[9] == 12
         assert hits[10] == 6
 
+    def test_pen_nib_only_doubles_powered_card_sourced_damage(self):
+        combat = _make_ironclad_combat(["PenNib"], seed=1110)
+        enemy = combat.enemies[0]
+        relic = next(relic for relic in combat.current_player_state.relics if relic.relic_id.name == "PEN_NIB")
+        strike = make_strike_ironclad()
+        strike.owner = combat.player
+        relic._is_active = True
+
+        assert relic.modify_damage_multiplicative(combat.player, combat.player, enemy, ValueProp.MOVE, strike) == 2.0
+        assert relic.modify_damage_multiplicative(combat.player, combat.player, enemy, ValueProp.UNPOWERED, strike) == 1.0
+        assert relic.modify_damage_multiplicative(combat.player, combat.player, enemy, ValueProp.MOVE, None) == 1.0
+
     def test_lucky_fysh_gains_gold_each_time_a_card_is_added_to_deck(self):
         """Matches LuckyFysh.cs: every on-card-added-to-deck event gives +15 gold."""
         run_state = RunState(seed=1103, character_id="Ironclad")
@@ -143,7 +155,7 @@ class TestRelicParityUncommonExtra6:
         """Matches TuningFork.cs: every 10 skills played gains 7 block, including across turns."""
         combat = _make_ironclad_combat(["TuningFork"], seed=1105)
         combat.player.block = 0
-        skill_card = SimpleNamespace(card_type=CardType.SKILL)
+        skill_card = SimpleNamespace(card_type=CardType.SKILL, owner=combat.player)
 
         for _ in range(9):
             fire_after_card_played(skill_card, combat)
@@ -169,12 +181,15 @@ class TestRelicParityUncommonExtra6:
 
         before = sum(enemy.current_hp for enemy in combat.enemies)
         combat.current_side = CombatSide.PLAYER
-        fire_after_card_discarded(object(), combat)
+        fire_after_card_discarded(SimpleNamespace(owner=combat.player), combat)
         after_player_side = sum(enemy.current_hp for enemy in combat.enemies)
         assert before - after_player_side == 3
 
+        fire_after_card_discarded(SimpleNamespace(owner=combat.enemies[0]), combat)
+        assert sum(enemy.current_hp for enemy in combat.enemies) == after_player_side
+
         combat.current_side = CombatSide.ENEMY
-        fire_after_card_discarded(object(), combat)
+        fire_after_card_discarded(SimpleNamespace(owner=combat.player), combat)
         assert sum(enemy.current_hp for enemy in combat.enemies) == after_player_side
 
     def test_vambrace_doubles_first_card_block_once_per_combat(self):
@@ -198,6 +213,21 @@ class TestRelicParityUncommonExtra6:
 
         assert combat2.play_card(0)
         assert combat2.player.block == 13
+
+    def test_vambrace_does_not_consume_trigger_when_final_block_is_zero(self):
+        """Matches Vambrace.cs: AfterModifyingBlockAmount ignores zero final block."""
+        combat = _make_ironclad_combat(["Vambrace"], seed=1110)
+        combat.player.block = 0
+        combat.hand = _with_owner([make_defend_ironclad(), make_defend_ironclad()], combat.player)
+        combat.energy = 2
+        combat.apply_power_to(combat.player, PowerId.DEXTERITY, -5)
+
+        assert combat.play_card(0)
+        assert combat.player.block == 0
+
+        combat.apply_power_to(combat.player, PowerId.DEXTERITY, 5)
+        assert combat.play_card(0)
+        assert combat.player.block == 10
 
     def test_symbiotic_virus_channels_dark_only_on_round_one_player_start(self):
         """Matches SymbioticVirus.cs: on round-1 player start, channel one Dark orb."""

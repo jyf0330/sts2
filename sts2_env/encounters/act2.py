@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Callable, TYPE_CHECKING
 
+from sts2_env.core.enums import PowerId
 from sts2_env.core.rng import Rng
 
 if TYPE_CHECKING:
@@ -103,8 +104,8 @@ def setup_louse_progenitor_normal(combat: CombatState, rng: Rng) -> None:
 
 
 def setup_mytes_normal(combat: CombatState, rng: Rng) -> None:
-    for _ in range(3):
-        creature, ai = create_myte(rng)
+    for slot in ["first", "second"]:
+        creature, ai = create_myte(rng, slot=slot)
         combat.add_enemy(creature, ai)
 
 
@@ -129,9 +130,11 @@ def setup_the_obscura_normal(combat: CombatState, rng: Rng) -> None:
 
 
 def setup_tunneler_normal(combat: CombatState, rng: Rng) -> None:
-    for _ in range(2):
-        creature, ai = create_tunneler(rng)
-        combat.add_enemy(creature, ai)
+    bug_creator = rng.choice([create_bowlbug_egg, create_bowlbug_silk])
+    bug, bug_ai = bug_creator(rng)
+    combat.add_enemy(bug, bug_ai)
+    creature, ai = create_tunneler(rng)
+    combat.add_enemy(creature, ai)
 
 
 NORMAL_ENCOUNTERS: list[EncounterSetup] = [
@@ -163,10 +166,8 @@ def setup_entomancer_elite(combat: CombatState, rng: Rng) -> None:
 
 
 def setup_infested_prisms_elite(combat: CombatState, rng: Rng) -> None:
-    c1, a1 = create_infested_prism(rng, slot="first")
-    combat.add_enemy(c1, a1)
-    c2, a2 = create_infested_prism(rng, slot="second")
-    combat.add_enemy(c2, a2)
+    creature, ai = create_infested_prism(rng)
+    combat.add_enemy(creature, ai)
 
 
 ELITE_ENCOUNTERS: list[EncounterSetup] = [
@@ -193,6 +194,7 @@ def setup_kaiser_crab_boss(combat: CombatState, rng: Rng) -> None:
     combat.add_enemy(crusher, crusher_ai)
     rocket, rocket_ai = create_rocket(rng)
     combat.add_enemy(rocket, rocket_ai)
+    combat.apply_power_to(combat.primary_player, PowerId.SURROUNDED, 1, applier=rocket)
 
 
 BOSS_ENCOUNTERS: list[EncounterSetup] = [

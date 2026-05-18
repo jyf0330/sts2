@@ -1,5 +1,7 @@
 """Additional Ironclad parity tests for remaining high-signal cards."""
 
+import random
+
 import sts2_env.powers  # noqa: F401
 
 from sts2_env.cards.ironclad import (
@@ -9,6 +11,7 @@ from sts2_env.cards.ironclad import (
     make_dark_embrace,
     make_defend_ironclad,
     make_havoc,
+    make_hemokinesis,
     make_inflame,
     make_juggernaut,
     make_offering,
@@ -21,9 +24,18 @@ from sts2_env.core.combat import CombatState
 from sts2_env.core.enums import PowerId
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle
+from sts2_env.powers.base import PowerInstance
 
 
-def _make_combat() -> CombatState:
+class _CannotHitPower(PowerInstance):
+    def __init__(self):
+        super().__init__(PowerId.COVERED, 1)
+
+    def should_allow_hitting(self, owner, combat):
+        return False
+
+
+def _make_combat(*, extra_enemies: int = 0) -> CombatState:
     combat = CombatState(
         player_hp=80,
         player_max_hp=80,
@@ -33,6 +45,9 @@ def _make_combat() -> CombatState:
     )
     creature, ai = create_shrinker_beetle(Rng(126))
     combat.add_enemy(creature, ai)
+    for i in range(extra_enemies):
+        extra_creature, extra_ai = create_shrinker_beetle(Rng(200 + i))
+        combat.add_enemy(extra_creature, extra_ai)
     combat.start_combat()
     return combat
 
@@ -147,6 +162,22 @@ class TestIroncladParityExtra3:
         assert combat.player.block == 8
         assert enemy.current_hp == start_hp - 5
 
+    def test_juggernaut_random_target_uses_only_hittable_enemies(self):
+        random.seed(1)
+        combat = _make_combat(extra_enemies=1)
+        blocked, hittable = combat.enemies
+        blocked.current_hp = blocked.max_hp = 100
+        hittable.current_hp = hittable.max_hp = 100
+        blocked.powers[PowerId.COVERED] = _CannotHitPower()
+        combat.hand = [make_juggernaut(), make_shrug_it_off()]
+        combat.energy = 3
+
+        assert combat.play_card(0)
+        assert combat.play_card(0)
+
+        assert blocked.current_hp == 100
+        assert hittable.current_hp == 95
+
     def test_rupture_gains_strength_when_owner_loses_hp(self):
         """Matches RupturePower.cs: owner HP loss on own turn grants Strength."""
         combat = _make_combat()
@@ -162,3 +193,35 @@ class TestIroncladParityExtra3:
         assert combat.player.block == 12
         assert combat.player.get_power_amount(PowerId.STRENGTH) == 1
         assert combat.energy == 2
+
+    def test_hemokinesis_loses_hp_before_damage_but_rupture_pays_out_after_card(self):
+        """Matches Hemokinesis.cs + RupturePower.cs ordering."""
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.max_hp = 100
+        enemy.current_hp = 100
+        start_hp = combat.player.current_hp
+        combat.hand = [make_rupture(), make_hemokinesis()]
+        combat.energy = 2
+
+        assert combat.play_card(0)
+        assert combat.play_card(0, 0)
+        assert combat.player.current_hp == start_hp - 2
+        assert enemy.current_hp == 86
+        assert combat.player.get_power_amount(PowerId.STRENGTH) == 1
+        assert [event[1] for event in combat._damage_events_combat[-2:]] == [combat.player, enemy]  # noqa: SLF001
+
+    def test_hemokinesis_skips_attack_if_self_damage_kills_attacker(self):
+        """Matches AttackCommand.cs: a dead attacker cannot execute the attack."""
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = enemy.max_hp = 100
+        combat.player.current_hp = 1
+        combat.hand = [make_hemokinesis()]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+        assert combat.player.current_hp == 0
+        assert enemy.current_hp == 100
+        assert combat.is_over
+        assert combat.player_won is False

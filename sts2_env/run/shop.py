@@ -126,6 +126,7 @@ class ShopInventory:
     relics: list[ShopRelicEntry] = field(default_factory=list)
     potions: list[ShopPotionEntry] = field(default_factory=list)
     removal_cost: int = 75
+    removal_used: bool = False
 
 
 def apply_merchant_price_modifiers(
@@ -178,18 +179,24 @@ def _create_character_shop_card(
 ) -> ShopCardEntry:
     type_map = {"Attack": CardType.ATTACK, "Skill": CardType.SKILL, "Power": CardType.POWER}
     card_type = type_map[card_type_name]
-    candidates = eligible_character_cards(
-        run_state.player.character_id,
-        card_type=card_type,
-        rarity=rarity,
-        generation_context=None,
-    )
-    if not candidates:
-        candidates = eligible_character_cards(
-            run_state.player.character_id,
+    character_ids = (run_state.player.character_id,)
+    for modifier in run_state.modifiers:
+        character_ids = tuple(modifier.modify_merchant_card_character_ids(run_state.player, character_ids, run_state))
+    candidates = []
+    for character_id in character_ids:
+        candidates.extend(eligible_character_cards(
+            character_id,
             card_type=card_type,
+            rarity=rarity,
             generation_context=None,
-        )
+        ))
+    if not candidates:
+        for character_id in character_ids:
+            candidates.extend(eligible_character_cards(
+                character_id,
+                card_type=card_type,
+                generation_context=None,
+            ))
     card_id = rng.choice(candidates) if candidates else None
     card = None
     if card_id is not None:

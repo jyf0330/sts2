@@ -6,7 +6,7 @@ import sts2_env.events.act2  # noqa: F401
 from sts2_env.cards.factory import create_card
 from sts2_env.cards.ironclad import create_ironclad_starter_deck
 from sts2_env.cards.status import make_spore_mind
-from sts2_env.core.enums import CardId, CardRarity, CardType
+from sts2_env.core.enums import CardId, CardRarity, CardType, MapPointType
 from sts2_env.events.act1 import TheLegendsWereTrue
 from sts2_env.events.act2 import (
     SpiralingWhirlpool,
@@ -15,7 +15,8 @@ from sts2_env.events.act2 import (
     WaterloggedScriptorium,
 )
 from sts2_env.potions.base import create_potion
-from sts2_env.run.reward_objects import CardReward, PotionReward
+from sts2_env.run.reward_objects import CardReward, PotionReward, RelicReward
+from sts2_env.run.run_manager import RunManager
 from sts2_env.run.run_state import RunState
 
 
@@ -52,6 +53,48 @@ def test_the_legends_were_true_adds_spoils_map_and_returns_a_potion_reward():
     assert len(reward_objects) == 1
     assert isinstance(reward_objects[0], PotionReward)
     assert reward_objects[0].potion_id is not None
+
+
+def test_spoils_map_generates_act2_center_treasure_quest():
+    run_state = _make_run_state(441)
+    spoils = create_card(CardId.SPOILS_MAP)
+    run_state.player.deck.append(spoils)
+    run_state.current_act_index = 1
+
+    run_state.generate_map()
+
+    assert run_state.map is not None
+    treasure_points = [point for point in run_state.map.room_points() if point.point_type == MapPointType.TREASURE]
+    assert len(treasure_points) == 1
+    treasure = treasure_points[0]
+    assert treasure.col == 3
+    assert treasure.row == run_state.map.map_length - 7
+    assert run_state.map.get_row(treasure.row) == [treasure]
+    assert spoils in treasure.quests
+    assert spoils.effect_vars["spoils_col"] == treasure.col
+    assert spoils.effect_vars["spoils_row"] == treasure.row
+
+
+def test_spoils_map_treasure_completion_grants_gold_and_removes_card():
+    mgr = RunManager(seed=442, character_id="Ironclad")
+    spoils = create_card(CardId.SPOILS_MAP)
+    mgr.run_state.player.deck.append(spoils)
+    mgr.run_state.current_act_index = 1
+    mgr.run_state.generate_map()
+    assert mgr.run_state.map is not None
+    treasure = next(point for point in mgr.run_state.map.room_points() if point.point_type == MapPointType.TREASURE)
+    mgr.run_state.visited_map_coords = [treasure.coord]
+    mgr._phase = RunManager.PHASE_TREASURE
+    mgr._current_reward = RelicReward(mgr.run_state.player.player_id, relic_id="LANTERN")
+    starting_gold = mgr.run_state.player.gold
+
+    result = mgr._do_treasure_collect()
+
+    assert result["phase"] == RunManager.PHASE_MAP_CHOICE
+    assert result["spoils_gold"] == 600
+    assert mgr.run_state.player.gold == starting_gold + 600
+    assert spoils not in mgr.run_state.player.deck
+    assert spoils not in treasure.quests
 
 
 def test_spiraling_whirlpool_requires_spiral_targets_and_applies_observe_drink():

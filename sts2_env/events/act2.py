@@ -28,6 +28,7 @@ from sts2_env.run.reward_objects import (
     AddCardsReward,
     CardReward,
     EnchantCardsReward,
+    PotionReward,
     RelicReward,
     RemoveCardReward,
     TransformCardsReward,
@@ -54,11 +55,11 @@ class CrystalSphere(EventModel):
         return run_state.player.gold >= 100 and run_state.current_act_index > 0
 
     def calculate_vars(self, run_state: RunState) -> None:
-        extra = run_state.rng.up_front.next_int(1, 50)
+        extra = self.get_rng(run_state).next_int_exclusive(1, 50)
         self._cost = 50 + extra
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
-        self.calculate_vars(run_state)
+        self.ensure_vars_calculated(run_state)
         return [
             EventOption("pay", f"Uncover Future ({self._cost}g)",
                          "3 Prophesize picks"),
@@ -257,7 +258,7 @@ class EndlessConveyor(EventModel):
             weighted.append(("golden_fysh", 1.0))
         weighted = [(dish, weight) for dish, weight in weighted if dish != self._last_dish]
         total = sum(weight for _, weight in weighted)
-        roll = run_state.rng.up_front.next_float() * total
+        roll = self.get_rng(run_state).next_float() * total
         for dish, weight in weighted:
             roll -= weight
             if roll <= 0:
@@ -276,14 +277,18 @@ class EndlessConveyor(EventModel):
         elif dish == "spicy_snappy":
             _upgrade_n_cards(run_state, 1)
         elif dish == "jelly_liver":
-            _transform_n_cards(run_state, 1)
+            _transform_n_cards(run_state, 1, rng=self.get_rng(run_state))
         elif dish == "fried_eel":
-            colorless_ids = eligible_registered_cards(
-                module_name="sts2_env.cards.colorless",
-                generation_context=None,
+            from sts2_env.run.rewards import generate_noncombat_reward_cards
+
+            cards = generate_noncombat_reward_cards(
+                run_state,
+                num_cards=1,
+                character_ids=(),
+                include_colorless=True,
             )
-            if colorless_ids:
-                run_state.player.add_card_instance_to_deck(create_card(run_state.rng.rewards.choice(colorless_ids)))
+            if cards:
+                run_state.player.add_card_instance_to_deck(cards[0])
         elif dish == "golden_fysh":
             run_state.player.gain_gold(75)
         elif dish == "seapunk_salad":
@@ -307,6 +312,7 @@ class FakeMerchant(EventModel):
     """
 
     event_id = "FakeMerchant"
+    is_shared = True
 
     _INVENTORY_RELICS = (
         RelicId.FAKE_ANCHOR.name,
@@ -336,11 +342,19 @@ class FakeMerchant(EventModel):
     def is_allowed(self, run_state: RunState) -> bool:
         if run_state.current_act_index < 1:
             return False
+        if len(run_state.players) > 1:
+            return False
         has_foul_potion = any(
             p.potion_id == "FoulPotion"
             for p in run_state.player.held_potions()
         )
         return run_state.player.gold >= 100 or has_foul_potion
+
+    def before_event_started(self, run_state: RunState) -> None:
+        run_state.player.can_remove_potions = False
+
+    def on_event_finished(self, run_state: RunState) -> None:
+        run_state.player.can_remove_potions = True
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
         self._inventories[id(run_state)] = self._inventory_for(run_state)
@@ -453,22 +467,33 @@ class FieldOfManSizedHoles(EventModel):
 
     def choose(self, run_state: RunState, option_id: str) -> EventResult:
         if option_id == "resist":
+            candidates = run_state.player.removable_deck_cards()
             if _should_defer_event_rewards(run_state):
                 return _event_result_with_rewards(
                     "Removed 2 cards, gained Normality curse.",
                     [
                         RemoveCardReward(
                             run_state.player.player_id,
-                            count=2,
-                            cards=run_state.player.removable_deck_cards(),
+                            count=min(2, len(candidates)),
+                            cards=candidates,
                         ),
                         AddCardsReward(run_state.player.player_id, [make_normality()]),
                     ],
                 )
-            _remove_n_cards(run_state, 2)
-            run_state.player.add_card_instance_to_deck(make_normality())
-            return EventResult(finished=True,
-                               description="Removed 2 cards, gained Normality curse.")
+            return self.request_card_choice(
+                prompt="Choose 2 cards to remove",
+                cards=candidates,
+                source_pile="deck",
+                resolver=lambda selected: (
+                    _remove_selected_cards(selected, run_state),
+                    run_state.player.add_card_instance_to_deck(make_normality()),
+                    EventResult(finished=True, description="Removed 2 cards, gained Normality curse."),
+                )[-1],
+                allow_skip=False,
+                min_count=min(2, len(candidates)),
+                max_count=min(2, len(candidates)),
+                description="Choose 2 cards to remove.",
+            )
         candidates = [card for card in run_state.player.deck if can_enchant_card(card, "PerfectFit")]
         if not candidates:
             return EventResult(finished=True, description="No valid card for Perfect Fit.")
@@ -508,17 +533,19 @@ class JungleMazeAdventure(EventModel):
     """
 
     event_id = "JungleMazeAdventure"
+    is_shared = True
 
     def __init__(self) -> None:
         self._solo_gold = 150
         self._join_gold = 50
 
     def calculate_vars(self, run_state: RunState) -> None:
-        self._solo_gold = 150 + run_state.rng.up_front.next_int(-15, 16)
-        self._join_gold = 50 + run_state.rng.up_front.next_int(-15, 16)
+        rng = self.get_rng(run_state)
+        self._solo_gold = 150 + rng.next_float_range(-15, 15)
+        self._join_gold = 50 + rng.next_float_range(-15, 15)
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
-        self.calculate_vars(run_state)
+        self.ensure_vars_calculated(run_state)
         return [
             EventOption("solo", "Solo Quest",
                          f"Take 18 damage, gain {self._solo_gold} gold"),
@@ -553,13 +580,13 @@ class LuminousChoir(EventModel):
         self._cost = 149
 
     def calculate_vars(self, run_state: RunState) -> None:
-        self._cost = 149 - run_state.rng.up_front.next_int(0, 50)
+        self._cost = 149 - self.get_rng(run_state).next_int_exclusive(0, 50)
 
     def is_allowed(self, run_state: RunState) -> bool:
-        return run_state.player.gold >= 149
+        return run_state.player.gold >= 149 and run_state.player.has_available_relics()
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
-        self.calculate_vars(run_state)
+        self.ensure_vars_calculated(run_state)
         return [
             EventOption("reach", "Reach Into the Flesh",
                          "Remove 2 cards, gain Spore Mind curse"),
@@ -567,13 +594,13 @@ class LuminousChoir(EventModel):
                 "tribute",
                 f"Offer Tribute ({self._cost}g)" if run_state.player.gold >= self._cost else "Offer Tribute",
                 "Gain a relic",
-                enabled=run_state.player.gold >= self._cost,
+                enabled=run_state.player.gold >= self._cost and run_state.player.has_available_relics(),
             ),
         ]
 
     def choose(self, run_state: RunState, option_id: str) -> EventResult:
         if option_id == "reach":
-            candidates = list(run_state.player.deck)
+            candidates = run_state.player.removable_deck_cards()
             if _should_defer_event_rewards(run_state):
                 return _event_result_with_rewards(
                     "Removed 2 cards, gained Spore Mind curse.",
@@ -628,7 +655,7 @@ class MorphicGrove(EventModel):
     def choose(self, run_state: RunState, option_id: str) -> EventResult:
         if option_id == "group":
             run_state.player.lose_gold(100)
-            candidates = list(run_state.player.deck)
+            candidates = run_state.player.transformable_deck_cards()
             if _should_defer_event_rewards(run_state):
                 return _event_result_with_rewards(
                     "Lost 100g, transformed 2 cards.",
@@ -677,13 +704,25 @@ class PotionCourier(EventModel):
 
     def choose(self, run_state: RunState, option_id: str) -> EventResult:
         if option_id == "grab":
-            for _ in range(3):
-                run_state.player.add_potion(create_potion("FoulPotion"))
-            return EventResult(finished=True, description="Gained 3 Foul Potions.")
+            return EventResult(
+                finished=True,
+                description="Gained 3 Foul Potions.",
+                rewards={
+                    "reward_objects": [
+                        PotionReward(run_state.player.player_id, potion_id="FoulPotion"),
+                        PotionReward(run_state.player.player_id, potion_id="FoulPotion"),
+                        PotionReward(run_state.player.player_id, potion_id="FoulPotion"),
+                    ]
+                },
+            )
         uncommon_models = [model for model in normal_pool_models(in_combat=False, character_id=run_state.player.character_id) if model.rarity.name == "UNCOMMON"]
         if uncommon_models:
             model = run_state.rng.rewards.choice(uncommon_models)
-            run_state.player.add_potion(create_potion(model.potion_id))
+            return EventResult(
+                finished=True,
+                description="Gained an uncommon potion.",
+                rewards={"reward_objects": [PotionReward(run_state.player.player_id, potion_id=model.potion_id)]},
+            )
         return EventResult(finished=True, description="Gained an uncommon potion.")
 
 
@@ -700,31 +739,53 @@ class RanwidTheElder(EventModel):
 
     event_id = "RanwidTheElder"
 
+    def __init__(self) -> None:
+        self._potion_slot: int | None = None
+        self._relic_id: str | None = None
+
+    @staticmethod
+    def _tradable_relics(run_state: RunState) -> list[str]:
+        return [
+            relic_id
+            for relic_id in run_state.player.relics
+            if relic_id not in {
+                "BURNING_BLOOD", "RING_OF_THE_SNAKE", "CRACKED_CORE", "BOUND_PHYLACTERY", "DIVINE_RIGHT",
+                "BLACK_BLOOD", "RING_OF_THE_DRAKE", "INFUSED_CORE", "PHYLACTERY_UNBOUND", "DIVINE_DESTINY",
+            }
+        ]
+
     def is_allowed(self, run_state: RunState) -> bool:
         return (
             run_state.current_act_index > 0
             and run_state.player.gold >= 100
             and len(run_state.player.held_potions()) > 0
-            and len(run_state.relics) > 0
+            and run_state.player.has_available_relics()
+            and bool(self._tradable_relics(run_state))
         )
 
+    def before_event_started(self, run_state: RunState) -> None:
+        run_state.player.can_remove_potions = False
+
+    def on_event_finished(self, run_state: RunState) -> None:
+        run_state.player.can_remove_potions = True
+
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
-        options: list[EventOption] = []
-        if run_state.player.held_potions():
-            options.append(EventOption("potion", "Give a Potion",
-                                        "Lose a potion, gain a relic"))
-        options.append(EventOption("gold", "Give 100 Gold",
-                                    "Lose 100g, gain a relic"))
-        if run_state.relics:
-            options.append(EventOption("relic", "Give a Relic",
-                                        "Lose a relic, gain 2 relics"))
-        return options
+        tradable_relics = self._tradable_relics(run_state)
+        held_potions = run_state.player.held_potions()
+        chosen_potion = run_state.rng.up_front.choice(held_potions) if held_potions else None
+        chosen_relic = run_state.rng.up_front.choice(tradable_relics) if tradable_relics else None
+        self._potion_slot = chosen_potion.slot_index if chosen_potion is not None else None
+        self._relic_id = chosen_relic
+        return [
+            EventOption("potion", "Give a Potion", "Lose a potion, gain a relic", enabled=bool(run_state.player.held_potions())),
+            EventOption("gold", "Give 100 Gold", "Lose 100g, gain a relic"),
+            EventOption("relic", "Give a Relic", "Lose a relic, gain 2 relics", enabled=bool(tradable_relics)),
+        ]
 
     def choose(self, run_state: RunState, option_id: str) -> EventResult:
         if option_id == "potion":
-            held = run_state.player.held_potions()
-            if held:
-                run_state.player.remove_potion(held[0].slot_index)
+            if self._potion_slot is not None:
+                run_state.player.remove_potion(self._potion_slot)
             if _should_defer_event_rewards(run_state):
                 return _event_result_with_rewards(
                     "Gave a potion, gained a relic.",
@@ -743,8 +804,14 @@ class RanwidTheElder(EventModel):
             _obtain_random_relics(run_state, 1)
             return EventResult(finished=True,
                                description="Paid 100g, gained a relic.")
-        if run_state.player.relics:
-            run_state.player.relics.pop(0)
+        tradable_relics = self._tradable_relics(run_state)
+        if self._relic_id is not None and self._relic_id in tradable_relics:
+            to_remove = self._relic_id
+            if to_remove in run_state.player.relics:
+                index = run_state.player.relics.index(to_remove)
+                run_state.player.relics.pop(index)
+                if index < len(run_state.player.relic_objects):
+                    run_state.player.relic_objects.pop(index)
         if _should_defer_event_rewards(run_state):
             return _event_result_with_rewards(
                 "Gave a relic, gained 2 relics.",
@@ -769,14 +836,20 @@ class RelicTrader(EventModel):
         self._owned_relic_choices: list[str] = []
         self._new_relic_choices: list[str] = []
 
+    @staticmethod
+    def _tradable_relics(run_state: RunState) -> list[str]:
+        return [
+            relic_id for relic_id in run_state.player.relics if relic_id not in {
+                "BURNING_BLOOD", "RING_OF_THE_SNAKE", "CRACKED_CORE", "BOUND_PHYLACTERY", "DIVINE_RIGHT",
+                "BLACK_BLOOD", "RING_OF_THE_DRAKE", "INFUSED_CORE", "PHYLACTERY_UNBOUND", "DIVINE_DESTINY",
+            }
+        ]
+
     def is_allowed(self, run_state: RunState) -> bool:
-        return run_state.current_act_index > 0 and len(run_state.player.relics) >= 5
+        return run_state.current_act_index > 0 and len(self._tradable_relics(run_state)) >= 5
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
-        owned = [relic_id for relic_id in run_state.player.relics if relic_id not in {
-            "BURNING_BLOOD", "RING_OF_THE_SNAKE", "CRACKED_CORE", "BOUND_PHYLACTERY", "DIVINE_RIGHT",
-            "BLACK_BLOOD", "RING_OF_THE_DRAKE", "INFUSED_CORE", "PHYLACTERY_UNBOUND", "DIVINE_DESTINY",
-        }]
+        owned = self._tradable_relics(run_state)
         run_state.rng.up_front.shuffle(owned)
         self._owned_relic_choices = owned[:3]
         self._new_relic_choices = []
@@ -944,6 +1017,12 @@ class StoneOfAllTime(EventModel):
             and len(run_state.player.held_potions()) >= 1
         )
 
+    def before_event_started(self, run_state: RunState) -> None:
+        run_state.player.can_remove_potions = False
+
+    def on_event_finished(self, run_state: RunState) -> None:
+        run_state.player.can_remove_potions = True
+
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
         has_lift = bool(run_state.player.held_potions())
         has_push = any(can_enchant_card(card, "Vigorous") for card in run_state.player.deck)
@@ -1037,7 +1116,7 @@ class Symbiote(EventModel):
                 )[-1],
                 description="Choose a card to enchant.",
             )
-        candidates = list(run_state.player.deck)
+        candidates = run_state.player.transformable_deck_cards()
         if _should_defer_event_rewards(run_state):
             return _event_result_with_rewards(
                 "Transformed 1 card.",
@@ -1054,7 +1133,7 @@ class Symbiote(EventModel):
             cards=candidates,
             source_pile="deck",
             resolver=lambda selected: (
-                _transform_selected_cards(selected, run_state),
+                _transform_selected_cards(selected, run_state, rng=self.get_rng(run_state)),
                 EventResult(finished=True, description="Transformed 1 card."),
             )[-1],
             description="Choose a card to transform.",
@@ -1076,6 +1155,12 @@ class TheFutureOfPotions(EventModel):
 
     def is_allowed(self, run_state: RunState) -> bool:
         return len(run_state.player.held_potions()) >= 2
+
+    def before_event_started(self, run_state: RunState) -> None:
+        run_state.player.can_remove_potions = False
+
+    def on_event_finished(self, run_state: RunState) -> None:
+        run_state.player.can_remove_potions = True
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
         self._trade_choices = []
@@ -1394,13 +1479,14 @@ class WhisperingHollow(EventModel):
     def choose(self, run_state: RunState, option_id: str) -> EventResult:
         if option_id == "gold":
             run_state.player.lose_gold(50)
-            for _ in range(2):
-                model = run_state.rng.rewards.choice(normal_pool_models(in_combat=False, character_id=run_state.player.character_id))
-                run_state.player.add_potion(create_potion(model.potion_id))
-            return EventResult(finished=True,
-                               description="Paid 50g, gained 2 potions.")
+            rewards = [PotionReward(run_state.player.player_id), PotionReward(run_state.player.player_id)]
+            return EventResult(
+                finished=True,
+                description="Paid 50g, gained 2 potions.",
+                rewards={"reward_objects": rewards},
+            )
         run_state.player.lose_hp(9)
-        candidates = list(run_state.player.deck)
+        candidates = run_state.player.transformable_deck_cards()
         if _should_defer_event_rewards(run_state):
             return _event_result_with_rewards(
                 "Took 9 damage, transformed 1 card.",
@@ -1417,7 +1503,7 @@ class WhisperingHollow(EventModel):
             cards=candidates,
             source_pile="deck",
             resolver=lambda selected: (
-                _transform_selected_cards(selected, run_state),
+                _transform_selected_cards(selected, run_state, rng=self.get_rng(run_state)),
                 EventResult(finished=True, description="Took 9 damage, transformed 1 card."),
             )[-1],
             description="Choose a card to transform.",

@@ -10,6 +10,65 @@ from sts2_env.run.run_state import RunState
 from sts2_env.events.shared import BattlewornDummy, Bugslayer, ColorfulPhilosophers, ColossalFlower, Darv, DenseVegetation, DoorsOfLightAndDark, DrowningBeacon, GraveOfTheForgotten, HungryForMushrooms, InfestedAutomaton, LostWisp, Nonupeipe, Orobas, Pael, PunchOff, RoundTeaParty, SpiritGrafter, SunkenStatue, SunkenTreasury, Tanx, Tezcatara, TheLanternKey, ThisOrThat, Trial, TrashHeap, UnrestSite, Vakuu, Wellspring
 
 
+class _ExclusiveHighRng:
+    def next_int(self, low: int, high: int) -> int:
+        raise AssertionError(f"expected exclusive RNG call, got inclusive {low}, {high}")
+
+    def next_int_exclusive(self, low: int, high: int) -> int:
+        return high - 1
+
+
+class _FixedIntRng:
+    def __init__(self, value: int):
+        self.value = value
+
+    def next_int(self, low: int, high: int) -> int:
+        return self.value
+
+
+class _DarvRng:
+    def choice(self, seq):
+        return seq[-1]
+
+    def shuffle(self, seq) -> None:
+        seq.reverse()
+
+    def next_int(self, low: int, high: int) -> int:
+        return 0
+
+
+def test_shared_event_random_gold_uses_exclusive_upper_bounds():
+    run_state = RunState(seed=6, character_id="Ironclad")
+    run_state.initialize_run()
+    run_state.rng.up_front = _ExclusiveHighRng()
+
+    lost_wisp = LostWisp()
+    lost_wisp.rng = _ExclusiveHighRng()
+    lost_wisp.calculate_vars(run_state)
+    assert lost_wisp._gold == 75
+
+    punch_off = PunchOff()
+    punch_off.rng = _ExclusiveHighRng()
+    punch_off.calculate_vars(run_state)
+    assert punch_off._gold == 98
+
+    statue = SunkenStatue()
+    statue.rng = _ExclusiveHighRng()
+    statue.calculate_vars(run_state)
+    assert statue._gold == 121
+
+    treasury = SunkenTreasury()
+    treasury.rng = _ExclusiveHighRng()
+    treasury.calculate_vars(run_state)
+    assert treasury._small_gold == 67
+    assert treasury._large_gold == 363
+
+    this_or_that = ThisOrThat()
+    this_or_that.rng = _ExclusiveHighRng()
+    this_or_that.calculate_vars(run_state)
+    assert this_or_that._gold == 68
+
+
 def test_round_tea_party_pick_fight_is_multi_page_and_grants_relic():
     run_state = RunState(seed=7, character_id="Ironclad")
     run_state.initialize_run()
@@ -30,8 +89,8 @@ def test_round_tea_party_pick_fight_is_multi_page_and_grants_relic():
 def test_trial_accept_randomizes_variant_and_merchant_guilty_adds_rewards():
     run_state = RunState(seed=11, character_id="Ironclad")
     run_state.initialize_run()
-    run_state.rng.niche.next_int = lambda low, high: 0  # merchant branch
     event = Trial()
+    event.rng = _FixedIntRng(0)
     event.generate_initial_options(run_state)
 
     result = event.choose(run_state, "accept")
@@ -298,16 +357,15 @@ def test_darv_uses_act_conditioned_boss_relic_pool():
     run_state = RunState(seed=64, character_id="Ironclad")
     run_state.initialize_run()
     darv = Darv()
+    darv.rng = _DarvRng()
 
     run_state.current_act_index = 1
-    run_state.rng.up_front.choice = lambda seq: seq[-1]
-    run_state.rng.up_front.shuffle = lambda seq: seq.reverse()
-    run_state.rng.up_front.next_int = lambda low, high: 0
     options = darv.generate_initial_options(run_state)
     labels = {option.label for option in options}
     assert any("SOZU" in label or "Sozu" in label for label in labels)
 
     run_state.current_act_index = 2
+    darv.rng = _DarvRng()
     options = darv.generate_initial_options(run_state)
     labels = {option.label for option in options}
     assert any("VELVET" in label or "Velvet" in label for label in labels)
@@ -323,6 +381,8 @@ def test_shared_reward_and_curse_events_apply_real_state_changes():
     rewards = result.rewards["reward_objects"]
     assert len(rewards) == 3
     assert all(reward.reward_type.name == "CARD" for reward in rewards)
+    assert all(getattr(reward, "generation_context", "combat") is None for reward in rewards)
+    assert all(getattr(reward, "roll_upgrade", True) is False for reward in rewards)
 
     flower = ColossalFlower()
     result = flower.choose(run_state, "reach_deeper")

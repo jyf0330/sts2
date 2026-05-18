@@ -6,10 +6,19 @@ from sts2_env.cards.defect import create_defect_starter_deck
 from sts2_env.cards.ironclad import create_ironclad_starter_deck
 from sts2_env.cards.ironclad_basic import make_defend_ironclad, make_strike_ironclad
 from sts2_env.core.combat import CombatState
-from sts2_env.core.enums import CombatSide, OrbType
+from sts2_env.core.enums import CombatSide, OrbType, PowerId
 from sts2_env.core.hooks import fire_before_turn_end
+from sts2_env.powers.base import PowerInstance
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle, create_twig_slime_s
+
+
+class _CannotHitPower(PowerInstance):
+    def __init__(self):
+        super().__init__(PowerId.COVERED, 1)
+
+    def should_allow_hitting(self, owner, combat):
+        return False
 
 
 def _make_ironclad_combat(
@@ -79,6 +88,15 @@ class TestRelicParityExtra2:
         fire_before_turn_end(CombatSide.PLAYER, combat)
         assert combat.player.block == 5
 
+    def test_orichalcum_checks_zero_block_before_plating_adds_block(self):
+        combat = _make_ironclad_combat(["Orichalcum"], seed=112)
+        combat.player.block = 0
+        combat.apply_power_to(combat.player, PowerId.PLATING, 4)
+
+        fire_before_turn_end(CombatSide.PLAYER, combat)
+
+        assert combat.player.block == 10
+
     def test_mercury_hourglass_hits_all_enemies_each_player_turn_start(self):
         """Matches MercuryHourglass.cs: deal 3 to all enemies every player turn start."""
         combat = _make_ironclad_combat(["MercuryHourglass"], seed=103, enemies=2)
@@ -94,6 +112,15 @@ class TestRelicParityExtra2:
         assert enemy_a.current_hp == round_one_a - 3
         assert enemy_b.current_hp == round_one_b - 3
 
+        enemy_a.powers[PowerId.COVERED] = _CannotHitPower()
+        enemy_a.max_hp = enemy_b.max_hp = 100
+        enemy_a.current_hp = enemy_b.current_hp = 100
+
+        combat.end_player_turn()
+
+        assert enemy_a.current_hp == 100
+        assert enemy_b.current_hp == 97
+
     def test_gremlin_horn_grants_energy_and_draw_when_enemy_dies(self):
         """Matches GremlinHorn.cs: on enemy death, gain 1 energy and draw 1."""
         combat = _make_ironclad_combat(["GremlinHorn"], seed=104)
@@ -107,6 +134,19 @@ class TestRelicParityExtra2:
 
         assert combat.play_card(0, 0)
         assert enemy.is_dead
+        assert combat.energy == 1
+        assert drawn in combat.hand
+
+    def test_gremlin_horn_triggers_on_non_damage_enemy_death(self):
+        """Matches GremlinHorn.cs: AfterDeath is not limited to damage kills."""
+        combat = _make_ironclad_combat(["GremlinHorn"], seed=114)
+        enemy = combat.enemies[0]
+        drawn = make_defend_ironclad()
+        combat.hand = []
+        combat.draw_pile = [drawn]
+        combat.energy = 0
+
+        assert combat.kill_creature(enemy)
         assert combat.energy == 1
         assert drawn in combat.hand
 

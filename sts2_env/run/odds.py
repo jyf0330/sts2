@@ -77,7 +77,10 @@ class UnknownMapPointOdds:
             if room_type == result:
                 self._current[room_type] = base_odds  # reset rolled type
             elif room_type in allowed_types:
-                self._current[room_type] += base_odds  # increase un-rolled
+                odds_increase = base_odds
+                for modifier in run_state.modifiers:
+                    odds_increase = modifier.modify_odds_increase_for_unrolled_room_type(room_type, odds_increase)
+                self._current[room_type] += odds_increase  # increase un-rolled
 
         return result
 

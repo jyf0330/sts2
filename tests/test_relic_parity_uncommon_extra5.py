@@ -6,7 +6,7 @@ from sts2_env.cards.factory import create_card
 from sts2_env.cards.ironclad import create_ironclad_starter_deck
 from sts2_env.cards.regent import create_regent_starter_deck
 from sts2_env.core.combat import CombatState
-from sts2_env.core.enums import CardId, CombatSide, PowerId, RoomType
+from sts2_env.core.enums import CardId, CombatSide, PowerId, RoomType, ValueProp
 from sts2_env.core.hooks import fire_before_side_turn_start
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle, create_twig_slime_s
@@ -151,6 +151,17 @@ class TestRelicParityUncommonExtra5:
         assert with_cannon_normal == base_normal
         assert base_upgraded == 9
         assert with_cannon_upgraded == base_upgraded + 3
+
+    def test_miniature_cannon_counts_owned_upgraded_card_even_from_pet_dealer(self):
+        combat = _make_ironclad_combat(["MiniatureCannon"], seed=1017)
+        player = combat.player
+        enemy = combat.enemies[0]
+        pet = combat.summon_event_pet(player, "PAELS_LEGION")
+        strike = create_card(CardId.STRIKE_IRONCLAD, upgraded=True)
+        strike.owner = player
+        relic = next(relic for relic in combat.current_player_state.relics if relic.relic_id.name == "MINIATURE_CANNON")
+
+        assert relic.modify_damage_additive(player, pet, enemy, ValueProp.MOVE, strike) == 3
 
     def test_red_mask_applies_round_one_weak_to_all_enemies_only(self):
         """Matches RedMask.cs: before side turn start on round 1, apply Weak(1) to all enemies."""

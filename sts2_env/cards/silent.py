@@ -83,9 +83,8 @@ def acrobatics(card: CardInstance, combat: CombatState, target: Creature | None)
 
 @register_effect(CardId.ANTICIPATE)
 def anticipate(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    # Gain temporary Dexterity (Anticipate power — next turn only)
     amt = card.effect_vars.get("dexterity", 3)
-    combat.apply_power_to(_owner(card, combat), PowerId.DEXTERITY, amt)
+    combat.apply_power_to(_owner(card, combat), PowerId.ANTICIPATE, amt)
 
 
 @register_effect(CardId.BACKFLIP)
@@ -98,10 +97,10 @@ def backflip(card: CardInstance, combat: CombatState, target: Creature | None) -
 
 @register_effect(CardId.BLADE_DANCE)
 def blade_dance(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
+    owner = _owner(card, combat)
     count = card.effect_vars.get("cards", 3)
     for _ in range(count):
-        shiv = _make_shiv()
-        combat.hand.append(shiv)
+        combat.add_generated_card_to_creature_hand(owner, _make_shiv())
 
 
 @register_effect(CardId.CLOAK_AND_DAGGER)
@@ -111,14 +110,16 @@ def cloak_and_dagger(card: CardInstance, combat: CombatState, target: Creature |
     owner.gain_block(blk)
     count = card.effect_vars.get("cards", 1)
     for _ in range(count):
-        combat.hand.append(_make_shiv())
+        combat.add_generated_card_to_creature_hand(owner, _make_shiv())
 
 
 @register_effect(CardId.DAGGER_SPRAY)
 def dagger_spray(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     owner = _owner(card, combat)
     for _ in range(2):
-        for enemy in combat.alive_enemies:
+        if owner.is_dead:
+            break
+        for enemy in combat.hittable_enemies:
             dmg = calculate_damage(card.base_damage, owner, enemy, ValueProp.MOVE, combat)
             apply_damage(enemy, dmg, ValueProp.MOVE, combat, owner)
 
@@ -143,7 +144,7 @@ def dagger_throw(card: CardInstance, combat: CombatState, target: Creature | Non
 @register_effect(CardId.DEADLY_POISON)
 def deadly_poison(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
-    combat.apply_power_to(target, PowerId.POISON, card.effect_vars.get("poison", 5))
+    combat.apply_power_to(target, PowerId.POISON, card.effect_vars.get("poison_power", 5))
 
 
 @register_effect(CardId.DEFLECT)
@@ -164,7 +165,7 @@ def dodge_and_roll(card: CardInstance, combat: CombatState, target: Creature | N
 @register_effect(CardId.FLICK_FLACK)
 def flick_flack(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     owner = _owner(card, combat)
-    for enemy in combat.alive_enemies:
+    for enemy in combat.hittable_enemies:
         dmg = calculate_damage(card.base_damage, owner, enemy, ValueProp.MOVE, combat)
         apply_damage(enemy, dmg, ValueProp.MOVE, combat, owner)
 
@@ -175,13 +176,13 @@ def leading_strike(card: CardInstance, combat: CombatState, target: Creature | N
     owner = _owner(card, combat)
     dmg = calculate_damage(card.base_damage, owner, target, ValueProp.MOVE, combat)
     apply_damage(target, dmg, ValueProp.MOVE, combat, owner)
-    combat.hand.append(_make_shiv())
+    combat.add_generated_card_to_creature_hand(owner, _make_shiv())
 
 
 @register_effect(CardId.PIERCING_WAIL)
 def piercing_wail(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     loss = card.effect_vars.get("strength_loss", 6)
-    for enemy in combat.alive_enemies:
+    for enemy in combat.hittable_enemies:
         prev = enemy.get_power_amount(PowerId.PIERCING_WAIL)
         combat.apply_power_to(enemy, PowerId.PIERCING_WAIL, loss)
         if enemy.get_power_amount(PowerId.PIERCING_WAIL) > prev:
@@ -194,7 +195,7 @@ def poisoned_stab(card: CardInstance, combat: CombatState, target: Creature | No
     owner = _owner(card, combat)
     dmg = calculate_damage(card.base_damage, owner, target, ValueProp.MOVE, combat)
     apply_damage(target, dmg, ValueProp.MOVE, combat, owner)
-    combat.apply_power_to(target, PowerId.POISON, card.effect_vars.get("poison", 3))
+    combat.apply_power_to(target, PowerId.POISON, card.effect_vars.get("poison_power", 3))
 
 
 @register_effect(CardId.PREPARED)
@@ -227,10 +228,12 @@ def ricochet(card: CardInstance, combat: CombatState, target: Creature | None) -
     owner = _owner(card, combat)
     hits = card.effect_vars.get("hits", 3)
     for _ in range(hits):
-        alive = combat.alive_enemies
+        if owner.is_dead:
+            break
+        alive = combat.hittable_enemies
         if not alive:
             break
-        t = combat.rng.choice(alive)
+        t = combat.combat_targets_rng.choice(alive)
         dmg = calculate_damage(card.base_damage, owner, t, ValueProp.MOVE, combat)
         apply_damage(t, dmg, ValueProp.MOVE, combat, owner)
 
@@ -246,7 +249,7 @@ def slice_card(card: CardInstance, combat: CombatState, target: Creature | None)
 @register_effect(CardId.SNAKEBITE)
 def snakebite(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
-    combat.apply_power_to(target, PowerId.POISON, card.effect_vars.get("poison", 7))
+    combat.apply_power_to(target, PowerId.POISON, card.effect_vars.get("poison_power", 7))
 
 
 @register_effect(CardId.SUCKER_PUNCH)
@@ -271,7 +274,7 @@ def untouchable(card: CardInstance, combat: CombatState, target: Creature | None
 
 @register_effect(CardId.ACCURACY_CARD)
 def accuracy(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    combat.apply_power_to(_owner(card, combat), PowerId.ACCURACY, card.effect_vars.get("accuracy", 4))
+    combat.apply_power_to(_owner(card, combat), PowerId.ACCURACY, card.effect_vars.get("accuracy_power", 4))
 
 
 @register_effect(CardId.BACKSTAB)
@@ -293,19 +296,20 @@ def blur(card: CardInstance, combat: CombatState, target: Creature | None) -> No
 @register_effect(CardId.BOUNCING_FLASK)
 def bouncing_flask(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     hits = card.effect_vars.get("hits", 3)
-    poison_amt = card.effect_vars.get("poison", 3)
+    poison_amt = card.effect_vars.get("poison_power", 3)
     for _ in range(hits):
-        alive = combat.alive_enemies
+        alive = combat.hittable_enemies
         if not alive:
             break
-        t = combat.rng.choice(alive)
+        t = combat.combat_targets_rng.choice(alive)
         combat.apply_power_to(t, PowerId.POISON, poison_amt)
 
 
 @register_effect(CardId.BUBBLE_BUBBLE)
 def bubble_bubble(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
-    combat.apply_power_to(target, PowerId.POISON, card.effect_vars.get("poison", 9))
+    if target.get_power_amount(PowerId.POISON) > 0:
+        combat.apply_power_to(target, PowerId.POISON, card.effect_vars.get("poison_power", 9))
 
 
 @register_effect(CardId.CALCULATED_GAMBLE)
@@ -349,19 +353,24 @@ def expertise(card: CardInstance, combat: CombatState, target: Creature | None) 
 @register_effect(CardId.EXPOSE)
 def expose(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
-    # Remove Artifact stacks then apply Vulnerable
     amt = card.effect_vars.get("power", 2)
     target.block = 0
+    target.powers.pop(PowerId.ARTIFACT, None)
     combat.apply_power_to(target, PowerId.VULNERABLE, amt)
 
 
 @register_effect(CardId.FINISHER)
 def finisher(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
-    # Hits once per attack played this turn (tracked by combat.turn_attack_count or similar)
-    hits = max(1, getattr(combat, 'attacks_played_this_turn', 1))
     owner = _owner(card, combat)
+    hits = sum(
+        1
+        for played in combat._played_cards_this_turn
+        if played.card_type == CardType.ATTACK and getattr(played, "owner", None) is owner
+    )
     for _ in range(hits):
+        if owner.is_dead or target.is_dead:
+            break
         dmg = calculate_damage(card.base_damage, owner, target, ValueProp.MOVE, combat)
         apply_damage(target, dmg, ValueProp.MOVE, combat, owner)
 
@@ -369,29 +378,45 @@ def finisher(card: CardInstance, combat: CombatState, target: Creature | None) -
 @register_effect(CardId.FLANKING)
 def flanking(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
-    # Apply Flanking debuff (prevents enemy block)
-    combat.apply_power_to(target, PowerId.NO_BLOCK, 1)
+    owner = _owner(card, combat)
+    combat.apply_power_to(target, PowerId.FLANKING, card.effect_vars.get("flanking_power", 2), applier=owner)
+    power = target.powers.get(PowerId.FLANKING)
+    if power is not None:
+        power.applier = owner
 
 
 @register_effect(CardId.FLECHETTES)
 def flechettes(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
     # Deals damage for each skill in hand
+    owner = _owner(card, combat)
     skill_count = sum(1 for c in combat.hand if c.is_skill)
     hits = max(0, skill_count)
     for _ in range(hits):
-        dmg = calculate_damage(card.base_damage, _owner(card, combat), target, ValueProp.MOVE, combat)
-        apply_damage(target, dmg, ValueProp.MOVE, combat, _owner(card, combat))
+        if owner.is_dead or target.is_dead:
+            break
+        dmg = calculate_damage(card.base_damage, owner, target, ValueProp.MOVE, combat)
+        apply_damage(target, dmg, ValueProp.MOVE, combat, owner)
 
 
 @register_effect(CardId.FOLLOW_THROUGH)
 def follow_through(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     owner = _owner(card, combat)
-    for enemy in combat.alive_enemies:
+    for enemy in combat.hittable_enemies:
         dmg = calculate_damage(card.base_damage, owner, enemy, ValueProp.MOVE, combat)
         apply_damage(enemy, dmg, ValueProp.MOVE, combat, owner)
+    previous = next(
+        (
+            played
+            for played in reversed(combat._played_cards_this_turn)
+            if getattr(played, "owner", None) is owner
+        ),
+        None,
+    )
+    if previous is None or previous.card_type != CardType.SKILL:
+        return
     weak = card.effect_vars.get("weak", 1)
-    for enemy in combat.alive_enemies:
+    for enemy in combat.hittable_enemies:
         combat.apply_power_to(enemy, PowerId.WEAK, weak)
 
 
@@ -405,7 +430,7 @@ def hand_trick(card: CardInstance, combat: CombatState, target: Creature | None)
     owner = _owner(card, combat)
     blk = calculate_block(card.base_block, owner, ValueProp.MOVE, combat, card_source=card)
     owner.gain_block(blk)
-    candidates = [c for c in combat.hand if c.card_type == CardType.SKILL and not c.combat_vars.get("sly_this_turn")]
+    candidates = [c for c in combat.hand if c.card_type == CardType.SKILL and not c.is_sly]
     if not candidates:
         return
 
@@ -424,18 +449,19 @@ def hand_trick(card: CardInstance, combat: CombatState, target: Creature | None)
 
 @register_effect(CardId.HAZE)
 def haze(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    poison = card.effect_vars.get("poison", 4)
-    for enemy in combat.alive_enemies:
+    poison = card.effect_vars.get("poison_power", 4)
+    for enemy in combat.hittable_enemies:
         combat.apply_power_to(enemy, PowerId.POISON, poison)
 
 
 @register_effect(CardId.HIDDEN_DAGGERS)
 def hidden_daggers(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
+    owner = _owner(card, combat)
     discard_count = min(card.effect_vars.get("cards", 2), len(combat.hand))
 
     def _finish() -> None:
         for _ in range(card.effect_vars.get("shivs", 2)):
-            combat.hand.append(_make_shiv())
+            combat.add_generated_card_to_creature_hand(owner, _make_shiv(upgraded=card.upgraded))
 
     if discard_count <= 0:
         _finish()
@@ -482,12 +508,11 @@ def leg_sweep(card: CardInstance, combat: CombatState, target: Creature | None) 
 @register_effect(CardId.MEMENTO_MORI)
 def memento_mori(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
-    # Damage scales with exhaust pile size
     owner = _owner(card, combat)
     base = card.effect_vars.get("calc_base", 8)
     extra = card.effect_vars.get("extra_damage", 4)
-    exhaust_count = len(combat.exhaust_pile)
-    total_dmg = base + extra * exhaust_count
+    discard_count = combat.count_cards_discarded_this_turn(owner)
+    total_dmg = base + extra * discard_count
     dmg = calculate_damage(total_dmg, owner, target, ValueProp.MOVE, combat)
     apply_damage(target, dmg, ValueProp.MOVE, combat, owner)
 
@@ -512,12 +537,20 @@ def noxious_fumes(card: CardInstance, combat: CombatState, target: Creature | No
 
 @register_effect(CardId.OUTBREAK_CARD)
 def outbreak(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    combat.apply_power_to(_owner(card, combat), PowerId.OUTBREAK, card.effect_vars.get("outbreak", 11))
+    combat.apply_power_to(_owner(card, combat), PowerId.OUTBREAK, card.effect_vars.get("outbreak_power", 11))
 
 
 @register_effect(CardId.PHANTOM_BLADES_CARD)
 def phantom_blades(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    combat.apply_power_to(_owner(card, combat), PowerId.PHANTOM_BLADES, card.effect_vars.get("phantom_blades", 9))
+    owner = _owner(card, combat)
+    combat.apply_power_to(owner, PowerId.PHANTOM_BLADES, card.effect_vars.get("phantom_blades_power", 9))
+    state = combat.combat_player_state_for(owner)
+    if state is None:
+        return
+    for pile in state.all_piles:
+        for existing in pile:
+            if existing.is_shiv:
+                existing.keywords = frozenset(set(existing.keywords) | {"retain"})
 
 
 @register_effect(CardId.PINPOINT)
@@ -540,12 +573,10 @@ def pounce(card: CardInstance, combat: CombatState, target: Creature | None) -> 
 @register_effect(CardId.PRECISE_CUT)
 def precise_cut(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
-    # Damage scales down with skills in hand
     owner = _owner(card, combat)
     base = card.effect_vars.get("calc_base", 13)
     extra = card.effect_vars.get("extra_damage", 2)
-    skill_count = sum(1 for c in combat.hand if c.is_skill)
-    total_dmg = base - extra * skill_count
+    total_dmg = base - extra * len(combat.hand)
     total_dmg = max(0, total_dmg)
     dmg = calculate_damage(total_dmg, owner, target, ValueProp.MOVE, combat)
     apply_damage(target, dmg, ValueProp.MOVE, combat, owner)
@@ -568,18 +599,18 @@ def reflex(card: CardInstance, combat: CombatState, target: Creature | None) -> 
 @register_effect(CardId.SKEWER)
 def skewer(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
-    # X-cost: hits X times
     owner = _owner(card, combat)
-    hits = combat.energy + card.cost  # energy was already spent
+    hits = getattr(card, "energy_spent", 0)
     for _ in range(max(0, hits)):
+        if owner.is_dead or target.is_dead:
+            break
         dmg = calculate_damage(card.base_damage, owner, target, ValueProp.MOVE, combat)
         apply_damage(target, dmg, ValueProp.MOVE, combat, owner)
-    combat.energy = 0
 
 
 @register_effect(CardId.SPEEDSTER_CARD)
 def speedster(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    combat.apply_power_to(_owner(card, combat), PowerId.SPEEDSTER, card.effect_vars.get("speedster", 2))
+    combat.apply_power_to(_owner(card, combat), PowerId.SPEEDSTER, card.effect_vars.get("speedster_power", 2))
 
 
 @register_effect(CardId.STRANGLE)
@@ -588,7 +619,7 @@ def strangle(card: CardInstance, combat: CombatState, target: Creature | None) -
     owner = _owner(card, combat)
     dmg = calculate_damage(card.base_damage, owner, target, ValueProp.MOVE, combat)
     apply_damage(target, dmg, ValueProp.MOVE, combat, owner)
-    combat.apply_power_to(target, PowerId.CONSTRICT, card.effect_vars.get("strangle", 2))
+    combat.apply_power_to(target, PowerId.CONSTRICT, card.effect_vars.get("strangle_power", 2))
 
 
 @register_effect(CardId.TACTICIAN)
@@ -598,17 +629,16 @@ def tactician(card: CardInstance, combat: CombatState, target: Creature | None) 
 
 @register_effect(CardId.UP_MY_SLEEVE)
 def up_my_sleeve(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
+    owner = _owner(card, combat)
     count = card.effect_vars.get("cards", 3)
     for _ in range(count):
-        shiv = _make_shiv()
-        # Reduce cost by 1 this combat
-        shiv.cost = max(0, shiv.cost - 1)
-        combat.hand.append(shiv)
+        combat.add_generated_card_to_creature_hand(owner, _make_shiv())
+    card.set_combat_cost(max(0, card.cost - 1))
 
 
 @register_effect(CardId.WELL_LAID_PLANS)
 def well_laid_plans(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    combat.apply_power_to(_owner(card, combat), PowerId.WELL_LAID_PLANS, card.effect_vars.get("retain", 1))
+    combat.apply_power_to(_owner(card, combat), PowerId.WELL_LAID_PLANS, card.effect_vars.get("retain_amount", 1))
 
 
 # ---------------------------------------------------------------------------
@@ -619,7 +649,7 @@ def well_laid_plans(card: CardInstance, combat: CombatState, target: Creature | 
 def abrasive(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     owner = _owner(card, combat)
     combat.apply_power_to(owner, PowerId.DEXTERITY, card.effect_vars.get("dexterity", 1))
-    combat.apply_power_to(owner, PowerId.THORNS, card.effect_vars.get("thorns", 4))
+    combat.apply_power_to(owner, PowerId.THORNS, card.effect_vars.get("thorns_power", 4))
 
 
 @register_effect(CardId.ACCELERANT)
@@ -635,7 +665,7 @@ def adrenaline(card: CardInstance, combat: CombatState, target: Creature | None)
 
 @register_effect(CardId.AFTERIMAGE_CARD)
 def afterimage(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    combat.apply_power_to(_owner(card, combat), PowerId.AFTERIMAGE, card.effect_vars.get("afterimage", 1))
+    combat.apply_power_to(_owner(card, combat), PowerId.AFTERIMAGE, card.effect_vars.get("afterimage_power", 1))
 
 
 @register_effect(CardId.ASSASSINATE)
@@ -657,7 +687,8 @@ def bullet_time(card: CardInstance, combat: CombatState, target: Creature | None
     # NoDraw + all cards in hand cost 0 this turn
     combat.apply_power_to(_owner(card, combat), PowerId.NO_DRAW, 1)
     for c in combat.hand:
-        c.set_temporary_cost_for_turn(0)
+        if not c.has_energy_cost_x:
+            c.set_temporary_free_this_turn()
 
 
 @register_effect(CardId.BURST)
@@ -672,24 +703,32 @@ def corrosive_wave(card: CardInstance, combat: CombatState, target: Creature | N
 
 @register_effect(CardId.ECHOING_SLASH)
 def echoing_slash(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    # Deal non-attack damage to all enemies
-    dmg_val = card.effect_vars.get("damage", 10)
     owner = _owner(card, combat)
-    for enemy in combat.alive_enemies:
-        apply_damage(enemy, dmg_val, ValueProp.NONE, combat, owner)
+    attacks = 1
+    while attacks > 0:
+        if owner.is_dead:
+            break
+        attacks -= 1
+        killed = 0
+        for enemy in list(combat.hittable_enemies):
+            dmg = calculate_damage(card.base_damage, owner, enemy, ValueProp.MOVE, combat)
+            apply_damage(enemy, dmg, ValueProp.MOVE, combat, owner)
+            if enemy.is_dead:
+                killed += 1
+        attacks += killed
 
 
 @register_effect(CardId.ENVENOM_CARD)
 def envenom(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    combat.apply_power_to(_owner(card, combat), PowerId.ENVENOM, card.effect_vars.get("envenom", 1))
+    combat.apply_power_to(_owner(card, combat), PowerId.ENVENOM, card.effect_vars.get("envenom_power", 1))
 
 
 @register_effect(CardId.FAN_OF_KNIVES_CARD)
 def fan_of_knives(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    # Power: create Shivs + gain FanOfKnives power
-    combat.apply_power_to(_owner(card, combat), PowerId.FAN_OF_KNIVES, 1)
+    owner = _owner(card, combat)
+    combat.apply_power_to(owner, PowerId.FAN_OF_KNIVES, 1)
     for _ in range(card.effect_vars.get("shivs", 2)):
-        combat.hand.append(_make_shiv())
+        combat.add_generated_card_to_creature_hand(owner, _make_shiv())
 
 
 @register_effect(CardId.GRAND_FINALE)
@@ -697,19 +736,18 @@ def grand_finale(card: CardInstance, combat: CombatState, target: Creature | Non
     # Only playable when draw pile is empty
     if len(combat.draw_pile) == 0:
         owner = _owner(card, combat)
-        for enemy in combat.alive_enemies:
+        for enemy in combat.hittable_enemies:
             dmg = calculate_damage(card.base_damage, owner, enemy, ValueProp.MOVE, combat)
             apply_damage(enemy, dmg, ValueProp.MOVE, combat, owner)
 
 
 @register_effect(CardId.KNIFE_TRAP)
 def knife_trap(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    # Create Shivs based on exhaust pile size and auto-play them
-    exhaust_count = len(combat.exhaust_pile)
     owner = _owner(card, combat)
-    for _ in range(exhaust_count):
-        shiv = _make_shiv()
-        # Auto-play the shiv at target
+    for shiv in [exhausted for exhausted in combat.exhaust_pile if exhausted.is_shiv]:
+        if card.upgraded and not shiv.upgraded:
+            shiv.upgraded = True
+            shiv.base_damage = 6
         if target is not None and target.is_alive:
             dmg = calculate_damage(shiv.base_damage, owner, target, ValueProp.MOVE, combat)
             apply_damage(target, dmg, ValueProp.MOVE, combat, owner)
@@ -718,8 +756,9 @@ def knife_trap(card: CardInstance, combat: CombatState, target: Creature | None)
 @register_effect(CardId.MALAISE)
 def malaise(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
-    # X-cost: reduce Strength by X and apply X Weak
     x = getattr(card, "energy_spent", 0)
+    if card.upgraded:
+        x += 1
     combat.apply_power_to(target, PowerId.STRENGTH, -x)
     combat.apply_power_to(target, PowerId.WEAK, x)
 
@@ -732,12 +771,10 @@ def master_planner(card: CardInstance, combat: CombatState, target: Creature | N
 @register_effect(CardId.MURDER)
 def murder(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
-    # Damage = 1 per card exhausted this combat
     owner = _owner(card, combat)
-    exhaust_count = len(combat.exhaust_pile)
     base = card.effect_vars.get("calc_base", 1)
     extra = card.effect_vars.get("extra_damage", 1)
-    total_dmg = base * exhaust_count * extra
+    total_dmg = base * extra * combat.count_cards_drawn_this_combat(owner)
     dmg = calculate_damage(total_dmg, owner, target, ValueProp.MOVE, combat)
     apply_damage(target, dmg, ValueProp.MOVE, combat, owner)
 
@@ -766,7 +803,7 @@ def nightmare(card: CardInstance, combat: CombatState, target: Creature | None) 
 
 @register_effect(CardId.SERPENT_FORM_CARD)
 def serpent_form(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    combat.apply_power_to(_owner(card, combat), PowerId.SERPENT_FORM, card.effect_vars.get("serpent_form", 4))
+    combat.apply_power_to(_owner(card, combat), PowerId.SERPENT_FORM, card.effect_vars.get("serpent_form_power", 4))
 
 
 @register_effect(CardId.SHADOW_STEP)
@@ -783,17 +820,17 @@ def shadowmeld(card: CardInstance, combat: CombatState, target: Creature | None)
 
 @register_effect(CardId.SNEAKY_CARD)
 def sneaky(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    combat.apply_power_to(_owner(card, combat), PowerId.SNEAKY, card.effect_vars.get("sneaky", 1))
+    combat.apply_power_to(_owner(card, combat), PowerId.SNEAKY, card.effect_vars.get("sneaky_power", 1))
 
 
 @register_effect(CardId.STORM_OF_STEEL)
 def storm_of_steel(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    # Discard hand, create a Shiv for each discarded
-    count = len(combat.hand)
-    combat.discard_pile.extend(combat.hand)
-    combat.hand.clear()
+    owner = _owner(card, combat)
+    cards = list(combat.hand)
+    count = len(cards)
+    combat.discard_cards(cards, 0)
     for _ in range(count):
-        combat.hand.append(_make_shiv())
+        combat.add_generated_card_to_creature_hand(owner, _make_shiv(upgraded=card.upgraded))
 
 
 @register_effect(CardId.THE_HUNT)
@@ -825,9 +862,8 @@ def tools_of_the_trade(card: CardInstance, combat: CombatState, target: Creature
 
 @register_effect(CardId.TRACKING)
 def tracking(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    amount = card.effect_vars.get("tracking", 1)
     owner = _owner(card, combat)
-    combat.apply_power_to(owner, PowerId.TRACKING, amount)
+    amount = 1 if owner.get_power_amount(PowerId.TRACKING) > 0 else 2
     combat.apply_power_to(owner, PowerId.TRACKING, amount)
 
 
@@ -847,22 +883,23 @@ def suppress(card: CardInstance, combat: CombatState, target: Creature | None) -
 @register_effect(CardId.WRAITH_FORM)
 def wraith_form(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     owner = _owner(card, combat)
-    combat.apply_power_to(owner, PowerId.INTANGIBLE, card.effect_vars.get("intangible", 2))
-    combat.apply_power_to(owner, PowerId.WRAITH_FORM, card.effect_vars.get("wraith_form", 1))
+    combat.apply_power_to(owner, PowerId.INTANGIBLE, card.effect_vars.get("intangible_power", 2))
+    combat.apply_power_to(owner, PowerId.WRAITH_FORM, card.effect_vars.get("wraith_form_power", 1))
 
 
 # ---------------------------------------------------------------------------
 #  Shiv helper
 # ---------------------------------------------------------------------------
 
-def _make_shiv() -> CardInstance:
+def _make_shiv(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.SHIV,
         cost=0,
         card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY,
         rarity=CardRarity.COMMON,
-        base_damage=4,
+        base_damage=6 if upgraded else 4,
+        upgraded=upgraded,
         tags=frozenset({CardTag.SHIV}),
         keywords=frozenset({"exhaust"}),
         instance_id=_get_next_id(),
@@ -873,731 +910,816 @@ def _make_shiv() -> CardInstance:
 #  Card factories
 # ---------------------------------------------------------------------------
 
-def make_strike_silent() -> CardInstance:
+def make_strike_silent(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.STRIKE_SILENT, cost=1, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.BASIC,
-        base_damage=6, instance_id=_get_next_id(),
+        base_damage=9 if upgraded else 6, upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_defend_silent() -> CardInstance:
+def make_defend_silent(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.DEFEND_SILENT, cost=1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.BASIC,
-        base_block=5, instance_id=_get_next_id(),
+        base_block=8 if upgraded else 5, upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_neutralize() -> CardInstance:
+def make_neutralize(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.NEUTRALIZE, cost=0, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.BASIC,
-        base_damage=3, effect_vars={"weak": 1}, instance_id=_get_next_id(),
+        base_damage=4 if upgraded else 3,
+        effect_vars={"weak": 2 if upgraded else 1},
+        upgraded=upgraded,
+        instance_id=_get_next_id(),
     )
 
 
-def make_survivor() -> CardInstance:
+def make_survivor(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.SURVIVOR, cost=1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.BASIC,
-        base_block=8, instance_id=_get_next_id(),
+        base_block=11 if upgraded else 8, upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_acrobatics() -> CardInstance:
+def make_acrobatics(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.ACROBATICS, cost=1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.COMMON,
-        effect_vars={"cards": 3}, instance_id=_get_next_id(),
+        effect_vars={"cards": 4 if upgraded else 3},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_anticipate() -> CardInstance:
+def make_anticipate(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.ANTICIPATE, cost=0, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.COMMON,
-        effect_vars={"dexterity": 3}, instance_id=_get_next_id(),
+        effect_vars={"dexterity": 5 if upgraded else 3},
+        upgraded=upgraded,
+        instance_id=_get_next_id(),
     )
 
 
-def make_backflip() -> CardInstance:
+def make_backflip(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.BACKFLIP, cost=1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.COMMON,
-        base_block=5, effect_vars={"cards": 2}, instance_id=_get_next_id(),
+        base_block=8 if upgraded else 5, effect_vars={"cards": 2},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_blade_dance() -> CardInstance:
+def make_blade_dance(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.BLADE_DANCE, cost=1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.COMMON,
         keywords=frozenset({"exhaust"}),
-        effect_vars={"cards": 3}, instance_id=_get_next_id(),
+        effect_vars={"cards": 4 if upgraded else 3},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_cloak_and_dagger() -> CardInstance:
+def make_cloak_and_dagger(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.CLOAK_AND_DAGGER, cost=1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.COMMON,
-        base_block=6, effect_vars={"cards": 1}, instance_id=_get_next_id(),
+        base_block=6, effect_vars={"cards": 2 if upgraded else 1},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_dagger_spray() -> CardInstance:
+def make_dagger_spray(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.DAGGER_SPRAY, cost=1, card_type=CardType.ATTACK,
         target_type=TargetType.ALL_ENEMIES, rarity=CardRarity.COMMON,
-        base_damage=4, instance_id=_get_next_id(),
+        base_damage=6 if upgraded else 4, upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_dagger_throw() -> CardInstance:
+def make_dagger_throw(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.DAGGER_THROW, cost=1, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.COMMON,
-        base_damage=9, instance_id=_get_next_id(),
+        base_damage=12 if upgraded else 9,
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_deadly_poison() -> CardInstance:
+def make_deadly_poison(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.DEADLY_POISON, cost=1, card_type=CardType.SKILL,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.COMMON,
-        effect_vars={"poison": 5}, instance_id=_get_next_id(),
+        effect_vars={"poison_power": 7 if upgraded else 5},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_deflect() -> CardInstance:
+def make_deflect(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.DEFLECT, cost=0, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.COMMON,
-        base_block=4, instance_id=_get_next_id(),
+        base_block=7 if upgraded else 4, upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_dodge_and_roll() -> CardInstance:
+def make_dodge_and_roll(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.DODGE_AND_ROLL, cost=1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.COMMON,
-        base_block=4, instance_id=_get_next_id(),
+        base_block=6 if upgraded else 4,
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_flick_flack() -> CardInstance:
+def make_flick_flack(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.FLICK_FLACK, cost=1, card_type=CardType.ATTACK,
         target_type=TargetType.ALL_ENEMIES, rarity=CardRarity.COMMON,
-        base_damage=7, keywords=frozenset({"sly"}), instance_id=_get_next_id(),
+        base_damage=9 if upgraded else 7, keywords=frozenset({"sly"}),
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_leading_strike() -> CardInstance:
+def make_leading_strike(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.LEADING_STRIKE, cost=1, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.COMMON,
-        base_damage=7, instance_id=_get_next_id(),
+        base_damage=10 if upgraded else 7,
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_piercing_wail() -> CardInstance:
+def make_piercing_wail(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.PIERCING_WAIL, cost=1, card_type=CardType.SKILL,
         target_type=TargetType.ALL_ENEMIES, rarity=CardRarity.COMMON,
         keywords=frozenset({"exhaust"}),
-        effect_vars={"strength_loss": 6}, instance_id=_get_next_id(),
+        effect_vars={"strength_loss": 8 if upgraded else 6},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_poisoned_stab() -> CardInstance:
+def make_poisoned_stab(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.POISONED_STAB, cost=1, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.COMMON,
-        base_damage=6, effect_vars={"poison": 3}, instance_id=_get_next_id(),
+        base_damage=8 if upgraded else 6,
+        effect_vars={"poison_power": 4 if upgraded else 3},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_prepared() -> CardInstance:
+def make_prepared(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.PREPARED, cost=0, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.COMMON,
-        effect_vars={"cards": 1}, instance_id=_get_next_id(),
+        effect_vars={"cards": 2 if upgraded else 1},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_ricochet() -> CardInstance:
+def make_ricochet(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.RICOCHET, cost=2, card_type=CardType.ATTACK,
         target_type=TargetType.RANDOM_ENEMY, rarity=CardRarity.COMMON,
         base_damage=3, keywords=frozenset({"sly"}),
-        effect_vars={"hits": 3}, instance_id=_get_next_id(),
+        effect_vars={"hits": 4 if upgraded else 3},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_slice() -> CardInstance:
+def make_slice(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.SLICE, cost=0, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.COMMON,
-        base_damage=6, instance_id=_get_next_id(),
+        base_damage=9 if upgraded else 6, upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_snakebite() -> CardInstance:
+def make_snakebite(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.SNAKEBITE, cost=2, card_type=CardType.SKILL,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.COMMON,
         keywords=frozenset({"retain"}),
-        effect_vars={"poison": 7}, instance_id=_get_next_id(),
+        effect_vars={"poison_power": 10 if upgraded else 7},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_sucker_punch() -> CardInstance:
+def make_sucker_punch(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.SUCKER_PUNCH, cost=1, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.COMMON,
-        base_damage=8, effect_vars={"weak": 1}, instance_id=_get_next_id(),
+        base_damage=10 if upgraded else 8,
+        effect_vars={"weak": 2 if upgraded else 1},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_untouchable() -> CardInstance:
+def make_untouchable(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.UNTOUCHABLE, cost=2, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.COMMON,
-        base_block=9, keywords=frozenset({"sly"}), instance_id=_get_next_id(),
+        base_block=12 if upgraded else 9, keywords=frozenset({"sly"}),
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_accuracy() -> CardInstance:
+def make_accuracy(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.ACCURACY_CARD, cost=1, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
-        effect_vars={"accuracy": 4}, instance_id=_get_next_id(),
+        effect_vars={"accuracy_power": 6 if upgraded else 4},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_backstab() -> CardInstance:
+def make_backstab(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.BACKSTAB, cost=0, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.UNCOMMON,
-        base_damage=11, keywords=frozenset({"exhaust", "innate"}),
-        instance_id=_get_next_id(),
+        base_damage=15 if upgraded else 11, keywords=frozenset({"exhaust", "innate"}),
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_blur() -> CardInstance:
+def make_blur(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.BLUR_CARD, cost=1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
-        base_block=5, effect_vars={"blur": 1}, instance_id=_get_next_id(),
+        base_block=8 if upgraded else 5, effect_vars={"blur": 1},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_bouncing_flask() -> CardInstance:
+def make_bouncing_flask(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.BOUNCING_FLASK, cost=2, card_type=CardType.SKILL,
         target_type=TargetType.RANDOM_ENEMY, rarity=CardRarity.UNCOMMON,
-        effect_vars={"poison": 3, "hits": 3}, instance_id=_get_next_id(),
+        effect_vars={"poison_power": 3, "hits": 4 if upgraded else 3},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_bubble_bubble() -> CardInstance:
+def make_bubble_bubble(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.BUBBLE_BUBBLE, cost=1, card_type=CardType.SKILL,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.UNCOMMON,
-        effect_vars={"poison": 9}, instance_id=_get_next_id(),
+        effect_vars={"poison_power": 12 if upgraded else 9},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_calculated_gamble() -> CardInstance:
+def make_calculated_gamble(upgraded: bool = False) -> CardInstance:
+    keywords = {"exhaust"}
+    if upgraded:
+        keywords.add("retain")
     return CardInstance(
         card_id=CardId.CALCULATED_GAMBLE, cost=0, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
-        keywords=frozenset({"exhaust"}), instance_id=_get_next_id(),
+        keywords=frozenset(keywords), upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_dash() -> CardInstance:
+def make_dash(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.DASH, cost=2, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.UNCOMMON,
-        base_damage=10, base_block=10, instance_id=_get_next_id(),
+        base_damage=13 if upgraded else 10, base_block=13 if upgraded else 10,
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_escape_plan() -> CardInstance:
+def make_escape_plan(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.ESCAPE_PLAN, cost=0, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
-        base_block=3, instance_id=_get_next_id(),
+        base_block=5 if upgraded else 3,
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_expertise() -> CardInstance:
+def make_expertise(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.EXPERTISE, cost=1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
-        effect_vars={"cards": 6}, instance_id=_get_next_id(),
+        effect_vars={"cards": 7 if upgraded else 6},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_expose() -> CardInstance:
+def make_expose(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.EXPOSE, cost=0, card_type=CardType.SKILL,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.UNCOMMON,
         keywords=frozenset({"exhaust"}),
-        effect_vars={"power": 2}, instance_id=_get_next_id(),
+        effect_vars={"power": 3 if upgraded else 2},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_finisher() -> CardInstance:
+def make_finisher(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.FINISHER, cost=1, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.UNCOMMON,
-        base_damage=6, effect_vars={"calc_base": 0, "calc_extra": 1},
+        base_damage=8 if upgraded else 6,
+        effect_vars={"calc_base": 0, "calc_extra": 1},
+        upgraded=upgraded,
         instance_id=_get_next_id(),
     )
 
 
-def make_flanking() -> CardInstance:
+def make_flanking(upgraded: bool = False) -> CardInstance:
     return CardInstance(
-        card_id=CardId.FLANKING, cost=2, card_type=CardType.SKILL,
+        card_id=CardId.FLANKING, cost=1 if upgraded else 2, card_type=CardType.SKILL,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.UNCOMMON,
+        effect_vars={"flanking_power": 2},
+        upgraded=upgraded,
         instance_id=_get_next_id(),
     )
 
 
-def make_flechettes() -> CardInstance:
+def make_flechettes(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.FLECHETTES, cost=1, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.UNCOMMON,
-        base_damage=5, effect_vars={"calc_base": 0, "calc_extra": 1},
+        base_damage=7 if upgraded else 5, effect_vars={"calc_base": 0, "calc_extra": 1},
+        upgraded=upgraded, instance_id=_get_next_id(),
+    )
+
+
+def make_follow_through(upgraded: bool = False) -> CardInstance:
+    return CardInstance(
+        card_id=CardId.FOLLOW_THROUGH, cost=1, card_type=CardType.ATTACK,
+        target_type=TargetType.ALL_ENEMIES, rarity=CardRarity.UNCOMMON,
+        base_damage=8 if upgraded else 6,
+        effect_vars={"weak": 2 if upgraded else 1},
+        upgraded=upgraded,
         instance_id=_get_next_id(),
     )
 
 
-def make_follow_through() -> CardInstance:
-    return CardInstance(
-        card_id=CardId.FOLLOW_THROUGH, cost=1, card_type=CardType.ATTACK,
-        target_type=TargetType.ALL_ENEMIES, rarity=CardRarity.UNCOMMON,
-        base_damage=6, effect_vars={"weak": 1}, instance_id=_get_next_id(),
-    )
-
-
-def make_footwork() -> CardInstance:
+def make_footwork(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.FOOTWORK, cost=1, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
-        effect_vars={"dexterity": 2}, instance_id=_get_next_id(),
+        effect_vars={"dexterity": 3 if upgraded else 2},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_hand_trick() -> CardInstance:
+def make_hand_trick(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.HAND_TRICK, cost=1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
-        base_block=7, instance_id=_get_next_id(),
+        base_block=10 if upgraded else 7,
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_haze() -> CardInstance:
+def make_haze(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.HAZE, cost=3, card_type=CardType.SKILL,
         target_type=TargetType.ALL_ENEMIES, rarity=CardRarity.UNCOMMON,
         keywords=frozenset({"sly"}),
-        effect_vars={"poison": 4}, instance_id=_get_next_id(),
+        effect_vars={"poison_power": 6 if upgraded else 4},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_hidden_daggers() -> CardInstance:
+def make_hidden_daggers(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.HIDDEN_DAGGERS, cost=0, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
+        upgraded=upgraded,
         effect_vars={"cards": 2, "shivs": 2}, instance_id=_get_next_id(),
     )
 
 
-def make_infinite_blades() -> CardInstance:
+def make_infinite_blades(upgraded: bool = False) -> CardInstance:
+    keywords = frozenset({"innate"}) if upgraded else frozenset()
     return CardInstance(
         card_id=CardId.INFINITE_BLADES_CARD, cost=1, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
+        upgraded=upgraded, keywords=keywords,
         instance_id=_get_next_id(),
     )
 
 
-def make_leg_sweep() -> CardInstance:
+def make_leg_sweep(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.LEG_SWEEP, cost=2, card_type=CardType.SKILL,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.UNCOMMON,
-        base_block=11, effect_vars={"weak": 2}, instance_id=_get_next_id(),
+        base_block=14 if upgraded else 11, effect_vars={"weak": 3 if upgraded else 2},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_memento_mori() -> CardInstance:
+def make_memento_mori(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.MEMENTO_MORI, cost=1, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.UNCOMMON,
-        base_damage=8, effect_vars={"calc_base": 8, "extra_damage": 4},
+        base_damage=10 if upgraded else 8,
+        effect_vars={"calc_base": 10 if upgraded else 8, "extra_damage": 5 if upgraded else 4},
+        upgraded=upgraded,
         instance_id=_get_next_id(),
     )
 
 
-def make_mirage() -> CardInstance:
+def make_mirage(upgraded: bool = False) -> CardInstance:
     return CardInstance(
-        card_id=CardId.MIRAGE, cost=1, card_type=CardType.SKILL,
+        card_id=CardId.MIRAGE, cost=0 if upgraded else 1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
         keywords=frozenset({"exhaust"}),
         effect_vars={"calc_base": 0, "calc_extra": 1},
-        instance_id=_get_next_id(),
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_noxious_fumes() -> CardInstance:
+def make_noxious_fumes(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.NOXIOUS_FUMES_CARD, cost=1, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
-        effect_vars={"poison_per_turn": 2}, instance_id=_get_next_id(),
+        effect_vars={"poison_per_turn": 3 if upgraded else 2},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_outbreak() -> CardInstance:
+def make_outbreak(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.OUTBREAK_CARD, cost=1, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
-        effect_vars={"outbreak": 11}, instance_id=_get_next_id(),
+        effect_vars={"outbreak_power": 15 if upgraded else 11},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_phantom_blades() -> CardInstance:
+def make_phantom_blades(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.PHANTOM_BLADES_CARD, cost=1, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
-        effect_vars={"phantom_blades": 9}, instance_id=_get_next_id(),
+        effect_vars={"phantom_blades_power": 12 if upgraded else 9},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_pinpoint() -> CardInstance:
+def make_pinpoint(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.PINPOINT, cost=3, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.UNCOMMON,
-        base_damage=17, instance_id=_get_next_id(),
+        base_damage=22 if upgraded else 17,
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_pounce() -> CardInstance:
+def make_pounce(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.POUNCE, cost=2, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.UNCOMMON,
-        base_damage=12, instance_id=_get_next_id(),
+        base_damage=18 if upgraded else 12,
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_precise_cut() -> CardInstance:
+def make_precise_cut(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.PRECISE_CUT, cost=0, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.UNCOMMON,
-        base_damage=13, effect_vars={"calc_base": 13, "extra_damage": 2},
+        base_damage=16 if upgraded else 13,
+        effect_vars={"calc_base": 16 if upgraded else 13, "extra_damage": 2},
+        upgraded=upgraded,
         instance_id=_get_next_id(),
     )
 
 
-def make_predator() -> CardInstance:
+def make_predator(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.PREDATOR, cost=2, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.UNCOMMON,
-        base_damage=15, instance_id=_get_next_id(),
+        base_damage=20 if upgraded else 15,
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_reflex() -> CardInstance:
+def make_reflex(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.REFLEX, cost=3, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
         keywords=frozenset({"sly"}),
-        effect_vars={"cards": 2}, instance_id=_get_next_id(),
+        effect_vars={"cards": 3 if upgraded else 2},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_skewer() -> CardInstance:
+def make_skewer(upgraded: bool = False) -> CardInstance:
     return CardInstance(
-        card_id=CardId.SKEWER, cost=-1, card_type=CardType.ATTACK,
+        card_id=CardId.SKEWER, cost=0, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.UNCOMMON,
-        base_damage=7, instance_id=_get_next_id(),
+        base_damage=10 if upgraded else 7, upgraded=upgraded,
+        has_energy_cost_x=True, instance_id=_get_next_id(),
     )
 
 
-def make_speedster() -> CardInstance:
+def make_speedster(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.SPEEDSTER_CARD, cost=2, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
-        effect_vars={"speedster": 2}, instance_id=_get_next_id(),
+        effect_vars={"speedster_power": 3 if upgraded else 2},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_strangle() -> CardInstance:
+def make_strangle(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.STRANGLE, cost=1, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.UNCOMMON,
-        base_damage=8, effect_vars={"strangle": 2}, instance_id=_get_next_id(),
+        base_damage=10 if upgraded else 8, effect_vars={"strangle_power": 3 if upgraded else 2},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_tactician() -> CardInstance:
+def make_tactician(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.TACTICIAN, cost=3, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
         keywords=frozenset({"sly"}),
-        effect_vars={"energy": 1}, instance_id=_get_next_id(),
+        effect_vars={"energy": 2 if upgraded else 1},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_up_my_sleeve() -> CardInstance:
+def make_up_my_sleeve(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.UP_MY_SLEEVE, cost=2, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
-        effect_vars={"cards": 3}, instance_id=_get_next_id(),
+        effect_vars={"cards": 4 if upgraded else 3},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_well_laid_plans() -> CardInstance:
+def make_well_laid_plans(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.WELL_LAID_PLANS, cost=1, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
-        effect_vars={"retain": 1}, instance_id=_get_next_id(),
+        effect_vars={"retain_amount": 2 if upgraded else 1},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_abrasive() -> CardInstance:
+def make_abrasive(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.ABRASIVE, cost=3, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
         keywords=frozenset({"sly"}),
-        effect_vars={"thorns": 4, "dexterity": 1}, instance_id=_get_next_id(),
+        effect_vars={"thorns_power": 6 if upgraded else 4, "dexterity": 1},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_accelerant() -> CardInstance:
+def make_accelerant(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.ACCELERANT, cost=1, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
-        effect_vars={"accelerant": 1}, instance_id=_get_next_id(),
+        effect_vars={"accelerant": 2 if upgraded else 1},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_adrenaline() -> CardInstance:
+def make_adrenaline(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.ADRENALINE, cost=0, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
         keywords=frozenset({"exhaust"}),
-        effect_vars={"cards": 2, "energy": 1}, instance_id=_get_next_id(),
+        effect_vars={"cards": 2, "energy": 2 if upgraded else 1},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_afterimage() -> CardInstance:
+def make_afterimage(upgraded: bool = False) -> CardInstance:
+    keywords = frozenset({"innate"}) if upgraded else frozenset()
     return CardInstance(
         card_id=CardId.AFTERIMAGE_CARD, cost=1, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
-        effect_vars={"afterimage": 1}, instance_id=_get_next_id(),
+        effect_vars={"afterimage_power": 1},
+        upgraded=upgraded, keywords=keywords, instance_id=_get_next_id(),
     )
 
 
-def make_assassinate() -> CardInstance:
+def make_assassinate(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.ASSASSINATE, cost=0, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.RARE,
-        base_damage=10, keywords=frozenset({"innate", "exhaust"}),
-        effect_vars={"vulnerable": 1}, instance_id=_get_next_id(),
+        base_damage=13 if upgraded else 10, keywords=frozenset({"innate", "exhaust"}),
+        effect_vars={"vulnerable": 2 if upgraded else 1},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_blade_of_ink() -> CardInstance:
+def make_blade_of_ink(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.BLADE_OF_INK, cost=1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
-        effect_vars={"strength": 2}, instance_id=_get_next_id(),
+        effect_vars={"strength": 3 if upgraded else 2},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_bullet_time() -> CardInstance:
+def make_bullet_time(upgraded: bool = False) -> CardInstance:
     return CardInstance(
-        card_id=CardId.BULLET_TIME, cost=3, card_type=CardType.SKILL,
+        card_id=CardId.BULLET_TIME, cost=2 if upgraded else 3, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
-        instance_id=_get_next_id(),
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_burst() -> CardInstance:
+def make_burst(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.BURST, cost=1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
-        effect_vars={"skills": 1}, instance_id=_get_next_id(),
+        effect_vars={"skills": 2 if upgraded else 1},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_corrosive_wave() -> CardInstance:
+def make_corrosive_wave(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.CORROSIVE_WAVE, cost=1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
-        effect_vars={"corrosive_wave": 3}, instance_id=_get_next_id(),
+        effect_vars={"corrosive_wave": 4 if upgraded else 3},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_echoing_slash() -> CardInstance:
+def make_echoing_slash(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.ECHOING_SLASH, cost=1, card_type=CardType.ATTACK,
         target_type=TargetType.ALL_ENEMIES, rarity=CardRarity.RARE,
-        base_damage=10, effect_vars={"damage": 10}, instance_id=_get_next_id(),
+        base_damage=13 if upgraded else 10,
+        effect_vars={"damage": 13 if upgraded else 10},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_envenom() -> CardInstance:
+def make_envenom(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.ENVENOM_CARD, cost=2, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
-        effect_vars={"envenom": 1}, instance_id=_get_next_id(),
+        effect_vars={"envenom_power": 2 if upgraded else 1},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_fan_of_knives() -> CardInstance:
+def make_fan_of_knives(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.FAN_OF_KNIVES_CARD, cost=2, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
-        effect_vars={"shivs": 2}, instance_id=_get_next_id(),
+        effect_vars={"shivs": 5 if upgraded else 4},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_grand_finale() -> CardInstance:
+def make_grand_finale(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.GRAND_FINALE, cost=0, card_type=CardType.ATTACK,
         target_type=TargetType.ALL_ENEMIES, rarity=CardRarity.RARE,
-        base_damage=50, instance_id=_get_next_id(),
+        base_damage=60 if upgraded else 50,
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_knife_trap() -> CardInstance:
+def make_knife_trap(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.KNIFE_TRAP, cost=2, card_type=CardType.SKILL,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.RARE,
-        effect_vars={"calc_base": 0, "calc_extra": 1}, instance_id=_get_next_id(),
+        effect_vars={"calc_base": 0, "calc_extra": 1},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_malaise() -> CardInstance:
+def make_malaise(upgraded: bool = False) -> CardInstance:
     return CardInstance(
-        card_id=CardId.MALAISE, cost=-1, card_type=CardType.SKILL,
+        card_id=CardId.MALAISE, cost=0, card_type=CardType.SKILL,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.RARE,
         keywords=frozenset({"exhaust"}), has_energy_cost_x=True,
+        upgraded=upgraded,
         instance_id=_get_next_id(),
     )
 
 
-def make_master_planner() -> CardInstance:
+def make_master_planner(upgraded: bool = False) -> CardInstance:
     return CardInstance(
-        card_id=CardId.MASTER_PLANNER, cost=2, card_type=CardType.POWER,
+        card_id=CardId.MASTER_PLANNER, cost=1 if upgraded else 2, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
-        instance_id=_get_next_id(),
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_murder() -> CardInstance:
+def make_murder(upgraded: bool = False) -> CardInstance:
     return CardInstance(
-        card_id=CardId.MURDER, cost=3, card_type=CardType.ATTACK,
+        card_id=CardId.MURDER, cost=2 if upgraded else 3, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.RARE,
+        upgraded=upgraded,
         base_damage=1, effect_vars={"calc_base": 1, "extra_damage": 1},
         instance_id=_get_next_id(),
     )
 
 
-def make_nightmare() -> CardInstance:
+def make_nightmare(upgraded: bool = False) -> CardInstance:
     return CardInstance(
-        card_id=CardId.NIGHTMARE, cost=3, card_type=CardType.SKILL,
+        card_id=CardId.NIGHTMARE, cost=2 if upgraded else 3, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
-        keywords=frozenset({"exhaust"}), instance_id=_get_next_id(),
+        keywords=frozenset({"exhaust"}), upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_serpent_form() -> CardInstance:
+def make_serpent_form(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.SERPENT_FORM_CARD, cost=3, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
-        effect_vars={"serpent_form": 4}, instance_id=_get_next_id(),
+        effect_vars={"serpent_form_power": 5 if upgraded else 4},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_shadow_step() -> CardInstance:
+def make_shadow_step(upgraded: bool = False) -> CardInstance:
     return CardInstance(
-        card_id=CardId.SHADOW_STEP, cost=1, card_type=CardType.SKILL,
+        card_id=CardId.SHADOW_STEP, cost=0 if upgraded else 1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
-        effect_vars={"cards": 3}, instance_id=_get_next_id(),
+        effect_vars={"cards": 3}, upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_shadowmeld() -> CardInstance:
+def make_shadowmeld(upgraded: bool = False) -> CardInstance:
     return CardInstance(
-        card_id=CardId.SHADOWMELD, cost=1, card_type=CardType.SKILL,
+        card_id=CardId.SHADOWMELD, cost=0 if upgraded else 1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
-        effect_vars={"power": 1}, instance_id=_get_next_id(),
+        effect_vars={"power": 1}, upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_sneaky() -> CardInstance:
+def make_sneaky(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.SNEAKY_CARD, cost=2, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
         keywords=frozenset({"sly"}),
-        effect_vars={"sneaky": 1}, instance_id=_get_next_id(),
+        effect_vars={"sneaky_power": 2 if upgraded else 1},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_storm_of_steel() -> CardInstance:
+def make_storm_of_steel(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.STORM_OF_STEEL, cost=1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
-        instance_id=_get_next_id(),
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_the_hunt() -> CardInstance:
+def make_the_hunt(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.THE_HUNT, cost=1, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.RARE,
-        base_damage=10, keywords=frozenset({"exhaust"}),
-        instance_id=_get_next_id(),
+        base_damage=15 if upgraded else 10, keywords=frozenset({"exhaust"}),
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_tools_of_the_trade() -> CardInstance:
+def make_tools_of_the_trade(upgraded: bool = False) -> CardInstance:
     return CardInstance(
-        card_id=CardId.TOOLS_OF_THE_TRADE, cost=1, card_type=CardType.POWER,
+        card_id=CardId.TOOLS_OF_THE_TRADE, cost=0 if upgraded else 1, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
-        instance_id=_get_next_id(),
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_tracking() -> CardInstance:
+def make_tracking(upgraded: bool = False) -> CardInstance:
     return CardInstance(
-        card_id=CardId.TRACKING, cost=2, card_type=CardType.POWER,
+        card_id=CardId.TRACKING, cost=1 if upgraded else 2, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
-        instance_id=_get_next_id(),
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_suppress() -> CardInstance:
+def make_suppress(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.SUPPRESS, cost=0, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.ANCIENT,
-        base_damage=11, keywords=frozenset({"innate"}),
-        effect_vars={"weak": 3}, instance_id=_get_next_id(),
+        base_damage=17 if upgraded else 11, keywords=frozenset({"innate"}),
+        effect_vars={"weak": 5 if upgraded else 3},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_wraith_form() -> CardInstance:
+def make_wraith_form(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.WRAITH_FORM, cost=3, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.ANCIENT,
-        effect_vars={"intangible": 2, "wraith_form": 1},
-        instance_id=_get_next_id(),
+        effect_vars={"intangible_power": 3 if upgraded else 2, "wraith_form_power": 1},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 

@@ -115,7 +115,7 @@ def test_maw_bank_grants_gold_per_room_until_item_purchase():
     relic.after_room_entered(run_state.player, RoomType.ELITE)
     assert run_state.player.gold == start_gold + 24
 
-    relic.on_item_purchased(run_state.player)
+    relic.on_item_purchased(run_state.player, gold_spent=100)
     relic.after_room_entered(run_state.player, RoomType.SHOP)
     assert run_state.player.gold == start_gold + 24
 
@@ -136,11 +136,12 @@ def test_velvet_choker_caps_card_plays_each_turn_and_resets_next_turn():
 
     assert relic.modify_max_energy(run_state.player, 3) == 4
     relic.before_side_turn_start(run_state.player, CombatSide.PLAYER, None)
+    card = create_card(CardId.STRIKE_IRONCLAD)
+    card.owner = run_state.player
     for _ in range(6):
-        assert relic.should_play(run_state.player, object(), None) is None
-        relic.after_card_played(run_state.player, object(), None)
-    assert relic.should_play(run_state.player, object(), None) is False
+        assert relic.should_play(run_state.player, card, None) is None
+        relic.after_card_played(run_state.player, card, None)
+    assert relic.should_play(run_state.player, card, None) is False
 
     relic.before_side_turn_start(run_state.player, CombatSide.PLAYER, None)
-    assert relic.should_play(run_state.player, object(), None) is None
-
+    assert relic.should_play(run_state.player, card, None) is None

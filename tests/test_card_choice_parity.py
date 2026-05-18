@@ -316,7 +316,7 @@ class TestDeferredChoiceParity:
         assert power.selected_card.base_damage == 6
 
         selected.base_damage = 99
-        power.before_side_turn_start(combat.player, CombatSide.PLAYER, combat)
+        power.before_hand_draw(combat.player, combat)
 
         generated = [card for card in combat.hand if card.card_id == CardId.STRIKE_SILENT]
         assert len(generated) == 4

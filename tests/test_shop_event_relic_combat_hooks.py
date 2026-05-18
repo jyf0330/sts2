@@ -29,12 +29,14 @@ def test_wing_charm_enchants_exactly_one_reward_card_with_swift() -> None:
     assert len(swift_cards) == 1
 
 
-def test_jeweled_mask_moves_a_power_from_draw_to_hand_for_free_on_round_one() -> None:
+def test_jeweled_mask_moves_a_power_from_draw_to_hand_for_free_on_round_one(monkeypatch) -> None:
+    power = make_inflame()
+    power.star_cost = 2
     combat = CombatState(
         player_hp=80,
         player_max_hp=80,
         deck=[
-            make_inflame(),
+            power,
             make_strike_ironclad(),
             make_strike_ironclad(),
             make_strike_ironclad(),
@@ -47,12 +49,23 @@ def test_jeweled_mask_moves_a_power_from_draw_to_hand_for_free_on_round_one() ->
     )
     creature, ai = create_shrinker_beetle(Rng(702))
     combat.add_enemy(creature, ai)
+    moves: list[object] = []
+    original_move = CombatState.move_card_to_creature_hand
+
+    def record_move(self, creature_arg, card):
+        if getattr(card, "card_id", None) == CardId.INFLAME:
+            moves.append(card)
+        original_move(self, creature_arg, card)
+
+    monkeypatch.setattr(CombatState, "move_card_to_creature_hand", record_move)
 
     combat.start_combat()
 
     inflames = [card for card in combat.hand if card.card_id == CardId.INFLAME]
     assert len(inflames) == 1
     assert inflames[0].cost == 0
+    assert combat.modified_star_cost(combat.player, inflames[0]) == 0
+    assert moves == inflames
     assert len(combat.hand) == 6
     assert all(card.card_id != CardId.INFLAME for card in combat.draw_pile)
 

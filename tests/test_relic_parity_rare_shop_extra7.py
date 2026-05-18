@@ -141,6 +141,7 @@ def test_spiked_gauntlets_adds_one_energy_and_charges_plus_one_for_power_cards()
     power_card.owner = player
     combat.hand = [power_card]
     combat.energy = 2
+    assert combat.modified_card_cost(player, power_card) == 2
     assert combat.play_card(0)
     assert combat.energy == 0
     assert power_card.energy_spent == 2

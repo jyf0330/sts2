@@ -17,13 +17,14 @@ from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle
 
 
-def _make_combat() -> CombatState:
+def _make_combat(relics: list[str] | None = None) -> CombatState:
     combat = CombatState(
         player_hp=60,
         player_max_hp=60,
         deck=create_regent_starter_deck(),
         rng_seed=42,
         character_id="Regent",
+        relics=relics,
     )
     creature, ai = create_shrinker_beetle(Rng(42))
     combat.add_enemy(creature, ai)
@@ -122,3 +123,15 @@ class TestRegentParityExtra:
         assert combat.play_card(0, 0)
         assert combat.stars == 0
         assert enemy.current_hp == starting_hp - 15
+
+    def test_stardust_uses_modified_star_x_value_from_chemical_x(self):
+        """Matches Stardust.cs + ChemicalX.cs: star X value receives the +2 X bonus."""
+        combat = _make_combat(["ChemicalX"])
+        enemy = combat.enemies[0]
+        starting_hp = enemy.current_hp
+        combat.hand = [make_stardust()]
+        combat.energy = 0
+
+        assert combat.play_card(0, 0)
+        assert combat.stars == 0
+        assert enemy.current_hp == starting_hp - 10

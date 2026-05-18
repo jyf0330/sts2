@@ -43,6 +43,8 @@ from sts2_env.run.reward_objects import (
     TransformCardsReward,
     UpgradeCardsReward,
 )
+from sts2_env.run.rewards import generate_noncombat_reward_cards
+from sts2_env.run.rewards import generate_uniform_noncombat_cards
 from sts2_env.run.events import EventModel, EventOption, EventResult, register_event
 from sts2_env.characters.all import ALL_CHARACTERS
 
@@ -109,22 +111,16 @@ def _add_random_character_card(
     from sts2_env.core.enums import CardType
 
     type_filter = CardType[card_type] if isinstance(card_type, str) else None
-    candidates = eligible_character_cards(
-        run_state.player.character_id,
+    filtered = generate_noncombat_reward_cards(
+        run_state,
+        num_cards=1,
         card_type=type_filter,
-        generation_context=None,
+        cost=cost,
+        costs_x=costs_x,
     )
-    filtered = []
-    for card_id in candidates:
-        card = create_card(card_id)
-        if cost is not None and card.cost != cost:
-            continue
-        if costs_x is not None and card.has_energy_cost_x != costs_x:
-            continue
-        filtered.append(card)
     if not filtered:
         return False
-    card = run_state.rng.rewards.choice(filtered)
+    card = filtered[0]
     if _should_defer_event_rewards(run_state):
         run_state.pending_rewards.append(AddCardsReward(run_state.player.player_id, [card]))
         return True
@@ -145,7 +141,7 @@ def _upgrade_n_cards(run_state: RunState, count: int) -> int:
     return run_state.player.upgrade_random_cards(None, count)
 
 
-def _transform_n_cards(run_state: RunState, count: int) -> int:
+def _transform_n_cards(run_state: RunState, count: int, rng=None) -> int:
     if _should_defer_event_rewards(run_state):
         run_state.pending_rewards.append(
             TransformCardsReward(
@@ -157,12 +153,13 @@ def _transform_n_cards(run_state: RunState, count: int) -> int:
         return 0
     transformed = 0
     candidates = run_state.player.transformable_deck_cards()
+    transform_rng = rng or run_state.rng.niche
     run_state.rng.niche.shuffle(candidates)
     for old_card in candidates[:count]:
         new_card = create_transform_card(
             old_card,
             character_id=run_state.player.character_id,
-            rng=run_state.rng.niche,
+            rng=transform_rng,
             generation_context=None,
         )
         old_card.card_id = new_card.card_id
@@ -253,13 +250,14 @@ def _downgrade_selected_cards(cards: list, run_state: RunState) -> int:
     return downgraded
 
 
-def _transform_selected_cards(cards: list, run_state: RunState) -> int:
+def _transform_selected_cards(cards: list, run_state: RunState, rng=None) -> int:
+    transform_rng = rng or run_state.rng.niche
     transformed = 0
     for old_card in cards:
         new_card = create_transform_card(
             old_card,
             character_id=run_state.player.character_id,
-            rng=run_state.rng.niche,
+            rng=transform_rng,
             generation_context=None,
         )
         old_card.card_id = new_card.card_id
@@ -472,7 +470,7 @@ class AromaOfChaos(EventModel):
                 cards=candidates,
                 source_pile="deck",
                 resolver=lambda selected: (
-                    _transform_selected_cards(selected, run_state),
+                    _transform_selected_cards(selected, run_state, rng=self.get_rng(run_state)),
                     EventResult(finished=True, description="Transformed a card."),
                 )[-1],
                 allow_skip=False,
@@ -519,6 +517,7 @@ class BattlewornDummy(EventModel):
     """
 
     event_id = "BattlewornDummy"
+    is_shared = True
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
         return [
@@ -646,6 +645,8 @@ class ColorfulPhilosophers(EventModel):
                 character_ids=(character_id,),
                 forced_rarities=(rarity, rarity, rarity),
                 use_default_character_pool=False,
+                generation_context=None,
+                roll_upgrade=False,
             )
             for rarity in (CardRarity.COMMON, CardRarity.UNCOMMON, CardRarity.RARE)
         ]
@@ -748,6 +749,7 @@ class Darv(EventModel):
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
         from sts2_env.relics.registry import create_relic_by_name
 
+        rng = self.get_rng(run_state)
         source: list[str] = [
             RelicId.ASTROLABE.name,
             RelicId.BLACK_STAR.name,
@@ -760,10 +762,10 @@ class Darv(EventModel):
         if not any(getattr(modifier, "clears_player_deck", False) for modifier in modifiers):
             source.append(RelicId.PANDORAS_BOX.name)
         if run_state.current_act_index == 1:
-            source.append(run_state.rng.up_front.choice([RelicId.ECTOPLASM.name, RelicId.SOZU.name]))
+            source.append(rng.choice([RelicId.ECTOPLASM.name, RelicId.SOZU.name]))
         elif run_state.current_act_index == 2:
-            source.append(run_state.rng.up_front.choice([RelicId.PHILOSOPHERS_STONE.name, RelicId.VELVET_CHOKER.name]))
-        run_state.rng.up_front.shuffle(source)
+            source.append(rng.choice([RelicId.PHILOSOPHERS_STONE.name, RelicId.VELVET_CHOKER.name]))
+        rng.shuffle(source)
         dusty_tome = create_relic_by_name(RelicId.DUSTY_TOME.name)
         dusty_tome_setup = getattr(dusty_tome, "setup_for_player", None)
         if callable(dusty_tome_setup):
@@ -771,7 +773,7 @@ class Darv(EventModel):
         dusty_attrs: dict[str, object] = {}
         if getattr(dusty_tome, "_ancient_card_id", None) is not None:
             dusty_attrs["_ancient_card_id"] = dusty_tome._ancient_card_id
-        if run_state.rng.up_front.next_int(0, 1) == 1:
+        if rng.next_int(0, 1) == 1:
             chosen = [(relic_id, {}) for relic_id in source[:2]]
             chosen.append((RelicId.DUSTY_TOME.name, dusty_attrs))
         else:
@@ -804,6 +806,7 @@ class DenseVegetation(EventModel):
     """Trudge On: Remove 1 card, take 11 damage. Rest: Heal (rest-site amount), then fight."""
 
     event_id = "DenseVegetation"
+    is_shared = True
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
         heal_amount = int(run_state.player.max_hp * 0.3)
@@ -1039,9 +1042,28 @@ class InfestedAutomaton(EventModel):
 
     def choose(self, run_state: RunState, option_id: str) -> EventResult:
         if option_id == "study":
-            _add_random_character_card(run_state, card_type="POWER")
+            cards = generate_uniform_noncombat_cards(
+                run_state,
+                num_cards=1,
+                card_type=CardType.POWER,
+            )
+            if cards:
+                if _should_defer_event_rewards(run_state):
+                    run_state.pending_rewards.append(AddCardsReward(run_state.player.player_id, cards))
+                else:
+                    run_state.player.add_card_instance_to_deck(cards[0])
             return EventResult(finished=True, description="Gained a random Power card.")
-        _add_random_character_card(run_state, cost=0, costs_x=False)
+        cards = generate_uniform_noncombat_cards(
+            run_state,
+            num_cards=1,
+            cost=0,
+            costs_x=False,
+        )
+        if cards:
+            if _should_defer_event_rewards(run_state):
+                run_state.pending_rewards.append(AddCardsReward(run_state.player.player_id, cards))
+            else:
+                run_state.player.add_card_instance_to_deck(cards[0])
         return EventResult(finished=True, description="Gained a random 0-cost card.")
 
 
@@ -1059,11 +1081,11 @@ class LostWisp(EventModel):
         self._gold = 60
 
     def calculate_vars(self, run_state: RunState) -> None:
-        variance = run_state.rng.up_front.next_int(-15, 16)
+        variance = self.get_rng(run_state).next_int_exclusive(-15, 16)
         self._gold = 60 + variance
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
-        self.calculate_vars(run_state)
+        self.ensure_vars_calculated(run_state)
         return [
             EventOption("claim", "Claim",
                          "Gain Lost Wisp relic + Decay curse"),
@@ -1102,6 +1124,7 @@ class Nonupeipe(EventModel):
         self._choices: dict[str, str] = {}
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
+        rng = self.get_rng(run_state)
         pool = [
             RelicId.BLESSED_ANTLER.name,
             RelicId.BRILLIANT_SCARF.name,
@@ -1115,7 +1138,7 @@ class Nonupeipe(EventModel):
         ]
         if sum(1 for card in run_state.player.deck if can_enchant_card(card, "Swift")) >= 4:
             pool.append(RelicId.BEAUTIFUL_BRACELET.name)
-        run_state.rng.up_front.shuffle(pool)
+        rng.shuffle(pool)
         chosen = pool[:3]
         self._choices = {f"relic_{i + 1}": relic_id for i, relic_id in enumerate(chosen)}
         return [
@@ -1151,16 +1174,17 @@ class Orobas(EventModel):
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
         from sts2_env.relics.registry import create_relic_by_name
 
+        rng = self.get_rng(run_state)
         pool1: list[tuple[str, dict[str, object]]] = [
             (RelicId.ELECTRIC_SHRYMP.name, {}),
             (RelicId.GLASS_EYE.name, {}),
             (RelicId.SAND_CASTLE.name, {}),
         ]
         off_character_ids = [character.character_id for character in ALL_CHARACTERS if character.character_id != run_state.player.character_id]
-        if run_state.rng.up_front.next_float() < 0.3333333:
+        if rng.next_float() < 0.3333333:
             pool1.append((RelicId.PRISMATIC_GEM.name, {}))
         elif off_character_ids:
-            pool1.append((RelicId.SEA_GLASS.name, {"_character_id": run_state.rng.up_front.choice(off_character_ids)}))
+            pool1.append((RelicId.SEA_GLASS.name, {"_character_id": rng.choice(off_character_ids)}))
         pool2: list[tuple[str, dict[str, object]]] = [
             (RelicId.ALCHEMICAL_COFFER.name, {}),
             (RelicId.DRIFTWOOD.name, {}),
@@ -1186,15 +1210,15 @@ class Orobas(EventModel):
                 attrs["_ancient_card_id"] = archaic_tooth._ancient_card_id
             pool3.append((RelicId.ARCHAIC_TOOTH.name, attrs))
         self._choices = {
-            "relic_1": run_state.rng.up_front.choice(pool1),
-            "relic_2": run_state.rng.up_front.choice(pool2),
+            "relic_1": rng.choice(pool1),
+            "relic_2": rng.choice(pool2),
         }
         options = [
             EventOption(option_id, relic_id.replace("_", " ").title(), "Gain a relic")
             for option_id, (relic_id, _) in self._choices.items()
         ]
         if pool3:
-            self._choices["relic_3"] = run_state.rng.up_front.choice(pool3)
+            self._choices["relic_3"] = rng.choice(pool3)
             relic_id, _ = self._choices["relic_3"]
             options.append(EventOption("relic_3", relic_id.replace("_", " ").title(), "Gain a relic"))
         else:
@@ -1228,6 +1252,7 @@ class Pael(EventModel):
         self._choices: dict[str, str] = {}
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
+        rng = self.get_rng(run_state)
         pool1 = [RelicId.PAELS_FLESH.name, RelicId.PAELS_HORN.name, RelicId.PAELS_TEARS.name]
         pool2 = [RelicId.PAELS_WING.name, RelicId.PAELS_GROWTH.name]
         if sum(1 for card in run_state.player.deck if can_enchant_card(card, "Goopy")) >= 3:
@@ -1239,9 +1264,9 @@ class Pael(EventModel):
         if not run_state.player.has_event_pet():
             pool3.append(RelicId.PAELS_LEGION.name)
         self._choices = {
-            "relic_1": run_state.rng.up_front.choice(pool1),
-            "relic_2": run_state.rng.up_front.choice(pool2),
-            "relic_3": run_state.rng.up_front.choice(pool3),
+            "relic_1": rng.choice(pool1),
+            "relic_2": rng.choice(pool2),
+            "relic_3": rng.choice(pool3),
         }
         return [
             EventOption(option_id, relic_id.replace("_", " ").title(), "Gain a Pael relic")
@@ -1269,6 +1294,7 @@ class PunchOff(EventModel):
     """Nab: Gain Injury curse + relic reward. Take Them: Fight for relic + potion."""
 
     event_id = "PunchOff"
+    is_shared = True
 
     def __init__(self) -> None:
         self._gold = 0
@@ -1276,8 +1302,14 @@ class PunchOff(EventModel):
     def is_allowed(self, run_state: RunState) -> bool:
         return run_state.total_floor >= 6
 
+    def before_event_started(self, run_state: RunState) -> None:
+        run_state.player.can_remove_potions = False
+
+    def on_event_finished(self, run_state: RunState) -> None:
+        run_state.player.can_remove_potions = True
+
     def calculate_vars(self, run_state: RunState) -> None:
-        self._gold = run_state.rng.up_front.next_int(91, 99)
+        self._gold = self.get_rng(run_state).next_int_exclusive(91, 99)
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
         return [
@@ -1614,10 +1646,10 @@ class SunkenStatue(EventModel):
         self._gold = 111
 
     def calculate_vars(self, run_state: RunState) -> None:
-        self._gold = 111 + run_state.rng.up_front.next_int(-10, 11)
+        self._gold = 111 + self.get_rng(run_state).next_int_exclusive(-10, 11)
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
-        self.calculate_vars(run_state)
+        self.ensure_vars_calculated(run_state)
         return [
             EventOption("grab_sword", "Grab the Sword",
                          "Gain Sword of Stone relic"),
@@ -1655,11 +1687,12 @@ class SunkenTreasury(EventModel):
         self._large_gold = 333
 
     def calculate_vars(self, run_state: RunState) -> None:
-        self._small_gold = 60 + run_state.rng.up_front.next_int(-8, 9)
-        self._large_gold = 333 + run_state.rng.up_front.next_int(-30, 31)
+        rng = self.get_rng(run_state)
+        self._small_gold = 60 + rng.next_int_exclusive(0, 16) - 8
+        self._large_gold = 333 + rng.next_int_exclusive(0, 61) - 30
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
-        self.calculate_vars(run_state)
+        self.ensure_vars_calculated(run_state)
         return [
             EventOption("first_chest", "Small Chest", f"Gain {self._small_gold} gold"),
             EventOption("second_chest", "Large Chest",
@@ -1771,6 +1804,7 @@ class Tanx(EventModel):
         self._choices: dict[str, str] = {}
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
+        rng = self.get_rng(run_state)
         pool = [
             RelicId.CLAWS.name,
             RelicId.CROSSBOW.name,
@@ -1784,7 +1818,7 @@ class Tanx(EventModel):
         ]
         if sum(1 for card in run_state.player.deck if can_enchant_card(card, "Instinct")) >= 3:
             pool.append(RelicId.TRI_BOOMERANG.name)
-        run_state.rng.up_front.shuffle(pool)
+        rng.shuffle(pool)
         chosen = pool[:3]
         self._choices = {f"weapon_{i + 1}": relic_id for i, relic_id in enumerate(chosen)}
         return [
@@ -1818,13 +1852,14 @@ class Tezcatara(EventModel):
         self._choices: dict[str, str] = {}
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
+        rng = self.get_rng(run_state)
         pool1 = [RelicId.NUTRITIOUS_SOUP.name, RelicId.VERY_HOT_COCOA.name, RelicId.YUMMY_COOKIE.name]
         pool2 = [RelicId.BIIIG_HUG.name, RelicId.STORYBOOK.name, RelicId.SEAL_OF_GOLD.name, RelicId.TOASTY_MITTENS.name]
         pool3 = [RelicId.GOLDEN_COMPASS.name, RelicId.PUMPKIN_CANDLE.name, RelicId.TOY_BOX.name]
         self._choices = {
-            "comfort_1": run_state.rng.up_front.choice(pool1),
-            "comfort_2": run_state.rng.up_front.choice(pool2),
-            "comfort_3": run_state.rng.up_front.choice(pool3),
+            "comfort_1": rng.choice(pool1),
+            "comfort_2": rng.choice(pool2),
+            "comfort_3": rng.choice(pool3),
         }
         return [
             EventOption(option_id, relic_id.replace("_", " ").title(), "Gain a comfort relic")
@@ -1852,6 +1887,7 @@ class TheLanternKey(EventModel):
     """Return the Key: Gain 100 gold. Keep the Key: Fight for Lantern Key card."""
 
     event_id = "TheLanternKey"
+    is_shared = True
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
         return [
@@ -1892,10 +1928,10 @@ class ThisOrThat(EventModel):
         self._gold = 55
 
     def calculate_vars(self, run_state: RunState) -> None:
-        self._gold = run_state.rng.up_front.next_int(41, 69)
+        self._gold = self.get_rng(run_state).next_int_exclusive(41, 69)
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
-        self.calculate_vars(run_state)
+        self.ensure_vars_calculated(run_state)
         return [
             EventOption("plain", "Plain", f"Take 6 damage, gain {self._gold} gold"),
             EventOption("ornate", "Ornate", "Gain a relic + Clumsy curse"),
@@ -2101,7 +2137,7 @@ class Trial(EventModel):
             return EventResult(finished=True, description="Abandoned the run.")
 
         if option_id == "accept":
-            variant_roll = run_state.rng.niche.next_int(0, 2)
+            variant_roll = self.get_rng(run_state).next_int(0, 2)
             self._trial_variant = ("merchant", "noble", "nondescript")[variant_roll]
             if self._trial_variant == "merchant":
                 return EventResult(
@@ -2215,13 +2251,13 @@ class Trial(EventModel):
                     ],
                 )
             run_state.player.add_card_instance_to_deck(make_doubt())
-            candidates = list(run_state.player.deck)
+            candidates = run_state.player.transformable_deck_cards()
             return self.request_card_choice(
                 prompt="Choose 2 cards to transform",
                 cards=candidates,
                 source_pile="deck",
                 resolver=lambda selected: (
-                    _transform_selected_cards(selected, run_state),
+                    _transform_selected_cards(selected, run_state, rng=run_state.rng.niche),
                     EventResult(finished=True, description="Freed the drifter, gained Doubt and transformed 2 cards."),
                 )[1],
                 min_count=min(2, len(candidates)),
@@ -2288,12 +2324,13 @@ class Vakuu(EventModel):
         self._choices: dict[str, str] = {}
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
+        rng = self.get_rng(run_state)
         pool1 = [RelicId.BLOOD_SOAKED_ROSE.name, RelicId.WHISPERING_EARRING.name, RelicId.FIDDLE.name]
         pool2 = [RelicId.PRESERVED_FOG.name, RelicId.SERE_TALON.name, RelicId.DISTINGUISHED_CAPE.name]
         pool3 = [RelicId.CHOICES_PARADOX.name, RelicId.MUSIC_BOX.name, RelicId.LORDS_PARASOL.name, RelicId.JEWELED_MASK.name]
-        run_state.rng.up_front.shuffle(pool1)
-        run_state.rng.up_front.shuffle(pool2)
-        run_state.rng.up_front.shuffle(pool3)
+        rng.shuffle(pool1)
+        rng.shuffle(pool2)
+        rng.shuffle(pool3)
         self._choices = {
             "relic_1": pool1[0],
             "relic_2": pool2[0],

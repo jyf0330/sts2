@@ -1,15 +1,19 @@
 """Focused parity coverage for additional uncovered rare/shop/event relic hooks."""
 
+import sts2_env.potions  # noqa: F401
 import sts2_env.powers  # noqa: F401
 
+from sts2_env.cards.colorless import make_lift
 from sts2_env.cards.defect import create_defect_starter_deck
 from sts2_env.cards.ironclad import create_ironclad_starter_deck, make_inflame
 from sts2_env.cards.ironclad_basic import make_defend_ironclad, make_strike_ironclad
 from sts2_env.core.combat import CombatState
-from sts2_env.core.enums import PowerId, ValueProp
-from sts2_env.core.rng import Rng
+from sts2_env.core.enums import MapPointType, PowerId, RoomType, ValueProp
+from sts2_env.core.rng import Rng, deterministic_hash_code
 from sts2_env.monsters.act1_weak import create_shrinker_beetle, create_twig_slime_s
-from sts2_env.run.run_state import RunState
+from sts2_env.potions.base import create_potion
+from sts2_env.run.run_manager import RunManager
+from sts2_env.run.run_state import PlayerState, RunState
 
 
 def _with_owner(cards: list, owner):
@@ -31,6 +35,7 @@ def _make_combat(
     seed: int = 1101,
     enemies: int = 1,
     potions: list[object] | None = None,
+    max_potion_slots: int = 3,
     start: bool = True,
 ) -> CombatState:
     combat = CombatState(
@@ -41,6 +46,7 @@ def _make_combat(
         character_id=character_id,
         relics=relics or [],
         potions=potions,
+        max_potion_slots=max_potion_slots,
     )
     for i in range(enemies):
         if i == 0:
@@ -64,6 +70,56 @@ def test_belt_buckle_applies_dex_only_when_no_potions_are_held():
         potions=[object()],
     )
     assert with_potions.player.get_power_amount(PowerId.DEXTERITY) == 0
+
+
+def test_belt_buckle_removes_dex_when_petrified_toad_procures_late_potion():
+    combat = _make_combat(
+        character_id="Ironclad",
+        relics=["BeltBuckle", "PetrifiedToad"],
+        seed=1121,
+        max_potion_slots=1,
+    )
+
+    assert [p.potion_id for p in combat.held_potions(combat.player)] == ["PotionShapedRock"]
+    assert combat.player.get_power_amount(PowerId.DEXTERITY) == 0
+
+
+def test_belt_buckle_reapplies_dex_after_last_potion_is_used():
+    combat = _make_combat(
+        character_id="Ironclad",
+        relics=["BeltBuckle"],
+        seed=1122,
+        potions=[create_potion("FirePotion")],
+        max_potion_slots=1,
+    )
+
+    assert combat.player.get_power_amount(PowerId.DEXTERITY) == 0
+    assert combat.use_potion(0, target_index=0)
+    assert combat.player.get_power_amount(PowerId.DEXTERITY) == 2
+
+
+def test_belt_buckle_applies_dex_when_obtained_during_combat_without_potions():
+    combat = _make_combat(character_id="Ironclad", relics=[], seed=1123, max_potion_slots=1)
+
+    assert combat.current_player_state.player_state.obtain_relic("BeltBuckle")
+
+    assert combat.player.get_power_amount(PowerId.DEXTERITY) == 2
+
+
+def test_fake_snecko_eye_applies_confused_when_obtained_during_combat():
+    combat = _make_combat(character_id="Ironclad", relics=[], seed=1124)
+
+    assert combat.current_player_state.player_state.obtain_relic("FakeSneckoEye")
+
+    assert combat.player.get_power_amount(PowerId.CONFUSED) == 1
+
+
+def test_snecko_eye_applies_confused_when_obtained_during_combat():
+    combat = _make_combat(character_id="Ironclad", relics=[], seed=1129)
+
+    assert combat.current_player_state.player_state.obtain_relic("SneckoEye")
+
+    assert combat.player.get_power_amount(PowerId.CONFUSED) == 1
 
 
 def test_brimstone_applies_strength_to_player_and_all_enemies_each_player_turn():
@@ -154,6 +210,15 @@ def test_the_boot_raises_only_powered_attack_damage_below_five():
     assert enemy.current_hp == next_hp - 1
 
 
+def test_the_boot_runs_before_tungsten_rod_regardless_of_relic_order():
+    from sts2_env.core.hooks import modify_hp_lost
+
+    combat = _make_combat(character_id="Ironclad", relics=["TungstenRod", "TheBoot"], seed=1112)
+    player = combat.player
+
+    assert modify_hp_lost(1, player, player, ValueProp.MOVE, combat) == 4
+
+
 def test_touch_of_orobas_upgrades_existing_starter_relic():
     run_state = RunState(seed=1108, character_id="Ironclad")
     assert run_state.player.obtain_relic("BURNING_BLOOD")
@@ -162,6 +227,100 @@ def test_touch_of_orobas_upgrades_existing_starter_relic():
     assert run_state.player.obtain_relic("TOUCH_OF_OROBAS")
     assert "BLACK_BLOOD" in run_state.player.relics
     assert "BURNING_BLOOD" not in run_state.player.relics
+
+
+def test_golden_compass_regenerates_current_act_as_golden_path():
+    run_state = RunState(seed=1126, character_id="Ironclad")
+    run_state.initialize_run()
+
+    assert run_state.player.obtain_relic("GoldenCompass")
+
+    room_points = run_state.map.room_points()
+    assert [point.col for point in room_points] == [3] * 16
+    assert [point.point_type for point in room_points] == [
+        MapPointType.MONSTER,
+        MapPointType.UNKNOWN,
+        MapPointType.MONSTER,
+        MapPointType.REST_SITE,
+        MapPointType.MONSTER,
+        MapPointType.REST_SITE,
+        MapPointType.UNKNOWN,
+        MapPointType.TREASURE,
+        MapPointType.UNKNOWN,
+        MapPointType.TREASURE,
+        MapPointType.UNKNOWN,
+        MapPointType.SHOP,
+        MapPointType.ELITE,
+        MapPointType.REST_SITE,
+        MapPointType.ELITE,
+        MapPointType.REST_SITE,
+    ]
+    assert run_state.resolve_room_type(MapPointType.UNKNOWN) == RoomType.EVENT
+
+
+def test_fur_coat_marks_combat_rooms_and_sets_marked_enemies_to_one_hp():
+    run_state = RunState(seed=1127, character_id="Ironclad")
+    run_state.initialize_run()
+
+    assert run_state.player.obtain_relic("FurCoat")
+    fur_coat = next(relic for relic in run_state.player.get_relic_objects() if relic.relic_id.name == "FUR_COAT")
+    marked = fur_coat._marked_map_coords()
+    candidates = [
+        point for point in run_state.map.room_points()
+        if point.point_type in (MapPointType.MONSTER, MapPointType.ELITE)
+    ]
+    rng = Rng(run_state.rng.seed + run_state.player.player_id + deterministic_hash_code("FurCoat"))
+    rng.shuffle(candidates)
+    expected = [(point.col, point.row) for point in candidates[:7]]
+
+    assert len(marked) == 7
+    assert [(coord.col, coord.row) for coord in marked] == expected
+    assert all(
+        run_state.map.get_point(coord).point_type in (MapPointType.MONSTER, MapPointType.ELITE)
+        for coord in marked
+    )
+
+    run_state.visited_map_coords = [marked[0]]
+    combat = CombatState(
+        player_hp=run_state.player.current_hp,
+        player_max_hp=run_state.player.max_hp,
+        deck=list(run_state.player.deck),
+        rng_seed=1127,
+        character_id="Ironclad",
+        player_state=run_state.player,
+    )
+    enemy, ai = create_shrinker_beetle(Rng(1127))
+    enemy.max_hp = 100
+    enemy.current_hp = 100
+    combat.add_enemy(enemy, ai)
+
+    combat.start_combat()
+
+    assert enemy.current_hp == 1
+
+
+def test_paels_wing_sacrifices_card_rewards_and_obtains_relic_every_two():
+    mgr = RunManager(seed=1128, character_id="Ironclad")
+    player = mgr.run_state.player
+    assert player.obtain_relic("PaelsWing")
+    player.relic_grab_bag = ["WONGO_CUSTOMER_APPRECIATION_BADGE"]
+    player.relic_grab_bag_by_rarity = {}
+    player.relic_grab_bag_fallback = ["WONGO_CUSTOMER_APPRECIATION_BADGE"]
+
+    mgr._enter_card_reward(context="regular")
+    assert any(action["action"] == "sacrifice_card_reward" for action in mgr.get_available_actions())
+    first = mgr.take_action({"action": "sacrifice_card_reward"})
+
+    assert first["success"] is True
+    assert first["obtained_relic_id"] is None
+    assert "WONGO_CUSTOMER_APPRECIATION_BADGE" not in player.relics
+
+    mgr._enter_card_reward(context="regular")
+    second = mgr.take_action({"action": "sacrifice_card_reward"})
+
+    assert second["success"] is True
+    assert second["obtained_relic_id"] == "WONGO_CUSTOMER_APPRECIATION_BADGE"
+    assert "WONGO_CUSTOMER_APPRECIATION_BADGE" in player.relics
 
 
 def test_unceasing_top_draws_when_hand_is_emptied_during_play_phase():
@@ -180,3 +339,60 @@ def test_unceasing_top_draws_when_hand_is_emptied_during_play_phase():
     assert combat.play_card(0, 0)
     assert len(combat.hand) == 1
     assert combat.hand[0].card_id == drawn_card.card_id
+
+
+def test_whispering_earring_autoplays_opening_hand_and_spends_energy():
+    combat = CombatState(
+        player_hp=80,
+        player_max_hp=80,
+        deck=[make_strike_ironclad(), make_defend_ironclad()],
+        rng_seed=1125,
+        character_id="Ironclad",
+        relics=["WhisperingEarring"],
+    )
+    enemy, ai = create_shrinker_beetle(Rng(1125))
+    enemy.max_hp = 100
+    enemy.current_hp = 100
+    combat.add_enemy(enemy, ai)
+
+    combat.start_combat()
+
+    assert enemy.current_hp == 94
+    assert combat.player.block == 5
+    assert combat.energy == 2
+    assert combat.hand == []
+    assert len(combat.discard_pile) == 2
+
+
+def test_whispering_earring_uses_combat_targets_rng_for_ally_targets():
+    class SecondChoiceRng:
+        def __init__(self):
+            self.seen = None
+
+        def choice(self, items):
+            self.seen = list(items)
+            return self.seen[1]
+
+    combat = CombatState(
+        player_hp=80,
+        player_max_hp=80,
+        deck=[],
+        rng_seed=1126,
+        character_id="Ironclad",
+        relics=["WhisperingEarring"],
+    )
+    first_ally = combat.add_ally_player(PlayerState(player_id=2, character_id="Ironclad", max_hp=60, current_hp=60))
+    second_ally = combat.add_ally_player(PlayerState(player_id=3, character_id="Ironclad", max_hp=60, current_hp=60))
+    card = make_lift()
+    card.owner = combat.player
+    card.cost = 0
+    card.base_block = 8
+    combat.hand = [card]
+    combat.energy = 0
+    combat.rng = SecondChoiceRng()
+
+    combat.relics[0].before_play_phase_start(combat.player, combat.player, combat)
+
+    assert combat.rng.seen == [first_ally, second_ally]
+    assert first_ally.block == 0
+    assert second_ally.block == 8

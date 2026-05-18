@@ -4,6 +4,7 @@ import sts2_env.powers  # noqa: F401
 
 from sts2_env.cards.colorless import (
     make_believe_in_you,
+    make_bolas,
     make_fasten,
     make_finesse,
     make_panic_button,
@@ -92,9 +93,6 @@ class TestColorlessParityExtra3:
         assert combat.player.block == 30
 
         combat.end_player_turn()
-        assert combat.player.get_power_amount(PowerId.NO_BLOCK) == 2
-
-        combat.end_player_turn()
         assert combat.player.get_power_amount(PowerId.NO_BLOCK) == 1
 
         combat.end_player_turn()
@@ -161,3 +159,25 @@ class TestColorlessParityExtra3:
 
         assert combat.play_card(0, 0)
         assert enemy.current_hp == 175
+
+    def test_bolas_and_thrumming_hatchet_return_before_next_hand_draw(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.max_hp = 300
+        enemy.current_hp = 300
+        bolas = make_bolas()
+        hatchet = make_thrumming_hatchet()
+        combat.hand = [bolas, hatchet]
+        combat.draw_pile = []
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+        assert bolas in combat.discard_pile
+        assert combat.play_card(0, 0)
+        assert hatchet in combat.discard_pile
+
+        combat.end_player_turn()
+
+        assert combat.round_number == 2
+        assert bolas in combat.hand
+        assert hatchet in combat.hand

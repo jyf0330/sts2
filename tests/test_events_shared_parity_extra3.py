@@ -23,6 +23,14 @@ def _make_run_state(seed: int = 401, character_id: str = "Ironclad") -> RunState
     return run_state
 
 
+class _ExclusiveRollsRng:
+    def __init__(self, rolls: list[int]):
+        self._rolls = iter(rolls)
+
+    def next_int_exclusive(self, low: int, high: int) -> int:
+        return next(self._rolls)
+
+
 def _count_card(deck, card_id: CardId) -> int:
     return sum(1 for card in deck if card.card_id == card_id)
 
@@ -53,7 +61,7 @@ def test_colorful_philosophers_choice_surfaces_three_rarity_tiered_card_rewards(
 def test_sunken_treasury_first_and_second_chests_apply_gold_and_greed_curse():
     first_state = _make_run_state(402)
     first_event = SunkenTreasury()
-    first_state.rng.up_front.next_int = lambda low, high: 0
+    first_event.rng = _ExclusiveRollsRng([8, 30])
     first_event.generate_initial_options(first_state)
     first_start_gold = first_state.player.gold
 
@@ -63,7 +71,7 @@ def test_sunken_treasury_first_and_second_chests_apply_gold_and_greed_curse():
 
     second_state = _make_run_state(403)
     second_event = SunkenTreasury()
-    second_state.rng.up_front.next_int = lambda low, high: 0
+    second_event.rng = _ExclusiveRollsRng([8, 30])
     second_event.generate_initial_options(second_state)
     second_start_gold = second_state.player.gold
     greed_before = _count_card(second_state.player.deck, CardId.GREED)
@@ -110,7 +118,7 @@ def test_tablet_of_truth_give_up_does_not_heal():
 def test_this_or_that_plain_and_ornate_apply_hp_gold_relic_and_clumsy():
     plain_state = _make_run_state(406)
     plain_event = ThisOrThat()
-    plain_state.rng.up_front.next_int = lambda low, high: 55
+    plain_event.rng = _ExclusiveRollsRng([55])
     plain_event.generate_initial_options(plain_state)
     plain_start_hp = plain_state.player.current_hp
     plain_start_gold = plain_state.player.gold

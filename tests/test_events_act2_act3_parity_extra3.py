@@ -146,6 +146,12 @@ def test_fake_merchant_gating_options_and_choices_reflect_foul_potion_and_gold()
     event = FakeMerchant()
     assert event.is_allowed(blocked_state) is False
 
+    multiplayer_state = _make_run_state(9071)
+    multiplayer_state.current_act_index = 1
+    multiplayer_state.player.gold = 200
+    multiplayer_state.players.append(multiplayer_state.player)
+    assert event.is_allowed(multiplayer_state) is False
+
     option_state = _make_run_state(908)
     option_state.current_act_index = 1
     option_state.player.gold = 120
@@ -334,7 +340,12 @@ def test_field_of_man_sized_holes_gate_resist_and_enter_behaviors():
     resist_state = _make_run_state(916)
     deck_before = len(resist_state.player.deck)
     resist = event.choose(resist_state, "resist")
-    assert resist.finished
+    assert resist.finished is False
+    assert event.pending_choice is not None
+    event.resolve_pending_choice(0)
+    event.resolve_pending_choice(1)
+    final = event.resolve_pending_choice(None)
+    assert final.finished
     assert len(resist_state.player.deck) == deck_before - 1
     assert any(card.card_id == CardId.NORMALITY for card in resist_state.player.deck)
 

@@ -8,9 +8,12 @@ from sts2_env.cards.defect import (
     make_coolheaded,
     make_dualcast,
     make_loop,
+    make_scrape,
+    make_storm,
     make_strike_defect,
     make_sunder,
 )
+from sts2_env.cards.regent import make_stardust
 from sts2_env.core.combat import CombatState
 from sts2_env.core.enums import OrbType, PowerId
 from sts2_env.core.rng import Rng
@@ -69,6 +72,24 @@ class TestDefectParityExtra:
         assert enemy.current_hp == starting_hp - 16
         assert not combat.orb_queue.orbs
 
+    def test_scrape_discards_drawn_star_cost_and_star_x_cards(self):
+        """Matches Scrape.cs: drawn star-cost and star-X cards are discarded."""
+        combat = _make_combat()
+        zero_cost = make_strike_defect()
+        zero_cost.cost = 0
+        star_cost = make_strike_defect()
+        star_cost.cost = 0
+        star_cost.star_cost = 1
+        star_x = make_stardust()
+        combat.hand = [make_scrape()]
+        combat.draw_pile = [zero_cost, star_cost, star_x]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+        assert zero_cost in combat.hand
+        assert star_cost in combat.discard_pile
+        assert star_x in combat.discard_pile
+
     def test_loop_triggers_first_orb_passive_again_on_next_turn_start(self):
         """Matches Loop.cs + LoopPower: first orb passive triggers extra times each turn."""
         combat = _make_combat()
@@ -84,6 +105,28 @@ class TestDefectParityExtra:
         combat.end_player_turn()
 
         assert enemy.current_hp == starting_hp - 6
+
+    def test_storm_does_not_trigger_from_first_storm_play(self):
+        combat = _make_combat()
+        combat.hand = [make_storm()]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+
+        assert combat.player.get_power_amount(PowerId.STORM) == 1
+        assert combat.orb_queue.orbs == []
+
+    def test_storm_uses_amount_from_before_card_played(self):
+        combat = _make_combat()
+        combat.apply_power_to(combat.player, PowerId.STORM, 2)
+        combat.hand = [make_storm()]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+
+        assert combat.player.get_power_amount(PowerId.STORM) == 3
+        assert len(combat.orb_queue.orbs) == 2
+        assert all(orb.orb_type == OrbType.LIGHTNING for orb in combat.orb_queue.orbs)
 
     def test_sunder_refunds_energy_only_when_target_is_killed(self):
         """Matches Sunder.cs: gain 3 energy only if damage result includes a kill."""

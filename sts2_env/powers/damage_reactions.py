@@ -124,8 +124,6 @@ class CurlUpPower(PowerInstance):
       and remove self.
     StackType.Counter. Single-use (removed after triggering).
 
-    Simplified: We trigger immediately on the first qualifying hit instead
-    of waiting for the card to finish playing.
     """
 
     power_type = PowerType.BUFF
@@ -133,7 +131,7 @@ class CurlUpPower(PowerInstance):
 
     def __init__(self, amount: int):
         super().__init__(PowerId.CURL_UP, amount)
-        self._triggered: bool = False
+        self._triggered_card: object | None = None
 
     def after_damage_received(
         self,
@@ -146,11 +144,15 @@ class CurlUpPower(PowerInstance):
     ) -> None:
         if (
             target is owner
-            and not self._triggered
+            and self._triggered_card is None
             and props.is_powered()
             and dealer is not None
         ):
-            self._triggered = True
+            self._triggered_card = getattr(combat, "active_card_source", None)
+
+    def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
+        if card is self._triggered_card:
+            self._triggered_card = None
             owner.gain_block(self.amount)
             owner.powers.pop(self.power_id, None)
 
@@ -175,21 +177,10 @@ class SelfFormingClayPower(PowerInstance):
     def __init__(self, amount: int):
         super().__init__(PowerId.SELF_FORMING_CLAY, amount)
 
-    def after_damage_received(
-        self,
-        owner: Creature,
-        target: Creature,
-        dealer: Creature | None,
-        damage: int,
-        props: ValueProp,
-        combat: CombatState,
-    ) -> None:
-        # Trigger when owner's block was broken (block is now 0 after taking
-        # a hit that consumed block).
-        if target is owner and target.block == 0 and damage > 0:
+    def after_block_cleared(self, owner: Creature, creature: Creature, combat: CombatState) -> None:
+        if creature is owner:
             owner.gain_block(self.amount)
-            owner.powers.pop(self.power_id, None)
-
+            combat._remove_power(owner, self.power_id)
 
 # ---------------------------------------------------------------------------
 # ReflectPower
@@ -212,17 +203,18 @@ class ReflectPower(PowerInstance):
     def __init__(self, amount: int):
         super().__init__(PowerId.REFLECT, amount)
 
-    def on_damage_blocked(
+    def after_damage_received(
         self,
         owner: Creature,
-        blocked_amount: int,
+        target: Creature,
         dealer: Creature | None,
+        damage: int,
         props: ValueProp,
         combat: CombatState,
     ) -> None:
-        """Called by the damage pipeline with the amount of damage that was
-        blocked. Reflects the blocked damage back at the attacker."""
-        if blocked_amount > 0 and dealer is not None and props.is_powered():
+        result = getattr(combat, "_active_damage_result", None)
+        blocked_amount = getattr(result, "blocked", 0)
+        if target is owner and blocked_amount > 0 and dealer is not None and props.is_powered():
             combat.deal_damage(
                 dealer=owner,
                 target=dealer,
@@ -253,24 +245,43 @@ class GalvanicPower(PowerInstance):
       owner (unpowered, as a MOVE).
     StackType.Counter.
 
-    Simplified: In the simulator, whenever a Power card is played, the
-    owner takes Amount self-damage. The affliction mechanic is not modeled
-    separately.
+    Galvanized is tracked on the card's combat vars.
     """
 
     power_type = PowerType.BUFF
     stack_type = PowerStackType.COUNTER
+    _MARKER = "_galvanized"
 
     def __init__(self, amount: int):
         super().__init__(PowerId.GALVANIC, amount)
 
+    def _afflict_card(self, card: object) -> None:
+        from sts2_env.core.enums import CardType
+
+        if getattr(card, "card_type", None) != CardType.POWER:
+            return
+        combat_vars = getattr(card, "combat_vars", None)
+        if combat_vars is None or combat_vars.get(self._MARKER):
+            return
+        afflict = getattr(card, "afflict", None)
+        if callable(afflict) and not afflict("galvanized", stackable=True):
+            return
+        combat_vars[self._MARKER] = 1
+
+    def before_combat_start(self, owner: Creature, combat: CombatState) -> None:
+        for state in combat.combat_player_states:
+            for pile in state.all_piles:
+                for card in pile:
+                    self._afflict_card(card)
+
+    def after_card_entered_combat(self, owner: Creature, card: object, combat: CombatState) -> None:
+        self._afflict_card(card)
+
     def after_card_played(
         self, owner: Creature, card: object, combat: CombatState
     ) -> None:
-        from sts2_env.core.enums import CardType
-        if getattr(card, "card_type", None) == CardType.POWER:
-            # Deal self-damage to the card's owner (the player who played it)
-            card_owner_creature = getattr(card, "owner_creature", None)
+        if getattr(card, "combat_vars", {}).get(self._MARKER):
+            card_owner_creature = getattr(card, "owner", None)
             if card_owner_creature is not None:
                 combat.deal_damage(
                     dealer=None,
@@ -304,11 +315,17 @@ class InterceptPower(PowerInstance):
 
     def __init__(self, amount: int = 1):
         super().__init__(PowerId.INTERCEPT, amount)
-        self._covered_count: int = 0
+        self._covered_creatures: list[Creature] = []
 
-    def add_covered_creature(self) -> None:
+    def add_covered_creature(self, creature: Creature) -> None:
         """Called by CoveredPower when a creature is covered."""
-        self._covered_count += 1
+        if creature not in self._covered_creatures:
+            self._covered_creatures.append(creature)
+
+    def remove_covered_creature(self, creature: Creature) -> None:
+        """Called when a previously covered creature is no longer covered."""
+        if creature in self._covered_creatures:
+            self._covered_creatures.remove(creature)
 
     def modify_damage_multiplicative(
         self,
@@ -318,7 +335,7 @@ class InterceptPower(PowerInstance):
         props: ValueProp,
     ) -> float:
         if target is owner and props.is_powered():
-            return float(self._covered_count + 1)
+            return float(len(self._covered_creatures) + 1)
         return 1.0
 
     def after_turn_end(

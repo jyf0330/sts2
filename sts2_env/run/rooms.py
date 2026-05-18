@@ -14,6 +14,8 @@ from sts2_env.core.enums import RoomType
 @dataclass(frozen=True)
 class RoomVisitContext:
     room_type: RoomType
+    shop_inventory: Any | None = None
+    run_manager: Any | None = None
 
     @property
     def is_combat(self) -> bool:

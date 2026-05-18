@@ -14,6 +14,24 @@ from sts2_env.map.map_point import MapCoord, MapPoint
 
 MAP_WIDTH = 7
 MAP_ITERATIONS = 7
+GOLDEN_PATH_POINT_TYPES = (
+    MapPointType.MONSTER,
+    MapPointType.UNKNOWN,
+    MapPointType.MONSTER,
+    MapPointType.REST_SITE,
+    MapPointType.MONSTER,
+    MapPointType.REST_SITE,
+    MapPointType.UNKNOWN,
+    MapPointType.TREASURE,
+    MapPointType.UNKNOWN,
+    MapPointType.TREASURE,
+    MapPointType.UNKNOWN,
+    MapPointType.SHOP,
+    MapPointType.ELITE,
+    MapPointType.REST_SITE,
+    MapPointType.ELITE,
+    MapPointType.REST_SITE,
+)
 
 
 class ActMap:
@@ -49,6 +67,29 @@ class ActMap:
             p for p in self._grid.values()
             if p is not self.start_point and p is not self.boss_point
         ]
+
+
+def generate_golden_path_map(player_count: int = 1) -> ActMap:
+    point_types = list(GOLDEN_PATH_POINT_TYPES)
+    if player_count > 1:
+        point_types.pop(2)
+
+    act_map = ActMap(len(point_types))
+    start = act_map.get_or_create(3, 0)
+    start.point_type = MapPointType.ANCIENT
+    act_map.start_point = start
+    boss = act_map.get_or_create(3, len(point_types) + 1)
+    boss.point_type = MapPointType.BOSS
+    act_map.boss_point = boss
+
+    previous = start
+    for row, point_type in enumerate(point_types, start=1):
+        point = act_map.get_or_create(3, row)
+        point.point_type = point_type
+        previous.add_child(point)
+        previous = point
+    previous.add_child(boss)
+    return act_map
 
 
 def _has_invalid_crossover(act_map: ActMap, current: MapPoint, target_col: int) -> bool:
@@ -262,12 +303,269 @@ def _center_grid(act_map: ActMap) -> None:
     act_map._grid = new_grid
 
 
+def _map_point_type_counts(
+    rng: Rng,
+    *,
+    ascension_level: int,
+    act_index: int,
+) -> tuple[int, int, int, int]:
+    has_swarming = ascension_level >= 1
+    has_gloom = ascension_level >= 6
+
+    def base_counts(source: Rng) -> tuple[int, int, int, int]:
+        return (
+            round(5 * (1.6 if has_swarming else 1.0)),
+            3,
+            source.next_gaussian_int(mean=12, stddev=1, min_val=10, max_val=14),
+            source.next_gaussian_int(mean=5, stddev=1, min_val=3, max_val=6),
+        )
+
+    if act_index in (0, 1):
+        num_rests = rng.next_gaussian_int(mean=7, stddev=1, min_val=6, max_val=7)
+        if has_gloom:
+            num_rests -= 1
+        num_elites, num_shops, num_unknowns, _ = base_counts(rng)
+        return num_elites, num_shops, num_unknowns, num_rests
+
+    if act_index == 2:
+        count_rng = Rng(rng.seed, counter=rng.counter)
+        _, _, num_unknowns, _ = base_counts(count_rng)
+        num_rests = rng.next_int_exclusive(5, 7)
+        if has_gloom:
+            num_rests -= 1
+        num_elites, num_shops, _, _ = base_counts(rng)
+        return num_elites, num_shops, num_unknowns - 1, num_rests
+
+    num_elites = round(5 * (1.6 if has_swarming else 1.0))
+    num_shops = 3
+    num_unknowns = rng.next_gaussian_int(mean=12, stddev=1, min_val=10, max_val=14)
+    num_rests = rng.next_gaussian_int(mean=5, stddev=1, min_val=3, max_val=6)
+
+    return num_elites, num_shops, num_unknowns, num_rests
+
+
+def _spoils_allowed_columns(row: int, treasure_row: int, map_length: int) -> tuple[int, int]:
+    center = MAP_WIDTH // 2
+    distance_to_treasure = abs(row - treasure_row)
+    rows_to_top = map_length - 1 - row
+    top_width = min(center, max(0, rows_to_top) + 1)
+    spread = min(center, min(distance_to_treasure, top_width))
+    return max(0, center - spread), min(MAP_WIDTH - 1, center + spread)
+
+
+def _spoils_centered_directions(current_col: int) -> list[int]:
+    center = MAP_WIDTH // 2
+    direction = 0
+    if center > current_col:
+        direction = 1
+    elif center < current_col:
+        direction = -1
+    directions: list[int] = []
+    if direction:
+        directions.append(direction)
+    directions.append(0)
+    if direction:
+        directions.append(-direction)
+    if -1 not in directions:
+        directions.append(-1)
+    if 1 not in directions:
+        directions.append(1)
+    return directions
+
+
+def _spoils_next_column(current_col: int, direction: int) -> int:
+    if direction < 0:
+        return max(0, current_col - 1)
+    if direction > 0:
+        return min(MAP_WIDTH - 1, current_col + 1)
+    return current_col
+
+
+def _spoils_generate_next_coord(
+    act_map: ActMap,
+    current: MapPoint,
+    rng: Rng,
+    treasure_row: int,
+) -> tuple[int, int]:
+    row = current.row + 1
+    min_col, max_col = _spoils_allowed_columns(row, treasure_row, act_map.map_length)
+    distance_to_treasure = treasure_row - current.row
+    if distance_to_treasure > 3:
+        directions = [-1, 0, 1]
+        rng.shuffle(directions)
+    elif distance_to_treasure > 0:
+        directions = _spoils_centered_directions(current.col)
+    else:
+        directions = [-1, 0, 1]
+        rng.shuffle(directions)
+
+    for direction in directions:
+        next_col = _spoils_next_column(current.col, direction)
+        if next_col < min_col or next_col > max_col:
+            continue
+        if _has_invalid_crossover(act_map, current, next_col):
+            continue
+        point = act_map.get_point(MapCoord(next_col, row))
+        parent_ok = point is None or current in point.parents or len(point.parents) < 3
+        child_ok = current is act_map.start_point or len(current.children) < 3 or (
+            point is not None and point in current.children
+        )
+        if parent_ok and child_ok:
+            return next_col, row
+
+    center = MAP_WIDTH // 2
+    fallback = max(min_col, min(max_col, center))
+    if abs(fallback - current.col) > 1:
+        step = 1 if fallback > current.col else -1
+        fallback = max(min_col, min(max_col, current.col + step))
+    if _has_invalid_crossover(act_map, current, fallback):
+        fallback = max(min_col, min(max_col, current.col))
+    return fallback, row
+
+
+def _spoils_path_generate(act_map: ActMap, start: MapPoint, rng: Rng, treasure_row: int) -> None:
+    current = start
+    while current.row < act_map.map_length - 1:
+        col, row = _spoils_generate_next_coord(act_map, current, rng, treasure_row)
+        next_point = act_map.get_or_create(col, row)
+        current.add_child(next_point)
+        current = next_point
+
+
+def _redirect_to_spoils_treasure(act_map: ActMap, stray: MapPoint, treasure: MapPoint) -> None:
+    for parent in list(stray.parents):
+        parent.remove_child(stray)
+        parent.add_child(treasure)
+    for child in list(stray.children):
+        stray.remove_child(child)
+        treasure.add_child(child)
+    act_map._grid.pop((stray.col, stray.row), None)
+
+
+def _is_spoils_type_valid(point: MapPoint, point_type: MapPointType, map_length: int) -> bool:
+    if point.row < 5 and point_type in (MapPointType.REST_SITE, MapPointType.ELITE):
+        return False
+    if point.row >= map_length - 3 and point_type == MapPointType.REST_SITE:
+        return False
+    restricted = {MapPointType.ELITE, MapPointType.REST_SITE, MapPointType.TREASURE, MapPointType.SHOP}
+    if point_type in restricted:
+        if any(parent.point_type == point_type for parent in point.parents):
+            return False
+        if any(child.point_type == point_type for child in point.children):
+            return False
+    sibling_restricted = {
+        MapPointType.REST_SITE,
+        MapPointType.MONSTER,
+        MapPointType.UNKNOWN,
+        MapPointType.ELITE,
+        MapPointType.SHOP,
+    }
+    if point_type in sibling_restricted and any(sib.point_type == point_type for sib in point.siblings()):
+        return False
+    return True
+
+
+def _assign_spoils_room_types(
+    act_map: ActMap,
+    rng: Rng,
+    *,
+    num_elites: int,
+    num_shops: int,
+    num_unknowns: int,
+    num_rests: int,
+) -> None:
+    from collections import deque
+
+    for point in act_map.get_row(act_map.map_length - 1):
+        point.point_type = MapPointType.REST_SITE
+    for point in act_map.get_row(1):
+        if point.point_type == MapPointType.UNASSIGNED:
+            point.point_type = MapPointType.MONSTER
+
+    pool_list: list[MapPointType] = []
+    pool_list.extend([MapPointType.REST_SITE] * num_rests)
+    pool_list.extend([MapPointType.SHOP] * num_shops)
+    pool_list.extend([MapPointType.ELITE] * num_elites)
+    pool_list.extend([MapPointType.UNKNOWN] * num_unknowns)
+    pool: deque[MapPointType] = deque(pool_list)
+
+    points = [p for p in act_map.room_points()]
+    rng.shuffle(points)
+    for point in points:
+        if point.point_type != MapPointType.UNASSIGNED:
+            continue
+        for _ in range(len(pool)):
+            candidate = pool.popleft()
+            if _is_spoils_type_valid(point, candidate, act_map.map_length):
+                point.point_type = candidate
+                break
+            pool.append(candidate)
+
+    for point in act_map.room_points():
+        if point.point_type == MapPointType.UNASSIGNED:
+            point.point_type = MapPointType.MONSTER
+    if act_map.boss_point:
+        act_map.boss_point.point_type = MapPointType.BOSS
+    if act_map.start_point:
+        act_map.start_point.point_type = MapPointType.ANCIENT
+
+
+def generate_spoils_act_map(
+    num_rooms: int,
+    rng: Rng,
+    ascension_level: int = 0,
+    act_index: int = 1,
+) -> ActMap:
+    num_elites, num_shops, num_unknowns, num_rests = _map_point_type_counts(
+        rng,
+        ascension_level=ascension_level,
+        act_index=act_index,
+    )
+    act_map = ActMap(num_rooms)
+    act_map.start_point = act_map.get_or_create(MAP_WIDTH // 2, 0)
+    act_map.boss_point = act_map.get_or_create(MAP_WIDTH // 2, act_map.map_length)
+    treasure_row = act_map.map_length - 7
+    if treasure_row <= 0 or treasure_row >= act_map.map_length:
+        raise ValueError("Treasure row is out of bounds for Spoils Map")
+
+    start_points: list[MapPoint] = []
+    for i in range(MAP_ITERATIONS):
+        start = act_map.get_or_create(rng.next_int(0, MAP_WIDTH - 1), 1)
+        if i == 1:
+            while start in start_points:
+                start = act_map.get_or_create(rng.next_int(0, MAP_WIDTH - 1), 1)
+        start_points.append(start)
+        _spoils_path_generate(act_map, start, rng, treasure_row)
+
+    treasure = act_map.get_or_create(MAP_WIDTH // 2, treasure_row)
+    treasure.point_type = MapPointType.TREASURE
+    for point in list(act_map.get_row(treasure_row)):
+        if point is not treasure:
+            _redirect_to_spoils_treasure(act_map, point, treasure)
+
+    for point in act_map.get_row(act_map.map_length - 1):
+        point.add_child(act_map.boss_point)
+    for point in act_map.get_row(1):
+        act_map.start_point.add_child(point)
+
+    _assign_spoils_room_types(
+        act_map,
+        rng,
+        num_elites=num_elites,
+        num_shops=num_shops,
+        num_unknowns=num_unknowns,
+        num_rests=num_rests,
+    )
+    return act_map
+
+
 def generate_act_map(
     num_rooms: int,
     rng: Rng,
     ascension_level: int = 0,
     replace_treasure_with_elite: bool = False,
     act_index: int = 0,
+    num_elites_override: int | None = None,
 ) -> ActMap:
     """Generate a complete act map.
 
@@ -312,32 +610,13 @@ def generate_act_map(
     for point in act_map.get_row(1):
         act_map.start_point.add_child(point)
 
-    # Calculate room type counts -- matches C# MapPointTypeCounts + per-act overrides
-    has_swarming = ascension_level >= 1   # AscensionLevel.SwarmingElites
-    has_gloom = ascension_level >= 6      # AscensionLevel.Gloom
-    num_elites = round(5 * (1.6 if has_swarming else 1.0))
-    num_shops = 3
-    num_unknowns = rng.next_gaussian_int(mean=12, stddev=1, min_val=10, max_val=14)
-    num_rests = rng.next_gaussian_int(mean=5, stddev=1, min_val=3, max_val=6)
-
-    # Per-act overrides from C# GetMapPointTypes
-    if act_index == 0:
-        # Overgrowth: rests = NextGaussianInt(7,1,6,7), Gloom: -1
-        num_rests = rng.next_gaussian_int(mean=7, stddev=1, min_val=6, max_val=7)
-        if has_gloom:
-            num_rests -= 1
-    elif act_index == 1:
-        # Hive: unknowns - 1, rests = NextGaussianInt(6,1,6,7), Gloom: -1
-        num_unknowns -= 1
-        num_rests = rng.next_gaussian_int(mean=6, stddev=1, min_val=6, max_val=7)
-        if has_gloom:
-            num_rests -= 1
-    elif act_index == 2:
-        # Glory: unknowns - 1, rests = NextInt(5, 7) (exclusive = [5,6]), Gloom: -1
-        num_unknowns -= 1
-        num_rests = rng.next_int(5, 6)  # [5,6] inclusive matches C# NextInt(5,7) exclusive
-        if has_gloom:
-            num_rests -= 1
+    num_elites, num_shops, num_unknowns, num_rests = _map_point_type_counts(
+        rng,
+        ascension_level=ascension_level,
+        act_index=act_index,
+    )
+    if num_elites_override is not None:
+        num_elites = num_elites_override
 
     # Assign room types
     _assign_room_types(

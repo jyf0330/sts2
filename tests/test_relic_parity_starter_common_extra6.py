@@ -2,6 +2,7 @@
 
 import sts2_env.powers  # noqa: F401
 
+from sts2_env.cards.factory import create_card
 from sts2_env.cards.ironclad import (
     create_ironclad_starter_deck,
     make_defend_ironclad,
@@ -16,6 +17,16 @@ from sts2_env.monsters.act1_weak import create_shrinker_beetle
 from sts2_env.run.rest_site import HealOption
 from sts2_env.run.reward_objects import PotionReward
 from sts2_env.run.run_state import RunState
+
+
+class _FailingShuffleRng:
+    def shuffle(self, values):
+        raise AssertionError("wrong RNG stream")
+
+
+class _ReverseShuffleRng:
+    def shuffle(self, values):
+        values.reverse()
 
 
 def _make_ironclad_combat(
@@ -176,6 +187,22 @@ class TestRelicParityStarterCommonExtra6:
 
         assert skills_upgraded_after - skills_upgraded_before == 2
         assert attacks_upgraded_after == attacks_upgraded_before
+
+    def test_war_paint_uses_niche_rng_for_random_upgrades(self):
+        """Matches WarPaint.cs: random upgrade selection is from RunState.Rng.Niche."""
+        run_state = RunState(seed=1607, character_id="Ironclad")
+        run_state.player.deck = [
+            create_card(CardId.BLOOD_WALL),
+            create_card(CardId.DEFEND_IRONCLAD),
+            create_card(CardId.ARMAMENTS),
+        ]
+        run_state.rng.rewards = _FailingShuffleRng()
+        run_state.rng.niche = _ReverseShuffleRng()
+
+        assert run_state.player.obtain_relic("WAR_PAINT")
+
+        upgraded = {card.card_id for card in run_state.player.deck if card.upgraded}
+        assert upgraded == {CardId.BLOOD_WALL, CardId.DEFEND_IRONCLAD}
 
     def test_book_of_five_rings_heals_on_every_fifth_card_added_and_resets_counter(self):
         """Matches BookOfFiveRings.cs: heal 15 each time 5 cards are added."""

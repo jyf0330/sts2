@@ -40,7 +40,7 @@ def _gain_block(creature: Creature, amount: int) -> None:
 
 
 # ---- ShrinkerBeetle (HP 38-40) ----
-# Cycle: SHRINK → CHOMP → STOMP → CHOMP → STOMP...
+# Cycle: SHRINKER_MOVE → CHOMP_MOVE → STOMP_MOVE → CHOMP_MOVE → STOMP_MOVE...
 
 def create_shrinker_beetle(rng: Rng) -> tuple[Creature, MonsterAI]:
     hp = rng.next_int(38, 40)
@@ -56,11 +56,16 @@ def create_shrinker_beetle(rng: Rng) -> tuple[Creature, MonsterAI]:
         _deal_damage_to_player(combat, creature, 13)
 
     states: dict[str, MonsterState] = {
-        "SHRINK": MoveState("SHRINK", shrink, [strong_debuff_intent()], follow_up_id="CHOMP"),
-        "CHOMP": MoveState("CHOMP", chomp, [attack_intent(7)], follow_up_id="STOMP"),
-        "STOMP": MoveState("STOMP", stomp, [attack_intent(13)], follow_up_id="CHOMP"),
+        "SHRINKER_MOVE": MoveState(
+            "SHRINKER_MOVE",
+            shrink,
+            [strong_debuff_intent()],
+            follow_up_id="CHOMP_MOVE",
+        ),
+        "CHOMP_MOVE": MoveState("CHOMP_MOVE", chomp, [attack_intent(7)], follow_up_id="STOMP_MOVE"),
+        "STOMP_MOVE": MoveState("STOMP_MOVE", stomp, [attack_intent(13)], follow_up_id="CHOMP_MOVE"),
     }
-    return creature, MonsterAI(states, "SHRINK")
+    return creature, MonsterAI(states, "SHRINKER_MOVE")
 
 
 # ---- FuzzyWurmCrawler (HP 55-57) ----
@@ -86,7 +91,7 @@ def create_fuzzy_wurm_crawler(rng: Rng) -> tuple[Creature, MonsterAI]:
 
 # ---- Nibbit (HP 42-46) ----
 # Conditional start based on IsAlone/IsFront, then fixed rotation:
-# BUTT(12) → SLICE(6+5blk) → HISS(Str+2) → BUTT...
+# BUTT_MOVE(12) → SLICE_MOVE(6+5blk) → HISS_MOVE(Str+2) → BUTT_MOVE...
 
 def create_nibbit(rng: Rng, is_alone: bool = True, is_front: bool = False) -> tuple[Creature, MonsterAI]:
     hp = rng.next_int(42, 46)
@@ -103,30 +108,30 @@ def create_nibbit(rng: Rng, is_alone: bool = True, is_front: bool = False) -> tu
         creature.apply_power(PowerId.STRENGTH, 2)
 
     states: dict[str, MonsterState] = {
-        "BUTT": MoveState("BUTT", butt, [attack_intent(12)], follow_up_id="SLICE"),
-        "SLICE": MoveState("SLICE", slice_move, [attack_intent(6)], follow_up_id="HISS"),
-        "HISS": MoveState("HISS", hiss, [buff_intent()], follow_up_id="BUTT"),
+        "BUTT_MOVE": MoveState("BUTT_MOVE", butt, [attack_intent(12)], follow_up_id="SLICE_MOVE"),
+        "SLICE_MOVE": MoveState("SLICE_MOVE", slice_move, [attack_intent(6)], follow_up_id="HISS_MOVE"),
+        "HISS_MOVE": MoveState("HISS_MOVE", hiss, [buff_intent()], follow_up_id="BUTT_MOVE"),
     }
 
     # Determine starting state
     if is_alone:
-        initial = "BUTT"
+        initial = "BUTT_MOVE"
     elif is_front:
-        initial = "SLICE"
+        initial = "SLICE_MOVE"
     else:
-        initial = "HISS"
+        initial = "HISS_MOVE"
 
     cond = ConditionalBranchState("INITIAL")
-    cond.add_branch(lambda: is_alone, "BUTT")
-    cond.add_branch(lambda: is_front, "SLICE")
-    cond.add_branch(lambda: True, "HISS")
+    cond.add_branch(lambda: is_alone, "BUTT_MOVE")
+    cond.add_branch(lambda: is_front, "SLICE_MOVE")
+    cond.add_branch(lambda: True, "HISS_MOVE")
     states["INITIAL"] = cond
 
-    return creature, MonsterAI(states, initial)
+    return creature, MonsterAI(states, initial, rng)
 
 
 # ---- LeafSlimeS (HP 11-15) ----
-# Random: BUTT(3) or GOOP(add Slimed), CannotRepeat
+# Random: BUTT_MOVE(3) or GOOP_MOVE(add Slimed), CannotRepeat
 
 def create_leaf_slime_s(rng: Rng) -> tuple[Creature, MonsterAI]:
     hp = rng.next_int(11, 15)
@@ -139,19 +144,19 @@ def create_leaf_slime_s(rng: Rng) -> tuple[Creature, MonsterAI]:
         combat.add_card_to_discard(make_slimed())
 
     rand = RandomBranchState("RANDOM")
-    rand.add_branch("BUTT", MoveRepeatType.CANNOT_REPEAT)
-    rand.add_branch("GOOP", MoveRepeatType.CANNOT_REPEAT)
+    rand.add_branch("BUTT_MOVE", MoveRepeatType.CANNOT_REPEAT)
+    rand.add_branch("GOOP_MOVE", MoveRepeatType.CANNOT_REPEAT)
 
     states: dict[str, MonsterState] = {
         "RANDOM": rand,
-        "BUTT": MoveState("BUTT", butt, [attack_intent(3)], follow_up_id="RANDOM"),
-        "GOOP": MoveState("GOOP", goop, [status_intent()], follow_up_id="RANDOM"),
+        "BUTT_MOVE": MoveState("BUTT_MOVE", butt, [attack_intent(3)], follow_up_id="RANDOM"),
+        "GOOP_MOVE": MoveState("GOOP_MOVE", goop, [status_intent()], follow_up_id="RANDOM"),
     }
-    return creature, MonsterAI(states, "RANDOM")
+    return creature, MonsterAI(states, "RANDOM", rng)
 
 
 # ---- TwigSlimeS (HP 7-11) ----
-# BUTT(4) → BUTT(4) (self loop)
+# BUTT_MOVE(4) → BUTT_MOVE(4) (self loop)
 
 def create_twig_slime_s(rng: Rng) -> tuple[Creature, MonsterAI]:
     hp = rng.next_int(7, 11)
@@ -161,9 +166,9 @@ def create_twig_slime_s(rng: Rng) -> tuple[Creature, MonsterAI]:
         _deal_damage_to_player(combat, creature, 4)
 
     states: dict[str, MonsterState] = {
-        "BUTT": MoveState("BUTT", butt, [attack_intent(4)], follow_up_id="BUTT"),
+        "BUTT_MOVE": MoveState("BUTT_MOVE", butt, [attack_intent(4)], follow_up_id="BUTT_MOVE"),
     }
-    return creature, MonsterAI(states, "BUTT")
+    return creature, MonsterAI(states, "BUTT_MOVE")
 
 
 # ---- LeafSlimeM (HP 32-35) ----
@@ -188,7 +193,7 @@ def create_leaf_slime_m(rng: Rng) -> tuple[Creature, MonsterAI]:
 
 
 # ---- TwigSlimeM (HP 26-28) ----
-# STICKY_SHOT → Random(CLUMP_SHOT[max 2 consec] | STICKY_SHOT[CannotRepeat])
+# STICKY_SHOT_MOVE → Random(CLUMP_SHOT_MOVE[max 2 consec] | STICKY_SHOT_MOVE[CannotRepeat])
 
 def create_twig_slime_m(rng: Rng) -> tuple[Creature, MonsterAI]:
     hp = rng.next_int(26, 28)
@@ -201,12 +206,22 @@ def create_twig_slime_m(rng: Rng) -> tuple[Creature, MonsterAI]:
         _deal_damage_to_player(combat, creature, 11)
 
     rand = RandomBranchState("RANDOM")
-    rand.add_branch("CLUMP_SHOT", MoveRepeatType.CAN_REPEAT_X_TIMES, max_times=2)
-    rand.add_branch("STICKY_SHOT", MoveRepeatType.CANNOT_REPEAT)
+    rand.add_branch("CLUMP_SHOT_MOVE", MoveRepeatType.CAN_REPEAT_X_TIMES, max_times=2)
+    rand.add_branch("STICKY_SHOT_MOVE", MoveRepeatType.CANNOT_REPEAT)
 
     states: dict[str, MonsterState] = {
         "RANDOM": rand,
-        "STICKY_SHOT": MoveState("STICKY_SHOT", sticky_shot, [status_intent()], follow_up_id="RANDOM"),
-        "CLUMP_SHOT": MoveState("CLUMP_SHOT", clump_shot, [attack_intent(11)], follow_up_id="RANDOM"),
+        "STICKY_SHOT_MOVE": MoveState(
+            "STICKY_SHOT_MOVE",
+            sticky_shot,
+            [status_intent()],
+            follow_up_id="RANDOM",
+        ),
+        "CLUMP_SHOT_MOVE": MoveState(
+            "CLUMP_SHOT_MOVE",
+            clump_shot,
+            [attack_intent(11)],
+            follow_up_id="RANDOM",
+        ),
     }
-    return creature, MonsterAI(states, "STICKY_SHOT")
+    return creature, MonsterAI(states, "STICKY_SHOT_MOVE")

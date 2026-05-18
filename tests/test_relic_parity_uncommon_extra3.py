@@ -6,6 +6,8 @@ from sts2_env.cards.ironclad import create_ironclad_starter_deck
 from sts2_env.cards.ironclad_basic import make_bash, make_defend_ironclad, make_strike_ironclad
 from sts2_env.cards.status import make_void
 from sts2_env.core.combat import CombatState
+from sts2_env.core.enums import CombatSide
+from sts2_env.core.hooks import fire_after_turn_end
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle, create_twig_slime_s
 
@@ -61,6 +63,7 @@ class TestRelicParityUncommonExtra3:
     def test_kusarigama_counts_attacks_per_turn_and_resets_on_new_turn(self):
         """Matches Kusarigama.cs: every 3 attacks this turn deals 6 to a random enemy."""
         combat = _make_ironclad_combat(["Kusarigama"], seed=802)
+        relic = next(relic for relic in combat.relics if relic.relic_id.name == "KUSARIGAMA")
         enemy = combat.enemies[0]
         enemy.max_hp = 400
         enemy.current_hp = 400
@@ -72,6 +75,10 @@ class TestRelicParityUncommonExtra3:
         assert combat.play_card(0, 0)
         assert combat.play_card(0, 0)
         assert enemy.current_hp == start_hp - 12
+        assert relic._attacks_this_turn == 2
+
+        fire_after_turn_end(CombatSide.PLAYER, combat)
+        assert relic._attacks_this_turn == 0
 
         combat.end_player_turn()
         assert combat.round_number == 2
@@ -178,6 +185,25 @@ class TestRelicParityUncommonExtra3:
         assert marker not in combat.hand
 
         combat.exhaust_card(combat.hand[0])
+        assert marker in combat.hand
+
+    def test_joss_paper_counts_manually_exhausted_ethereal_card_immediately(self):
+        """Matches JossPaper.cs: causedByEthereal, not the Ethereal keyword itself, controls deferral."""
+        combat = _make_ironclad_combat(["JossPaper"], seed=817)
+        marker = make_bash()
+        marker.owner = combat.player
+        ethereal = make_defend_ironclad()
+        ethereal.owner = combat.player
+        ethereal.keywords = frozenset({"ethereal"})
+        combat.draw_pile = [marker]
+        combat.hand = _with_owner([make_strike_ironclad() for _ in range(4)], combat.player)
+        combat.hand.append(ethereal)
+
+        for _ in range(4):
+            combat.exhaust_card(combat.hand[0])
+        assert marker not in combat.hand
+
+        combat.exhaust_card(ethereal)
         assert marker in combat.hand
 
     def test_joss_paper_defers_ethereal_exhaust_draw_until_after_turn_end(self):

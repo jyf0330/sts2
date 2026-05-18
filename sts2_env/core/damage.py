@@ -27,6 +27,13 @@ class DamageResult:
     hp_lost: int = 0
     was_killed: bool = False
     unblocked_damage: int = 0
+    overkill_damage: int = 0
+    was_block_broken: bool = False
+    was_fully_blocked: bool = False
+
+    @property
+    def total_damage(self) -> int:
+        return self.blocked + self.unblocked_damage
 
 
 def calculate_damage(
@@ -117,7 +124,9 @@ def apply_damage(
     """
     from sts2_env.core.hooks import (
         fire_before_damage_received, fire_after_damage_received,
-        fire_after_damage_given, modify_hp_lost,
+        fire_after_current_hp_changed, fire_after_damage_given,
+        modify_hp_lost_after_osty, modify_hp_lost_before_osty,
+        modify_unblocked_damage_target,
     )
 
     attack = None
@@ -134,39 +143,119 @@ def apply_damage(
     # Block absorption
     unblockable = bool(props & ValueProp.UNBLOCKABLE)
     blocked = target.damage_block(damage, unblockable)
+    was_block_broken = target.block <= 0 and blocked > 0
     remaining = damage - blocked
 
-    # HP loss modification (Intangible, TungstenRod)
     if combat is not None and remaining > 0:
-        remaining = modify_hp_lost(remaining, target, dealer, props, combat)
+        remaining = modify_hp_lost_before_osty(remaining, target, dealer, props, combat)
+
+    damage_target = target
+    if combat is not None and remaining > 0:
+        damage_target = modify_unblocked_damage_target(target, remaining, props, dealer, combat)
+
+    # HP loss modification after possible Osty redirection (Intangible, TungstenRod)
+    if combat is not None and remaining > 0:
+        remaining = modify_hp_lost_after_osty(remaining, damage_target, dealer, props, combat)
+    was_fully_blocked = not unblockable and (blocked > 0 or target.block > 0) and remaining == 0
 
     # Apply HP loss
-    was_alive = target.is_alive
-    hp_lost = target.lose_hp(remaining)
-    was_killed = was_alive and target.is_dead
+    was_alive = damage_target.is_alive
+    hp_lost = damage_target.lose_hp(remaining, fire_hooks=combat is None)
+    was_killed = was_alive and damage_target.is_dead
+    overkill_damage = max(0, remaining - hp_lost)
+
+    redirected_result: DamageResult | None = None
+    if damage_target is not target:
+        redirected_result = DamageResult(
+            target=damage_target,
+            blocked=0,
+            hp_lost=hp_lost,
+            was_killed=was_killed,
+            unblocked_damage=hp_lost,
+            overkill_damage=overkill_damage,
+        )
+        overkill = overkill_damage
+        if combat is not None and overkill > 0:
+            overkill = modify_hp_lost_after_osty(overkill, target, dealer, props, combat)
+        was_alive = target.is_alive
+        hp_lost = target.lose_hp(overkill, fire_hooks=False)
+        was_killed = was_alive and target.is_dead
+        remaining = overkill
+        overkill_damage = max(0, remaining - hp_lost)
 
     result = DamageResult(
         target=target,
         blocked=blocked,
         hp_lost=hp_lost,
         was_killed=was_killed,
-        unblocked_damage=remaining,
+        unblocked_damage=hp_lost,
+        overkill_damage=overkill_damage,
+        was_block_broken=was_block_broken,
+        was_fully_blocked=was_fully_blocked,
     )
 
     if attack is not None:
+        if redirected_result is not None:
+            attack.results.append(redirected_result)
         attack.results.append(result)
 
     # Fire after-damage hooks
     if combat is not None:
-        combat.record_damage_event(dealer, target, props, remaining)
-        fire_after_damage_received(target, dealer, remaining, props, combat)
-        if blocked > 0:
-            for owner in combat.all_creatures:
-                for power in owner.powers.values():
-                    on_damage_blocked = getattr(power, "on_damage_blocked", None)
-                    if callable(on_damage_blocked):
-                        on_damage_blocked(owner, blocked, dealer, props, combat)
+        damage_results = [result] if redirected_result is None else [redirected_result, result]
+        killed_targets = []
+        for damage_result in damage_results:
+            combat.record_damage_event(dealer, damage_result.target, props, damage_result.unblocked_damage)
+        if was_block_broken:
+            for power in list(target.powers.values()):
+                on_block_broken = getattr(power, "on_block_broken", None)
+                if callable(on_block_broken):
+                    on_block_broken(target, combat)
+        for damage_result in damage_results:
+            if damage_result.hp_lost > 0:
+                fire_after_current_hp_changed(
+                    damage_result.target,
+                    -damage_result.hp_lost,
+                    combat,
+                )
         if dealer is not None:
-            fire_after_damage_given(dealer, target, remaining, props, combat)
+            for damage_result in damage_results:
+                sentinel = object()
+                previous_result = getattr(combat, "_active_damage_result", sentinel)
+                combat._active_damage_result = damage_result
+                try:
+                    fire_after_damage_given(
+                        dealer,
+                        damage_result.target,
+                        damage_result.unblocked_damage,
+                        props,
+                        combat,
+                    )
+                finally:
+                    if previous_result is sentinel:
+                        delattr(combat, "_active_damage_result")
+                    else:
+                        combat._active_damage_result = previous_result
+        for damage_result in damage_results:
+            if damage_result.was_killed:
+                killed_targets.append(damage_result.target)
+            if not damage_result.was_killed or not damage_result.target.is_dead:
+                sentinel = object()
+                previous_result = getattr(combat, "_active_damage_result", sentinel)
+                combat._active_damage_result = damage_result
+                try:
+                    fire_after_damage_received(
+                        damage_result.target,
+                        dealer,
+                        damage_result.unblocked_damage,
+                        props,
+                        combat,
+                    )
+                finally:
+                    if previous_result is sentinel:
+                        delattr(combat, "_active_damage_result")
+                    else:
+                        combat._active_damage_result = previous_result
+        for killed_target in killed_targets:
+            combat.kill_creature(killed_target)
 
     return result

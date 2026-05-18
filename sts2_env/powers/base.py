@@ -14,6 +14,7 @@ from sts2_env.core.enums import PowerId, PowerType, PowerStackType, CombatSide, 
 if TYPE_CHECKING:
     from sts2_env.core.creature import Creature
     from sts2_env.core.combat import CombatState
+    from sts2_env.potions.base import PotionInstance
 
 
 class PowerInstance:
@@ -27,11 +28,13 @@ class PowerInstance:
     power_type: PowerType = PowerType.BUFF
     stack_type: PowerStackType = PowerStackType.COUNTER
     allow_negative: bool = False
+    is_temporary: bool = False
 
     def __init__(self, power_id: PowerId, amount: int):
         self.power_id = power_id
         self.amount = amount
         self.skip_next_tick: bool = False
+        self.applier: Creature | None = None
 
     # ─── Damage Modification Hooks ──────────────────────────────────────
 
@@ -69,6 +72,16 @@ class PowerInstance:
         """Called during block multiplicative pass. Return MULTIPLIER."""
         return 1.0
 
+    def after_modifying_block_amount(
+        self,
+        owner: Creature,
+        modified_amount: int,
+        card_source: object | None,
+        card_play: object | None,
+        combat: CombatState,
+    ) -> None:
+        pass
+
     # ─── HP Loss Modification ───────────────────────────────────────────
 
     def modify_hp_lost(
@@ -78,10 +91,43 @@ class PowerInstance:
         """Modify HP lost after block. Intangible caps at 1, TungstenRod -1, etc."""
         return amount
 
+    def modify_hp_lost_before_osty_late(
+        self, owner: Creature, target: Creature, amount: float,
+        dealer: Creature | None, props: ValueProp
+    ) -> float:
+        return amount
+
+    def modify_hp_lost_late(
+        self, owner: Creature, target: Creature, amount: float,
+        dealer: Creature | None, props: ValueProp
+    ) -> float:
+        return amount
+
+    def modify_unblocked_damage_target(
+        self,
+        owner: Creature,
+        target: Creature,
+        amount: float,
+        props: ValueProp,
+        dealer: Creature | None,
+    ) -> Creature:
+        return target
+
     # ─── Block Clearing ─────────────────────────────────────────────────
 
     def should_clear_block(self, owner: Creature, creature: Creature) -> bool | None:
         """Return False to prevent block clearing (Barricade). None = no opinion."""
+        return None
+
+    def after_preventing_block_clear(
+        self,
+        owner: Creature,
+        creature: Creature,
+        combat: CombatState,
+    ) -> None:
+        pass
+
+    def should_flush(self, owner: Creature, flushing_owner: Creature, combat: CombatState) -> bool | None:
         return None
 
     # ─── Power Application ──────────────────────────────────────────────
@@ -96,12 +142,30 @@ class PowerInstance:
         """Modify cards drawn at turn start."""
         return draw
 
+    def modify_hand_draw_late(self, owner: Creature, draw: int) -> int:
+        return draw
+
+    def after_modifying_hand_draw(self, owner: Creature, combat: CombatState) -> None:
+        pass
+
     def modify_max_energy(self, owner: Creature, energy: int) -> int:
         """Modify max energy."""
         return energy
 
+    def after_energy_reset(self, owner: Creature, combat: CombatState) -> None:
+        pass
+
+    def after_energy_reset_late(self, owner: Creature, combat: CombatState) -> None:
+        pass
+
+    def after_energy_spent(self, owner: Creature, card: object, amount: int, combat: CombatState) -> None:
+        pass
+
     def should_draw(self, owner: Creature, from_hand_draw: bool) -> bool | None:
         return None
+
+    def after_preventing_draw(self, owner: Creature, combat: CombatState) -> None:
+        pass
 
     # ─── Card Play Count ────────────────────────────────────────────────
 
@@ -112,15 +176,57 @@ class PowerInstance:
     def after_modifying_card_play_count(self, owner: Creature, card: object, combat: CombatState) -> None:
         pass
 
+    def after_card_entered_combat(self, owner: Creature, card: object, combat: CombatState) -> None:
+        pass
+
+    def after_card_generated_for_combat(
+        self,
+        owner: Creature,
+        card: object,
+        added_by_player: bool,
+        combat: CombatState,
+    ) -> None:
+        pass
+
     # ─── Turn Lifecycle Hooks ───────────────────────────────────────────
 
     def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         pass
 
+    def before_hand_draw(self, owner: Creature, combat: CombatState) -> None:
+        pass
+
+    def before_hand_draw_late(self, owner: Creature, combat: CombatState) -> None:
+        pass
+
+    def after_player_turn_start_early(self, owner: Creature, combat: CombatState) -> None:
+        pass
+
+    def after_player_turn_start(self, owner: Creature, combat: CombatState) -> None:
+        pass
+
+    def after_player_turn_start_late(self, owner: Creature, combat: CombatState) -> None:
+        pass
+
     def after_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         pass
 
+    def before_play_phase_start(self, owner: Creature, player: Creature, combat: CombatState) -> None:
+        pass
+
+    def before_turn_end_very_early(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
+        pass
+
+    def before_turn_end_early(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
+        pass
+
     def before_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
+        pass
+
+    def before_flush(self, owner: Creature, flushing_owner: Creature, combat: CombatState) -> None:
+        pass
+
+    def before_flush_late(self, owner: Creature, flushing_owner: Creature, combat: CombatState) -> None:
         pass
 
     def after_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
@@ -156,6 +262,15 @@ class PowerInstance:
     ) -> None:
         pass
 
+    def before_potion_used(
+        self,
+        owner: Creature,
+        potion: PotionInstance,
+        target: Creature | None,
+        combat: CombatState,
+    ) -> None:
+        pass
+
     # ─── Damage Event Hooks ─────────────────────────────────────────────
 
     def before_damage_received(
@@ -168,6 +283,15 @@ class PowerInstance:
     def after_damage_received(
         self, owner: Creature, target: Creature, dealer: Creature | None,
         damage: int, props: ValueProp, combat: CombatState
+    ) -> None:
+        pass
+
+    def after_current_hp_changed(
+        self,
+        owner: Creature,
+        creature: Creature,
+        delta: int,
+        combat: CombatState,
     ) -> None:
         pass
 
@@ -190,6 +314,9 @@ class PowerInstance:
     def after_block_gained(self, owner: Creature, creature: Creature, amount: int, combat: CombatState) -> None:
         pass
 
+    def after_block_cleared(self, owner: Creature, creature: Creature, combat: CombatState) -> None:
+        pass
+
     def after_power_amount_changed(
         self,
         owner: Creature,
@@ -204,7 +331,16 @@ class PowerInstance:
 
     # ─── Combat Lifecycle ───────────────────────────────────────────────
 
+    def after_combat_victory_early(self, owner: Creature, combat: CombatState) -> None:
+        pass
+
     def after_combat_victory(self, owner: Creature, combat: CombatState) -> None:
+        pass
+
+    def before_combat_start(self, owner: Creature, combat: CombatState) -> None:
+        pass
+
+    def before_combat_start_late(self, owner: Creature, combat: CombatState) -> None:
         pass
 
     def after_creature_added_to_combat(
@@ -213,6 +349,9 @@ class PowerInstance:
         creature: Creature,
         combat: CombatState,
     ) -> None:
+        pass
+
+    def after_combat_end(self, owner: Creature, combat: CombatState) -> None:
         pass
 
     def after_forge(
@@ -239,6 +378,28 @@ class PowerInstance:
         return True
 
     def should_allow_hitting(self, owner: Creature, combat: CombatState) -> bool:
+        return True
+
+    def should_power_be_removed_after_owner_death(
+        self,
+        owner: Creature,
+        combat: CombatState,
+    ) -> bool:
+        return True
+
+    def should_other_power_be_removed_on_owner_death(
+        self,
+        owner: Creature,
+        power: PowerInstance,
+        combat: CombatState,
+    ) -> bool | None:
+        return None
+
+    def should_creature_be_removed_from_combat_after_death(
+        self,
+        owner: Creature,
+        combat: CombatState,
+    ) -> bool:
         return True
 
     def modify_summon_amount(

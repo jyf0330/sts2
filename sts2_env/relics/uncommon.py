@@ -10,12 +10,13 @@ from typing import TYPE_CHECKING
 
 from sts2_env.core.constants import VULNERABLE_MULTIPLIER
 from sts2_env.core.enums import (
-    RelicRarity, CombatSide, CardType, OrbType, PowerId, ValueProp,
+    RelicRarity, CombatSide, CardType, OrbType, PowerId, RoomType, ValueProp,
 )
 from sts2_env.relics.base import RelicId, RelicPool, RelicInstance
 from sts2_env.relics.registry import register_relic
 
 if TYPE_CHECKING:
+    from sts2_env.cards.base import CardInstance
     from sts2_env.core.creature import Creature
     from sts2_env.core.combat import CombatState
 
@@ -55,8 +56,8 @@ class BagOfMarbles(RelicInstance):
 
     def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         if side == CombatSide.PLAYER and combat.round_number == 1:
-            for enemy in combat.get_alive_enemies():
-                enemy.apply_power(PowerId.VULNERABLE, self.VULNERABLE)
+            for enemy in combat.hittable_enemies:
+                combat.apply_power_to(enemy, PowerId.VULNERABLE, self.VULNERABLE, applier=owner)
 
 
 @register_relic
@@ -66,8 +67,8 @@ class Bellows(RelicInstance):
     rarity = RelicRarity.UNCOMMON
     pool = RelicPool.SHARED
 
-    def after_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side != owner.side or combat.round_number > 1:
+    def after_player_turn_start(self, owner: Creature, combat: CombatState) -> None:
+        if combat.round_number > 1:
             return
         state = combat.combat_player_state_for(owner)
         if state is None:
@@ -104,6 +105,9 @@ class BowlerHat(RelicInstance):
     relic_id = RelicId.BOWLER_HAT
     rarity = RelicRarity.UNCOMMON
     pool = RelicPool.SHARED
+
+    def is_allowed(self, run_state: RunState) -> bool:
+        return self.is_before_act3_treasure_chest(run_state)
     MULTIPLIER = 0.2
 
     def __init__(self, relic_id: RelicId):
@@ -172,7 +176,7 @@ class FuneraryMask(RelicInstance):
             from sts2_env.cards.status import make_soul
 
             for _ in range(self.CARDS):
-                combat.insert_card_into_creature_draw_pile(owner, make_soul(), random_position=True)
+                combat.add_generated_card_to_creature_draw_pile(owner, make_soul(), random_position=True)
 
 
 @register_relic
@@ -208,10 +212,13 @@ class GoldPlatedCables(RelicInstance):
         if orb_queue is None or not orb_queue.orbs:
             return
         first = orb_queue.orbs[0]
-        if plasma and first.orb_type == OrbType.PLASMA:
-            orb_queue.trigger_first_passive(combat)
-        if not plasma and first.orb_type != OrbType.PLASMA:
-            orb_queue.trigger_first_passive(combat)
+        should_trigger = (
+            (plasma and first.orb_type == OrbType.PLASMA)
+            or (not plasma and first.orb_type != OrbType.PLASMA)
+        )
+        if should_trigger:
+            with combat.acting_player_view(owner):
+                orb_queue.trigger_first_passive(combat)
 
     def after_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         if side == owner.side:
@@ -231,20 +238,8 @@ class GremlinHorn(RelicInstance):
     ENERGY = 1
     CARDS = 1
 
-    def after_damage_received(
-        self,
-        owner: Creature,
-        target: Creature,
-        dealer: Creature | None,
-        damage: int,
-        props: ValueProp,
-        combat: CombatState,
-    ) -> None:
-        if target is owner:
-            return
-        if target.side != CombatSide.ENEMY:
-            return
-        if not target.is_dead:
+    def after_death(self, owner: Creature, dead: Creature, combat: CombatState) -> None:
+        if dead.side == owner.side:
             return
         combat.gain_energy(owner, self.ENERGY)
         combat.draw_cards(owner, self.CARDS)
@@ -285,10 +280,9 @@ class JossPaper(RelicInstance):
         combat.draw_cards(owner, draws)
 
     def after_card_exhausted(self, owner: Creature, card: object, combat: CombatState) -> None:
-        card_owner = getattr(card, "owner", None)
-        if card_owner is not None and card_owner is not owner:
+        if getattr(card, "owner", None) is not owner:
             return
-        if getattr(card, "is_ethereal", False) and combat.current_side == CombatSide.PLAYER:
+        if getattr(card, "combat_vars", {}).get("_exhausted_by_ethereal"):
             self._ethereal_exhausted_this_turn += 1
             return
         self._cards_exhausted += 1
@@ -318,17 +312,20 @@ class Kusarigama(RelicInstance):
         super().__init__(relic_id)
         self._attacks_this_turn: int = 0
 
-    def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side == CombatSide.PLAYER:
-            self._attacks_this_turn = 0
+    def before_combat_start(self, owner: Creature, combat: CombatState) -> None:
+        self._attacks_this_turn = 0
 
     def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
-        if hasattr(card, "card_type") and card.card_type == CardType.ATTACK:
+        if (getattr(card, "owner", None) is owner
+                and hasattr(card, "card_type") and card.card_type == CardType.ATTACK):
             self._attacks_this_turn += 1
             if self._attacks_this_turn % self.ATTACK_THRESHOLD == 0:
                 target = combat.random_enemy_of(owner)
                 if target:
                     combat.deal_damage(owner, target, self.DAMAGE, ValueProp.UNPOWERED)
+
+    def after_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
+        self._attacks_this_turn = 0
 
     def after_combat_end(self, owner: Creature, combat: CombatState) -> None:
         self._attacks_this_turn = 0
@@ -347,16 +344,21 @@ class LetterOpener(RelicInstance):
         super().__init__(relic_id)
         self._skills_this_turn: int = 0
 
-    def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
+    def after_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         if side == CombatSide.PLAYER:
             self._skills_this_turn = 0
 
     def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
-        if hasattr(card, "card_type") and card.card_type == CardType.SKILL:
+        if (getattr(card, "owner", None) is owner
+                and hasattr(card, "card_type") and card.card_type == CardType.SKILL):
             self._skills_this_turn += 1
             if self._skills_this_turn % self.SKILL_THRESHOLD == 0:
-                for enemy in combat.get_alive_enemies():
-                    combat.deal_damage(owner, enemy, self.DAMAGE, ValueProp.UNPOWERED)
+                combat.deal_damage(
+                    dealer=owner,
+                    amount=self.DAMAGE,
+                    props=ValueProp.UNPOWERED,
+                    targets=list(combat.hittable_enemies),
+                )
 
     def after_combat_end(self, owner: Creature, combat: CombatState) -> None:
         self._skills_this_turn = 0
@@ -368,9 +370,17 @@ class LuckyFysh(RelicInstance):
     relic_id = RelicId.LUCKY_FYSH
     rarity = RelicRarity.UNCOMMON
     pool = RelicPool.SHARED
+
+    def is_allowed(self, run_state: RunState) -> bool:
+        return self.is_before_act3_treasure_chest(run_state)
     GOLD = 15
 
-    def on_card_added_to_deck(self, owner: Creature) -> None:
+    def on_card_added_to_deck(
+        self,
+        owner: Creature,
+        card: CardInstance,
+        source: object | None = None,
+    ) -> None:
         owner.gain_gold(self.GOLD)
 
 
@@ -382,10 +392,13 @@ class MercuryHourglass(RelicInstance):
     pool = RelicPool.SHARED
     DAMAGE = 3
 
-    def after_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side == CombatSide.PLAYER:
-            for enemy in combat.get_alive_enemies():
-                combat.deal_damage(owner, enemy, self.DAMAGE, ValueProp.UNPOWERED)
+    def after_player_turn_start(self, owner: Creature, combat: CombatState) -> None:
+        combat.deal_damage(
+            dealer=owner,
+            amount=self.DAMAGE,
+            props=ValueProp.UNPOWERED,
+            targets=list(combat.hittable_enemies),
+        )
 
 
 @register_relic
@@ -400,7 +413,7 @@ class MiniatureCannon(RelicInstance):
         self, owner: Creature, dealer: Creature | None, target: Creature,
         props: ValueProp, card: object | None = None
     ) -> int:
-        if (dealer is owner
+        if ((dealer is owner or getattr(card, "owner", None) is owner)
                 and card is not None
                 and hasattr(card, "card_type") and card.card_type == CardType.ATTACK
                 and hasattr(card, "upgraded") and card.upgraded
@@ -423,7 +436,8 @@ class Nunchaku(RelicInstance):
         self._attacks_played: int = 0
 
     def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
-        if hasattr(card, "card_type") and card.card_type == CardType.ATTACK:
+        if (getattr(card, "owner", None) is owner
+                and hasattr(card, "card_type") and card.card_type == CardType.ATTACK):
             self._attacks_played += 1
             if self._attacks_played % self.ATTACK_THRESHOLD == 0:
                 combat.gain_energy(owner, self.ENERGY)
@@ -437,9 +451,21 @@ class Orichalcum(RelicInstance):
     pool = RelicPool.SHARED
     BLOCK = 6
 
+    def __init__(self, relic_id: RelicId):
+        super().__init__(relic_id)
+        self._should_trigger: bool = False
+
+    def before_turn_end_very_early(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
+        if side == owner.side and owner.block == 0:
+            self._should_trigger = True
+
     def before_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side == CombatSide.PLAYER and owner.block == 0:
+        if self._should_trigger:
+            self._should_trigger = False
             owner.gain_block(self.BLOCK, unpowered=True)
+
+    def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
+        self._should_trigger = False
 
 
 @register_relic
@@ -460,7 +486,8 @@ class OrnamentalFan(RelicInstance):
             self._attacks_this_turn = 0
 
     def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
-        if hasattr(card, "card_type") and card.card_type == CardType.ATTACK:
+        if (getattr(card, "owner", None) is owner
+                and hasattr(card, "card_type") and card.card_type == CardType.ATTACK):
             self._attacks_this_turn += 1
             if self._attacks_this_turn % self.ATTACK_THRESHOLD == 0:
                 owner.gain_block(self.BLOCK, unpowered=True)
@@ -556,7 +583,8 @@ class PenNib(RelicInstance):
         self._is_active: bool = False
 
     def before_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
-        if hasattr(card, "card_type") and card.card_type == CardType.ATTACK:
+        if (getattr(card, "owner", None) is owner
+                and hasattr(card, "card_type") and card.card_type == CardType.ATTACK):
             self._attacks_played += 1
             self._is_active = (self._attacks_played % self.THRESHOLD == 0)
 
@@ -564,12 +592,22 @@ class PenNib(RelicInstance):
         self, owner: Creature, dealer: Creature | None, target: Creature,
         props: ValueProp, card: object | None = None
     ) -> float:
-        if dealer is owner and self._is_active:
+        owner_osty = (
+            getattr(dealer, "is_osty", False)
+            and getattr(dealer, "pet_owner", None) is owner
+        )
+        if (
+            self._is_active
+            and card is not None
+            and (dealer is owner or owner_osty)
+            and props.is_powered()
+        ):
             return 2.0
         return 1.0
 
     def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
-        self._is_active = False
+        if getattr(card, "owner", None) is owner:
+            self._is_active = False
 
 
 @register_relic
@@ -579,7 +617,7 @@ class PetrifiedToad(RelicInstance):
     rarity = RelicRarity.UNCOMMON
     pool = RelicPool.SHARED
 
-    def before_combat_start(self, owner: Creature, combat: CombatState) -> None:
+    def before_combat_start_late(self, owner: Creature, combat: CombatState) -> None:
         if hasattr(owner, "procure_potion"):
             owner.procure_potion("PotionShapedRock")
             return
@@ -595,6 +633,9 @@ class Planisphere(RelicInstance):
     relic_id = RelicId.PLANISPHERE
     rarity = RelicRarity.UNCOMMON
     pool = RelicPool.SHARED
+
+    def is_allowed(self, run_state: RunState) -> bool:
+        return self.is_before_act3_treasure_chest(run_state)
     HEAL = 4
 
     def after_room_entered(self, owner: Creature, room_type: object) -> None:
@@ -623,8 +664,8 @@ class RedMask(RelicInstance):
 
     def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         if side == CombatSide.PLAYER and combat.round_number == 1:
-            for enemy in combat.get_alive_enemies():
-                enemy.apply_power(PowerId.WEAK, self.WEAK)
+            for enemy in combat.hittable_enemies:
+                combat.apply_power_to(enemy, PowerId.WEAK, self.WEAK, applier=owner)
 
 
 @register_relic
@@ -686,7 +727,8 @@ class RippleBasin(RelicInstance):
             self._attacks_played_this_turn = 0
 
     def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
-        if hasattr(card, "card_type") and card.card_type == CardType.ATTACK:
+        if (getattr(card, "owner", None) is owner
+                and hasattr(card, "card_type") and card.card_type == CardType.ATTACK):
             self._attacks_played_this_turn += 1
 
     def before_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
@@ -710,7 +752,7 @@ class SelfFormingClay(RelicInstance):
         damage: int, props: ValueProp, combat: CombatState
     ) -> None:
         if target is owner and damage > 0:
-            owner.apply_power(PowerId.BLOCK_NEXT_TURN, self.BLOCK_NEXT_TURN)
+            owner.apply_power(PowerId.SELF_FORMING_CLAY, self.BLOCK_NEXT_TURN)
 
 
 @register_relic
@@ -736,9 +778,17 @@ class StoneCracker(RelicInstance):
     pool = RelicPool.SHARED
     CARDS = 3
 
-    def after_room_entered(self, owner: Creature, room_type: object) -> None:
-        if hasattr(room_type, "is_boss") and room_type.is_boss and hasattr(owner, "upgrade_random_cards"):
-            owner.upgrade_random_cards(None, self.CARDS)
+    def before_combat_start(self, owner: Creature, combat: CombatState) -> None:
+        room = getattr(combat, "room", None)
+        if not (getattr(room, "is_boss", False) or getattr(room, "room_type", None) == RoomType.BOSS):
+            return
+        state = combat.combat_player_state_for(owner)
+        if state is None:
+            return
+        candidates = [card for card in state.draw if not card.upgraded]
+        combat.stable_shuffle_cards(candidates, combat.combat_card_selection_rng)
+        for card in candidates[:self.CARDS]:
+            combat.upgrade_card(card)
 
 
 @register_relic
@@ -755,7 +805,8 @@ class TuningFork(RelicInstance):
         self._skills_played: int = 0
 
     def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
-        if hasattr(card, "card_type") and card.card_type == CardType.SKILL:
+        if (getattr(card, "owner", None) is owner
+                and hasattr(card, "card_type") and card.card_type == CardType.SKILL):
             self._skills_played += 1
             if self._skills_played % self.SKILL_THRESHOLD == 0:
                 owner.gain_block(self.BLOCK, unpowered=True)
@@ -770,7 +821,7 @@ class Tingsha(RelicInstance):
     DAMAGE = 3
 
     def after_card_discarded(self, owner: Creature, card: object, combat: CombatState) -> None:
-        if combat.current_side == CombatSide.PLAYER:
+        if getattr(card, "owner", None) is owner and combat.current_side == CombatSide.PLAYER:
             target = combat.random_enemy_of(owner)
             if target:
                 combat.deal_damage(owner, target, self.DAMAGE, ValueProp.UNPOWERED)
@@ -786,22 +837,43 @@ class Vambrace(RelicInstance):
     def __init__(self, relic_id: RelicId):
         super().__init__(relic_id)
         self._block_gained_this_combat: bool = False
+        self._triggering_card: object | None = None
 
     def modify_block_multiplicative(
         self, owner: Creature, target: Creature, props: ValueProp,
         card_source: object | None = None, card_play: object | None = None,
     ) -> float:
-        if (target is owner and not self._block_gained_this_combat
-                and card_source is not None):
-            self._block_gained_this_combat = True
+        if self._triggering_card is not None and self._triggering_card is not card_source:
+            return 1.0
+        if (target is owner
+                and not self._block_gained_this_combat
+                and card_source is not None
+                and bool(props & ValueProp.MOVE)):
             return 2.0
         return 1.0
 
+    def after_modifying_block_amount(
+        self,
+        owner: Creature,
+        modified_amount: int,
+        card_source: object | None,
+        card_play: object | None,
+        combat: CombatState,
+    ) -> None:
+        if modified_amount > 0 and card_source is not None:
+            self._triggering_card = card_source
+
     def before_combat_start(self, owner: Creature, combat: CombatState) -> None:
         self._block_gained_this_combat = False
+        self._triggering_card = None
+
+    def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
+        if getattr(card, "owner", None) is owner and card is self._triggering_card:
+            self._block_gained_this_combat = True
 
     def after_combat_end(self, owner: Creature, combat: CombatState) -> None:
         self._block_gained_this_combat = False
+        self._triggering_card = None
 
 
 @register_relic
@@ -828,5 +900,5 @@ class TwistedFunnel(RelicInstance):
 
     def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         if side == CombatSide.PLAYER and combat.round_number == 1:
-            for enemy in combat.get_alive_enemies():
-                enemy.apply_power(PowerId.POISON, self.POISON)
+            for enemy in combat.hittable_enemies:
+                combat.apply_power_to(enemy, PowerId.POISON, self.POISON, applier=owner)

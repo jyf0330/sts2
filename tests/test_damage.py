@@ -6,6 +6,38 @@ import pytest
 from sts2_env.core.creature import Creature
 from sts2_env.core.damage import calculate_damage, calculate_block, apply_damage
 from sts2_env.core.enums import CombatSide, PowerId, ValueProp
+from sts2_env.powers.base import PowerInstance
+
+
+class _RecordingDamagePower(PowerInstance):
+    def __init__(self, events: list[str]):
+        super().__init__(PowerId.BURROWED, 1)
+        self.events = events
+
+    def on_block_broken(self, owner, combat) -> None:
+        self.events.append("block")
+
+    def after_current_hp_changed(self, owner, creature, delta, combat) -> None:
+        if creature is owner:
+            self.events.append("hp")
+
+    def after_damage_given(self, owner, dealer, target, damage, props, combat) -> None:
+        if target is owner:
+            self.events.append("given")
+
+    def after_damage_received(self, owner, target, dealer, damage, props, combat) -> None:
+        if target is owner:
+            self.events.append("received")
+
+
+class _RecordingGivenDamagePower(PowerInstance):
+    def __init__(self, damage_seen: list[int]):
+        super().__init__(PowerId.VIGOR, 1)
+        self.damage_seen = damage_seen
+
+    def after_damage_given(self, owner, dealer, target, damage, props, combat) -> None:
+        if dealer is owner:
+            self.damage_seen.append(damage)
 
 
 class TestDamagePipeline:
@@ -124,6 +156,38 @@ class TestApplyDamage:
         assert result.blocked == 0
         assert result.hp_lost == 0
         assert enemy.current_hp == 50
+
+    def test_combat_damage_hooks_follow_original_order(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        events = []
+        enemy.block = 3
+        enemy.powers[PowerId.BURROWED] = _RecordingDamagePower(events)
+
+        simple_combat.deal_damage(
+            dealer=player,
+            target=enemy,
+            amount=5,
+            props=ValueProp.MOVE,
+        )
+
+        assert events == ["block", "hp", "given", "received"]
+
+    def test_lethal_damage_hooks_use_actual_hp_lost_not_overkill(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        damage_seen = []
+        player.powers[PowerId.VIGOR] = _RecordingGivenDamagePower(damage_seen)
+        enemy.current_hp = 2
+
+        simple_combat.deal_damage(
+            dealer=player,
+            target=enemy,
+            amount=5,
+            props=ValueProp.MOVE,
+        )
+
+        assert damage_seen == [2]
 
 
 class TestBlockPipeline:

@@ -3,15 +3,18 @@
 import sts2_env.powers  # noqa: F401
 
 from sts2_env.cards.ironclad import (
+    make_ashen_strike,
     create_ironclad_starter_deck,
     make_battle_trance,
     make_bloodletting,
+    make_bully,
     make_feel_no_pain,
     make_fiend_fire,
     make_inflame,
     make_perfected_strike,
     make_pommel_strike,
     make_rampage,
+    make_twin_strike,
 )
 from sts2_env.cards.ironclad_basic import make_defend_ironclad, make_strike_ironclad
 from sts2_env.core.combat import CombatState
@@ -35,6 +38,21 @@ def _make_combat() -> CombatState:
 
 
 class TestIroncladParityExtra2:
+    def test_dynamic_damage_upgrades_only_increase_extra_damage(self):
+        """Matches PerfectedStrike/AshenStrike/Bully: upgrade increases ExtraDamage, not CalculationBase."""
+        assert make_perfected_strike(upgraded=True).effect_vars == {
+            "calc_base": 6,
+            "extra_damage": 3,
+        }
+        assert make_ashen_strike(upgraded=True).effect_vars == {
+            "calc_base": 6,
+            "extra_damage": 4,
+        }
+        assert make_bully(upgraded=True).effect_vars == {
+            "calc_base": 4,
+            "extra_damage": 3,
+        }
+
     def test_battle_trance_draws_then_applies_no_draw_for_future_draws(self):
         """Matches BattleTrance.cs: draw first, then apply No Draw for later non-hand draws."""
         combat = _make_combat()
@@ -160,3 +178,35 @@ class TestIroncladParityExtra2:
         assert strike in combat.exhaust_pile
         assert defend in combat.exhaust_pile
         assert len(combat.hand) == 0
+
+    def test_fiend_fire_stops_followup_hits_if_attacker_dies_to_thorns(self):
+        """Matches AttackCommand.cs: later hits stop when the attacker is dead."""
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = enemy.max_hp = 100
+        enemy.apply_power(PowerId.THORNS, 5)
+        combat.player.current_hp = 3
+        combat.hand = [make_fiend_fire(), make_strike_ironclad(), make_defend_ironclad()]
+        combat.energy = 2
+
+        assert combat.play_card(0, 0)
+        assert combat.player.current_hp == 0
+        assert enemy.current_hp == 93
+        assert combat.is_over
+        assert combat.player_won is False
+
+    def test_twin_strike_stops_second_hit_if_attacker_dies_to_thorns(self):
+        """Matches AttackCommand.cs: the next hit is skipped if the attacker died."""
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = enemy.max_hp = 100
+        enemy.apply_power(PowerId.THORNS, 5)
+        combat.player.current_hp = 3
+        combat.hand = [make_twin_strike()]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+        assert combat.player.current_hp == 0
+        assert enemy.current_hp == 95
+        assert combat.is_over
+        assert combat.player_won is False

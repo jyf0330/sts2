@@ -44,7 +44,9 @@ def _deal_damage_single(card: CardInstance, combat: CombatState, target: Creatur
 
 def _deal_damage_all(card: CardInstance, combat: CombatState) -> None:
     owner = _owner(card, combat)
-    for enemy in list(combat.alive_enemies):
+    if owner.is_dead:
+        return
+    for enemy in list(combat.hittable_enemies):
         damage = calculate_damage(card.base_damage, owner, enemy, ValueProp.MOVE, combat)
         apply_damage(enemy, damage, ValueProp.MOVE, combat, owner)
 
@@ -78,30 +80,39 @@ def catastrophe(card: CardInstance, combat: CombatState, target: Creature | None
             candidates = list(combat.draw_pile)
         if not candidates:
             break
-        combat.auto_play_card(combat.rng.choice(candidates))
+        combat.stable_shuffle_cards(candidates, combat.shuffle_rng)
+        combat.auto_play_card(candidates[0])
 
 
 @register_effect(CardId.COORDINATE_CARD)
 def coordinate_card(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     strength = card.effect_vars.get("strength", 5)
+    resolved_target = target if target is not None else _owner(card, combat)
+    previous = resolved_target.get_power_amount(PowerId.COORDINATE)
     if target is not None:
         combat.apply_power_to(target, PowerId.COORDINATE, strength)
     else:
-        combat.apply_power_to(_owner(card, combat), PowerId.COORDINATE, strength)
+        combat.apply_power_to(resolved_target, PowerId.COORDINATE, strength)
+    if resolved_target.get_power_amount(PowerId.COORDINATE) > previous:
+        combat.apply_power_to(resolved_target, PowerId.STRENGTH, strength)
 
 
 @register_effect(CardId.DARK_SHACKLES)
 def dark_shackles(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
     strength_loss = card.effect_vars.get("strength_loss", 9)
+    previous = target.get_power_amount(PowerId.DARK_SHACKLES)
     combat.apply_power_to(target, PowerId.DARK_SHACKLES, strength_loss)
+    applied = target.get_power_amount(PowerId.DARK_SHACKLES) - previous
+    if applied > 0:
+        target.apply_power(PowerId.STRENGTH, -applied, applier=_owner(card, combat), source=card)
 
 
 @register_effect(CardId.DISCOVERY)
 def discovery(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     candidates = create_distinct_character_cards(
         combat.character_id,
-        combat.rng,
+        combat.combat_card_generation_rng,
         3,
         generation_context="modifier",
     )
@@ -112,7 +123,7 @@ def discovery(card: CardInstance, combat: CombatState, target: Creature | None) 
         if selected is None:
             return
         selected.set_temporary_cost_for_turn(0)
-        combat.move_card_to_hand(selected)
+        combat.add_generated_card_to_creature_hand(_owner(card, combat), selected)
 
     combat.request_card_choice(
         prompt="Choose one of three cards",
@@ -153,7 +164,7 @@ def fisticuffs(card: CardInstance, combat: CombatState, target: Creature | None)
     owner = _owner(card, combat)
     damage = calculate_damage(card.base_damage, owner, target, ValueProp.MOVE, combat)
     result = apply_damage(target, damage, ValueProp.MOVE, combat, owner)
-    owner.gain_block(result.unblocked_damage)
+    owner.gain_block(result.total_damage + result.overkill_damage)
 
 
 @register_effect(CardId.FLASH_OF_STEEL)
@@ -207,11 +218,11 @@ def impatience(card: CardInstance, combat: CombatState, target: Creature | None)
 
 @register_effect(CardId.INTERCEPT_CARD)
 def intercept_card(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    resolved_target = target if target is not None else _owner(card, combat)
-    block = calculate_block(card.base_block, resolved_target, ValueProp.MOVE, combat, card_source=card)
-    resolved_target.gain_block(block)
-    if target is not None:
-        combat.apply_power_to(target, PowerId.COVERED, 1)
+    owner = _owner(card, combat)
+    resolved_target = target if target is not None else owner
+    block = calculate_block(card.base_block, owner, ValueProp.MOVE, combat, card_source=card)
+    owner.gain_block(block)
+    combat.apply_power_to(resolved_target, PowerId.COVERED, 1, applier=owner, source=card)
 
 
 @register_effect(CardId.JACK_OF_ALL_TRADES)
@@ -223,12 +234,12 @@ def jack_of_all_trades(card: CardInstance, combat: CombatState, target: Creature
     )
     generated = create_cards_from_ids(
         colorless_ids,
-        combat.rng,
+        combat.combat_card_generation_rng,
         card.effect_vars.get("cards", 1),
         distinct=True,
     )
     for generated_card in generated:
-        combat.move_card_to_hand(generated_card)
+        combat.add_generated_card_to_creature_hand(_owner(card, combat), generated_card)
 
 
 @register_effect(CardId.LIFT)
@@ -257,7 +268,7 @@ def omnislice(card: CardInstance, combat: CombatState, target: Creature | None) 
     damage = calculate_damage(base_damage, owner, target, ValueProp.MOVE, combat)
     result = apply_damage(target, damage, ValueProp.MOVE, combat, owner)
 
-    splash_damage = result.blocked + result.unblocked_damage
+    splash_damage = result.total_damage + result.overkill_damage
     if splash_damage <= 0:
         return
 
@@ -353,7 +364,7 @@ def seeker_strike(card: CardInstance, combat: CombatState, target: Creature | No
     candidates = list(combat.draw_pile)
     if not candidates:
         return
-    combat.rng.shuffle(candidates)
+    combat.stable_shuffle_cards(candidates, combat.combat_card_selection_rng)
     candidates = candidates[:card.effect_vars.get("cards", 2)]
     combat.request_card_choice(
         prompt="Choose one of the revealed cards",
@@ -366,7 +377,7 @@ def seeker_strike(card: CardInstance, combat: CombatState, target: Creature | No
 @register_effect(CardId.SHOCKWAVE)
 def shockwave(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     amount = card.effect_vars.get("power", 3)
-    for enemy in list(combat.alive_enemies):
+    for enemy in list(combat.hittable_enemies):
         combat.apply_power_to(enemy, PowerId.WEAK, amount)
         combat.apply_power_to(enemy, PowerId.VULNERABLE, amount)
 
@@ -385,11 +396,11 @@ def splash(card: CardInstance, combat: CombatState, target: Creature | None) -> 
     if not candidate_ids:
         return
 
-    generated = create_cards_from_ids(candidate_ids, combat.rng, 3, distinct=True)
+    generated = create_cards_from_ids(candidate_ids, combat.combat_card_generation_rng, 3, distinct=True)
     for generated_card in generated:
         if card.upgraded:
             combat.upgrade_card(generated_card)
-        generated_card.set_temporary_cost_for_turn(0)
+        generated_card.set_temporary_free_this_turn()
 
     combat.request_card_choice(
         prompt="Choose one upgraded free attack",
@@ -441,6 +452,7 @@ def thinking_ahead(card: CardInstance, combat: CombatState, target: Creature | N
 def thrumming_hatchet(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
     _deal_damage_single(card, combat, target)
+    card.combat_vars["_return_before_hand_draw_round"] = combat.round_number + 1
 
 
 @register_effect(CardId.ULTIMATE_DEFEND)
@@ -462,10 +474,12 @@ def volley(card: CardInstance, combat: CombatState, target: Creature | None) -> 
         return
     owner = _owner(card, combat)
     for _ in range(hits):
-        alive = combat.alive_enemies
-        if not alive:
+        if owner.is_dead:
             break
-        t = combat.rng.choice(alive)
+        hittable = combat.hittable_enemies
+        if not hittable:
+            break
+        t = combat.combat_targets_rng.choice(hittable)
         damage = calculate_damage(card.base_damage, owner, t, ValueProp.MOVE, combat)
         apply_damage(t, damage, ValueProp.MOVE, combat, owner)
 
@@ -497,7 +511,7 @@ def beat_down(card: CardInstance, combat: CombatState, target: Creature | None) 
     cards = card.effect_vars.get("cards", 3)
     discard = combat._zones_for_creature(owner)["discard"]  # noqa: SLF001
     candidates = [c for c in discard if c.card_type == CardType.ATTACK and not c.is_unplayable]
-    combat.rng.shuffle(candidates)
+    combat.stable_shuffle_cards(candidates, combat.shuffle_rng)
     for selected in candidates[:cards]:
         if combat.is_over:
             break
@@ -509,6 +523,7 @@ def beat_down(card: CardInstance, combat: CombatState, target: Creature | None) 
 def bolas(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
     _deal_damage_single(card, combat, target)
+    card.combat_vars["_return_before_hand_draw_round"] = combat.round_number + 1
 
 
 @register_effect(CardId.CALAMITY_CARD)
@@ -549,15 +564,22 @@ def hand_of_greed(card: CardInstance, combat: CombatState, target: Creature | No
 
 @register_effect(CardId.HIDDEN_GEM)
 def hidden_gem(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    candidates = [
+    valid_draw_cards = [
         c for c in combat.draw_pile
-        if not c.is_unplayable and c.card_type in (CardType.ATTACK, CardType.SKILL, CardType.POWER)
+        if (
+            not c.is_unplayable
+            and c.card_type not in (CardType.CURSE, CardType.QUEST)
+        )
+    ]
+    candidates = [
+        c for c in valid_draw_cards
+        if c.card_type in (CardType.ATTACK, CardType.SKILL, CardType.POWER)
     ]
     if not candidates:
-        candidates = [c for c in combat.draw_pile if not c.is_unplayable]
+        candidates = valid_draw_cards
     if not candidates:
         return
-    selected = combat.rng.choice(candidates)
+    selected = combat.combat_card_selection_rng.choice(candidates)
     selected.base_replay_count += card.effect_vars.get("replay", 2)
 
 
@@ -576,14 +598,14 @@ def jackpot(card: CardInstance, combat: CombatState, target: Creature | None) ->
     ]
     generated = create_cards_from_ids(
         [card_id for card_id in zero_cost_ids if card_id in set(get_character(combat.character_id).card_pool)],
-        combat.rng,
+        combat.combat_card_generation_rng,
         card.effect_vars.get("cards", 3),
         distinct=False,
     )
     for generated_card in generated:
         if card.upgraded:
             combat.upgrade_card(generated_card)
-        combat.move_card_to_hand(generated_card)
+        combat.add_generated_card_to_creature_hand(_owner(card, combat), generated_card)
 
 
 @register_effect(CardId.KNOCKDOWN)
@@ -636,15 +658,15 @@ def rally(card: CardInstance, combat: CombatState, target: Creature | None) -> N
 def rend(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     """Scales with non-temporary debuffs on the target."""
     assert target is not None
-    owner = _owner(card, combat)
     debuffs = sum(
         1
         for power in target.powers.values()
-        if power.power_type == PowerType.DEBUFF and power.stack_type != PowerStackType.DURATION
+        if power.power_type == PowerType.DEBUFF and not getattr(power, "is_temporary", False)
     )
     base = card.effect_vars.get("calc_base", card.base_damage or 15)
     extra = card.effect_vars.get("extra_damage", 5)
     total_damage = base + extra * debuffs
+    owner = _owner(card, combat)
     damage = calculate_damage(total_damage, owner, target, ValueProp.MOVE, combat)
     apply_damage(target, damage, ValueProp.MOVE, combat, owner)
 

@@ -28,6 +28,29 @@ def _osty(card: CardInstance, combat: CombatState) -> Creature | None:
     return combat.get_osty(_owner(card, combat))
 
 
+def _osty_damage(card: CardInstance, fallback: int = 0) -> int:
+    return card.effect_vars.get("osty_damage", card.base_damage or fallback)
+
+
+def _deal_osty_damage_single(
+    card: CardInstance,
+    combat: CombatState,
+    target: Creature,
+    fallback: int = 0,
+) -> None:
+    osty = _osty(card, combat)
+    if osty is None or not osty.is_alive:
+        return
+    combat.deal_damage(osty, target, _osty_damage(card, fallback), ValueProp.MOVE)
+
+
+def _deal_osty_damage_all(card: CardInstance, combat: CombatState, fallback: int = 0) -> None:
+    osty = _osty(card, combat)
+    if osty is None or not osty.is_alive:
+        return
+    combat.deal_damage(osty, amount=_osty_damage(card, fallback), props=ValueProp.MOVE, targets=list(combat.hittable_enemies))
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -35,14 +58,18 @@ def _osty(card: CardInstance, combat: CombatState) -> Creature | None:
 def _deal_damage_single(card: CardInstance, combat: CombatState, target: Creature) -> None:
     """Standard single-target damage."""
     owner = _owner(card, combat)
+    if owner.is_dead:
+        return
     damage = calculate_damage(card.base_damage, owner, target, ValueProp.MOVE, combat)
     apply_damage(target, damage, ValueProp.MOVE, combat, owner)
 
 
 def _deal_damage_all(card: CardInstance, combat: CombatState) -> None:
-    """Deal card.base_damage to all enemies."""
+    """Deal card.base_damage to all hittable enemies."""
     owner = _owner(card, combat)
-    for enemy in list(combat.alive_enemies):
+    if owner.is_dead:
+        return
+    for enemy in list(combat.hittable_enemies):
         damage = calculate_damage(card.base_damage, owner, enemy, ValueProp.MOVE, combat)
         apply_damage(enemy, damage, ValueProp.MOVE, combat, owner)
 
@@ -75,9 +102,13 @@ def bodyguard(card: CardInstance, combat: CombatState, target: Creature | None) 
 
 @register_effect(CardId.UNLEASH)
 def unleash(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    """OstyAttack — damage scales with Osty stacks."""
+    """OstyAttack — damage scales with current Osty HP."""
     assert target is not None
-    _deal_damage_single(card, combat, target)
+    osty = _osty(card, combat)
+    if osty is None or not osty.is_alive:
+        return
+    total_damage = card.effect_vars.get("calc_base", card.base_damage or 6) + card.effect_vars.get("extra_damage", 1) * osty.current_hp
+    combat.deal_damage(osty, target, total_damage, ValueProp.MOVE)
 
 
 # ---------------------------------------------------------------------------
@@ -92,10 +123,12 @@ def afterlife(card: CardInstance, combat: CombatState, target: Creature | None) 
 @register_effect(CardId.BLIGHT_STRIKE)
 def blight_strike(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
-    _deal_damage_single(card, combat, target)
-    doom = card.effect_vars.get("doom", 0)
-    if doom:
-        combat.apply_power_to(target, PowerId.DOOM, doom)
+    owner = _owner(card, combat)
+    damage = calculate_damage(card.base_damage, owner, target, ValueProp.MOVE, combat)
+    result = apply_damage(target, damage, ValueProp.MOVE, combat, owner)
+    total_damage = result.total_damage
+    if total_damage > 0:
+        combat.apply_power_to(target, PowerId.DOOM, total_damage)
 
 
 @register_effect(CardId.DEFILE)
@@ -129,9 +162,9 @@ def fear(card: CardInstance, combat: CombatState, target: Creature | None) -> No
 
 @register_effect(CardId.FLATTEN)
 def flatten(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    """OstyAttack — damage dealt by both player and osty."""
+    """OstyAttack."""
     assert target is not None
-    _deal_damage_single(card, combat, target)
+    _deal_osty_damage_single(card, combat, target, 12)
 
 
 @register_effect(CardId.GRAVE_WARDEN)
@@ -143,7 +176,7 @@ def grave_warden(card: CardInstance, combat: CombatState, target: Creature | Non
     for _ in range(max(0, card.effect_vars.get("cards", 1))):
         soul = make_soul(upgraded=card.upgraded)
         soul.owner = owner
-        insert_at = combat.rng.next_int(0, len(combat.draw_pile))
+        insert_at = combat.shuffle_rng.next_int(0, len(combat.draw_pile))
         combat.draw_pile.insert(insert_at, soul)
 
 
@@ -163,8 +196,9 @@ def graveblast(card: CardInstance, combat: CombatState, target: Creature | None)
 
 @register_effect(CardId.INVOKE)
 def invoke(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
+    summon = card.effect_vars.get("summon", 2)
     energy = card.effect_vars.get("energy", 2)
-    combat.apply_power_to(_owner(card, combat), PowerId.SUMMON_NEXT_TURN, 1)
+    combat.apply_power_to(_owner(card, combat), PowerId.SUMMON_NEXT_TURN, summon)
     combat.apply_power_to(_owner(card, combat), PowerId.ENERGY_NEXT_TURN, energy)
 
 
@@ -172,7 +206,7 @@ def invoke(card: CardInstance, combat: CombatState, target: Creature | None) -> 
 def negative_pulse(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     _gain_block(card, combat)
     doom = card.effect_vars.get("doom", 7)
-    for enemy in list(combat.alive_enemies):
+    for enemy in list(combat.hittable_enemies):
         combat.apply_power_to(enemy, PowerId.DOOM, doom)
 
 
@@ -180,7 +214,7 @@ def negative_pulse(card: CardInstance, combat: CombatState, target: Creature | N
 def poke(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     """OstyAttack."""
     assert target is not None
-    _deal_damage_single(card, combat, target)
+    _deal_osty_damage_single(card, combat, target, 6)
 
 
 @register_effect(CardId.PULL_AGGRO)
@@ -202,7 +236,11 @@ def reave(card: CardInstance, combat: CombatState, target: Creature | None) -> N
     assert target is not None
     _deal_damage_single(card, combat, target)
     for _ in range(max(0, card.effect_vars.get("cards", 1))):
-        combat.insert_card_into_draw_pile(make_soul(upgraded=card.upgraded), random_position=True)
+        combat.add_generated_card_to_creature_draw_pile(
+            _owner(card, combat),
+            make_soul(upgraded=card.upgraded),
+            bottom_position=True,
+        )
 
 
 @register_effect(CardId.SCOURGE)
@@ -239,7 +277,7 @@ def sculpting_strike(card: CardInstance, combat: CombatState, target: Creature |
 def snap(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     """OstyAttack — select card from hand."""
     assert target is not None
-    _deal_damage_single(card, combat, target)
+    _deal_osty_damage_single(card, combat, target, 7)
 
 
 @register_effect(CardId.SOW)
@@ -263,7 +301,7 @@ def bone_shards(card: CardInstance, combat: CombatState, target: Creature | None
     osty = _osty(card, combat)
     if osty is None or not osty.is_alive:
         return
-    _deal_damage_all(card, combat)
+    _deal_osty_damage_all(card, combat, 9)
     _gain_block(card, combat)
     combat.kill_osty(_owner(card, combat))
 
@@ -301,7 +339,11 @@ def capture_spirit(card: CardInstance, combat: CombatState, target: Creature | N
         props=ValueProp.UNBLOCKABLE | ValueProp.UNPOWERED | ValueProp.MOVE,
     )
     for _ in range(max(0, card.effect_vars.get("cards", 3))):
-        combat.insert_card_into_draw_pile(make_soul(), random_position=True)
+        combat.add_generated_card_to_creature_draw_pile(
+            _owner(card, combat),
+            make_soul(),
+            random_position=True,
+        )
 
 
 @register_effect(CardId.CLEANSE)
@@ -345,10 +387,10 @@ def death_march(card: CardInstance, combat: CombatState, target: Creature | None
 @register_effect(CardId.DEATHBRINGER)
 def deathbringer(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     doom = card.effect_vars.get("doom", 21)
-    for enemy in list(combat.alive_enemies):
+    for enemy in list(combat.hittable_enemies):
         combat.apply_power_to(enemy, PowerId.DOOM, doom)
     weak = card.effect_vars.get("weak", 1)
-    for enemy in list(combat.alive_enemies):
+    for enemy in list(combat.hittable_enemies):
         combat.apply_power_to(enemy, PowerId.WEAK, weak)
 
 
@@ -385,7 +427,7 @@ def dirge(card: CardInstance, combat: CombatState, target: Creature | None) -> N
         combat.summon_osty(_owner(card, combat), summon_amount)
     for _ in range(x_value):
         soul = make_soul(upgraded=card.upgraded)
-        combat.insert_card_into_draw_pile(soul, random_position=True)
+        combat.add_generated_card_to_creature_draw_pile(_owner(card, combat), soul, random_position=True)
 
 
 @register_effect(CardId.DREDGE)
@@ -416,7 +458,7 @@ def fetch(card: CardInstance, combat: CombatState, target: Creature | None) -> N
     if osty is None or not osty.is_alive:
         return
     assert target is not None
-    _deal_damage_single(card, combat, target)
+    _deal_osty_damage_single(card, combat, target, 3)
     if all(played is not card for played in combat._played_cards_this_turn):
         cards = card.effect_vars.get("cards", 1)
         combat._draw_cards(cards)
@@ -441,9 +483,9 @@ def high_five(card: CardInstance, combat: CombatState, target: Creature | None) 
     osty = _osty(card, combat)
     if osty is None or not osty.is_alive:
         return
-    _deal_damage_all(card, combat)
+    _deal_osty_damage_all(card, combat, 11)
     vuln = card.effect_vars.get("vulnerable", 2)
-    for enemy in list(combat.alive_enemies):
+    for enemy in list(combat.hittable_enemies):
         combat.apply_power_to(enemy, PowerId.VULNERABLE, vuln)
 
 
@@ -500,10 +542,10 @@ def pull_from_below(card: CardInstance, combat: CombatState, target: Creature | 
         if getattr(played, "owner", None) is owner and played.is_ethereal
     )
     for _ in range(hits):
+        if owner.is_dead or target.is_dead:
+            break
         damage = calculate_damage(card.base_damage, owner, target, ValueProp.MOVE, combat)
         apply_damage(target, damage, ValueProp.MOVE, combat, owner)
-        if target.is_dead:
-            break
 
 
 @register_effect(CardId.PUTREFY)
@@ -521,20 +563,18 @@ def rattle(card: CardInstance, combat: CombatState, target: Creature | None) -> 
     if osty is None or not osty.is_alive:
         return
     assert target is not None
-    owner = _owner(card, combat)
     hits = 1 + combat.count_powered_hits_by_dealer_this_turn(osty)
     for _ in range(hits):
-        damage = calculate_damage(card.base_damage, owner, target, ValueProp.MOVE, combat)
-        apply_damage(target, damage, ValueProp.MOVE, combat, owner)
-        if target.is_dead:
+        if osty.is_dead or target.is_dead:
             break
+        combat.deal_damage(osty, target, _osty_damage(card, 7), ValueProp.MOVE)
 
 
 @register_effect(CardId.RIGHT_HAND_HAND)
 def right_hand_hand(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     """OstyAttack — deal damage; may return to hand after play."""
     assert target is not None
-    _deal_damage_single(card, combat, target)
+    _deal_osty_damage_single(card, combat, target, 4)
 
 
 @register_late_effect(CardId.RIGHT_HAND_HAND)
@@ -559,9 +599,10 @@ def severance(card: CardInstance, combat: CombatState, target: Creature | None) 
     assert target is not None
     _deal_damage_single(card, combat, target)
     souls = [make_soul() for _ in range(3)]
-    combat.insert_card_into_draw_pile(souls[0], random_position=True)
-    combat.move_card_to_discard(souls[1])
-    combat.move_card_to_hand(souls[2])
+    owner = _owner(card, combat)
+    combat.add_generated_card_to_creature_draw_pile(owner, souls[0], random_position=True)
+    combat.add_generated_card_to_creature_discard(owner, souls[1])
+    combat.add_generated_card_to_creature_hand(owner, souls[2])
 
 
 @register_effect(CardId.SHROUD)
@@ -577,9 +618,10 @@ def sic_em(card: CardInstance, combat: CombatState, target: Creature | None) -> 
     if osty is None or not osty.is_alive:
         return
     assert target is not None
-    _deal_damage_single(card, combat, target)
+    owner = _owner(card, combat)
+    _deal_osty_damage_single(card, combat, target, 5)
     amount = card.effect_vars.get("sic_em", 2)
-    combat.apply_power_to(target, PowerId.SIC_EM, amount)
+    combat.apply_power_to(target, PowerId.SIC_EM, amount, applier=owner, source=card)
 
 
 @register_effect(CardId.SLEIGHT_OF_FLESH)
@@ -641,9 +683,14 @@ def eidolon(card: CardInstance, combat: CombatState, target: Creature | None) ->
 @register_effect(CardId.END_OF_DAYS)
 def end_of_days(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     doom = card.effect_vars.get("doom", 29)
-    for enemy in list(combat.alive_enemies):
+    for enemy in list(combat.hittable_enemies):
         combat.apply_power_to(enemy, PowerId.DOOM, doom)
-    combat.kill_doomed_enemies()
+    doomed = [
+        enemy for enemy in list(combat.hittable_enemies)
+        if enemy.get_power_amount(PowerId.DOOM) > 0
+        and enemy.current_hp <= enemy.get_power_amount(PowerId.DOOM)
+    ]
+    combat.kill_doomed_creatures(doomed)
 
 
 @register_effect(CardId.ERADICATE)
@@ -653,10 +700,10 @@ def eradicate(card: CardInstance, combat: CombatState, target: Creature | None) 
     owner = _owner(card, combat)
     x = getattr(card, "energy_spent", 0)
     for _ in range(x):
+        if owner.is_dead or target.is_dead:
+            break
         damage = calculate_damage(card.base_damage, owner, target, ValueProp.MOVE, combat)
         apply_damage(target, damage, ValueProp.MOVE, combat, owner)
-        if target.is_dead:
-            break
 
 
 @register_effect(CardId.GLIMPSE_BEYOND)
@@ -666,7 +713,7 @@ def glimpse_beyond(card: CardInstance, combat: CombatState, target: Creature | N
     for ally in combat.get_player_allies_of(_owner(card, combat)):
         for _ in range(max(0, card.effect_vars.get("cards", 3))):
             soul = make_soul()
-            combat.insert_card_into_creature_draw_pile(ally, soul, random_position=True)
+            combat.add_generated_card_to_creature_draw_pile(ally, soul, random_position=True)
 
 
 @register_effect(CardId.HANG)
@@ -701,8 +748,12 @@ def neurosurge(card: CardInstance, combat: CombatState, target: Creature | None)
 @register_effect(CardId.OBLIVION)
 def oblivion(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
+    owner = _owner(card, combat)
     doom = card.effect_vars.get("doom", 3)
-    combat.apply_power_to(target, PowerId.OBLIVION, doom)
+    combat.apply_power_to(target, PowerId.OBLIVION, doom, applier=owner)
+    power = target.powers.get(PowerId.OBLIVION)
+    if power is not None:
+        power.applier = owner
 
 
 @register_effect(CardId.REANIMATE)
@@ -801,8 +852,7 @@ def squeeze(card: CardInstance, combat: CombatState, target: Creature | None) ->
     base = card.effect_vars.get("calc_base", card.base_damage or 25)
     extra = card.effect_vars.get("extra_damage", 5)
     total_damage = base + extra * count
-    damage = calculate_damage(total_damage, owner, target, ValueProp.MOVE, combat)
-    apply_damage(target, damage, ValueProp.MOVE, combat, owner)
+    combat.deal_damage(osty, target, total_damage, ValueProp.MOVE)
 
 
 @register_effect(CardId.THE_SCYTHE)
@@ -871,12 +921,10 @@ def protector(card: CardInstance, combat: CombatState, target: Creature | None) 
     if osty is None or not osty.is_alive:
         return
     assert target is not None
-    owner = _owner(card, combat)
     base = card.effect_vars.get("calc_base", card.base_damage or 10)
     extra = card.effect_vars.get("extra_damage", 1)
     total_damage = base + extra * osty.max_hp
-    damage = calculate_damage(total_damage, owner, target, ValueProp.MOVE, combat)
-    apply_damage(target, damage, ValueProp.MOVE, combat, owner)
+    combat.deal_damage(osty, target, total_damage, ValueProp.MOVE)
 
 
 # ---------------------------------------------------------------------------
@@ -916,6 +964,7 @@ def make_unleash(upgraded: bool = False) -> CardInstance:
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.BASIC,
         base_damage=6 if not upgraded else 9,
         upgraded=upgraded, instance_id=_get_next_id(),
+        tags=frozenset({"osty_attack"}),
         effect_vars={"calc_base": 6 if not upgraded else 9, "extra_damage": 1},
     )
 
@@ -985,7 +1034,9 @@ def make_flatten(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.FLATTEN, cost=2, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.COMMON,
-        base_damage=0, upgraded=upgraded,
+        base_damage=16 if upgraded else 12, upgraded=upgraded,
+        tags=frozenset({"osty_attack"}),
+        effect_vars={"osty_damage": 16 if upgraded else 12},
         instance_id=_get_next_id(),
     )
 
@@ -1014,7 +1065,7 @@ def make_invoke(upgraded: bool = False) -> CardInstance:
         card_id=CardId.INVOKE, cost=1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.COMMON,
         upgraded=upgraded,
-        effect_vars={"energy": 3 if upgraded else 2},
+        effect_vars={"summon": 3 if upgraded else 2, "energy": 3 if upgraded else 2},
         instance_id=_get_next_id(),
     )
 
@@ -1033,7 +1084,8 @@ def make_poke(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.POKE, cost=0, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.COMMON,
-        base_damage=3 if upgraded else 0, upgraded=upgraded,
+        base_damage=9 if upgraded else 6, upgraded=upgraded,
+        effect_vars={"osty_damage": 9 if upgraded else 6},
         instance_id=_get_next_id(),
     )
 
@@ -1089,7 +1141,8 @@ def make_snap(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.SNAP, cost=1, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.COMMON,
-        base_damage=3 if upgraded else 0, upgraded=upgraded,
+        base_damage=10 if upgraded else 7, upgraded=upgraded,
+        effect_vars={"osty_damage": 10 if upgraded else 7},
         instance_id=_get_next_id(),
     )
 
@@ -1249,7 +1302,7 @@ def make_right_hand_hand(upgraded: bool = False) -> CardInstance:
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.UNCOMMON,
         upgraded=upgraded, base_damage=6 if upgraded else 4,
         tags=frozenset({"osty_attack"}),
-        effect_vars={"energy": 2},
+        effect_vars={"osty_damage": 6 if upgraded else 4, "energy": 2},
         instance_id=_get_next_id(),
     )
 
@@ -1260,6 +1313,7 @@ def make_bone_shards(upgraded: bool = False) -> CardInstance:
     card = create_reference_card(CardId.BONE_SHARDS, upgraded=upgraded, allow_generation=True)
     card.base_damage = 12 if upgraded else 9
     card.base_block = 12 if upgraded else 9
+    card.effect_vars["osty_damage"] = 12 if upgraded else 9
     return card
 
 
@@ -1278,6 +1332,7 @@ def make_fetch(upgraded: bool = False) -> CardInstance:
 
     card = create_reference_card(CardId.FETCH, upgraded=upgraded, allow_generation=True)
     card.base_damage = 6 if upgraded else 3
+    card.effect_vars["osty_damage"] = 6 if upgraded else 3
     return card
 
 
@@ -1286,6 +1341,7 @@ def make_high_five(upgraded: bool = False) -> CardInstance:
 
     card = create_reference_card(CardId.HIGH_FIVE, upgraded=upgraded, allow_generation=True)
     card.base_damage = 13 if upgraded else 11
+    card.effect_vars["osty_damage"] = 13 if upgraded else 11
     return card
 
 
@@ -1312,6 +1368,7 @@ def make_rattle(upgraded: bool = False) -> CardInstance:
 
     card = create_reference_card(CardId.RATTLE, upgraded=upgraded, allow_generation=True)
     card.base_damage = 9 if upgraded else 7
+    card.effect_vars["osty_damage"] = 9 if upgraded else 7
     return card
 
 
@@ -1321,6 +1378,7 @@ def make_sic_em(upgraded: bool = False) -> CardInstance:
     card = create_reference_card(CardId.SIC_EM, upgraded=upgraded, allow_generation=True)
     card.base_damage = 6 if upgraded else 5
     card.effect_vars["sic_em"] = 3 if upgraded else 2
+    card.effect_vars["osty_damage"] = 6 if upgraded else 5
     return card
 
 

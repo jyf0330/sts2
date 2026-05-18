@@ -1,11 +1,13 @@
 """Focused Ironclad parity tests backed by decompiled card models."""
 
 import sts2_env.powers  # noqa: F401
+import sts2_env.relics  # noqa: F401
 
 from sts2_env.cards.ironclad import (
     create_ironclad_starter_deck,
     make_armaments,
     make_burning_pact,
+    make_cascade,
     make_headbutt,
     make_true_grit,
     make_whirlwind,
@@ -16,13 +18,14 @@ from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle
 
 
-def _make_combat(*, enemies: int = 1) -> CombatState:
+def _make_combat(*, enemies: int = 1, relics: list[str] | None = None) -> CombatState:
     combat = CombatState(
         player_hp=80,
         player_max_hp=80,
         deck=create_ironclad_starter_deck(),
         rng_seed=42,
         character_id="Ironclad",
+        relics=relics,
     )
     for i in range(enemies):
         creature, ai = create_shrinker_beetle(Rng(42 + i))
@@ -67,6 +70,20 @@ class TestIroncladParity:
         assert draw_a in combat.hand
         assert draw_b in combat.hand
         assert len(combat.hand) == 3
+
+    def test_burning_pact_still_draws_when_no_other_hand_cards(self):
+        """Matches BurningPact.cs: empty selection still continues to draw cards."""
+        combat = _make_combat()
+        draw_a = make_bash()
+        draw_b = make_strike_ironclad()
+        combat.hand = [make_burning_pact()]
+        combat.draw_pile = [draw_a, draw_b]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.pending_choice is None
+        assert draw_a in combat.hand
+        assert draw_b in combat.hand
 
     def test_headbutt_puts_selected_discard_card_on_top_of_draw(self):
         """Matches Headbutt.cs: attack, then choose one discard card and place it on top of draw pile."""
@@ -124,3 +141,43 @@ class TestIroncladParity:
         assert combat.energy == 0
         assert enemy_a.current_hp == start_a - 15
         assert enemy_b.current_hp == start_b - 15
+
+    def test_whirlwind_can_be_played_with_zero_energy_for_zero_hits(self):
+        """Matches X-cost resource checks: X cards are playable at zero energy."""
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        start = enemy.current_hp
+        card = make_whirlwind()
+        combat.hand = [card]
+        combat.energy = 0
+
+        assert combat.can_play_card(card) is True
+        assert combat.play_card(0)
+        assert enemy.current_hp == start
+        assert card in combat.discard_pile
+
+    def test_whirlwind_uses_modified_x_value_from_chemical_x(self):
+        """Matches Whirlwind.cs + ChemicalX.cs: resolved X value includes X-value hooks."""
+        combat = _make_combat(enemies=2, relics=["ChemicalX"])
+        for enemy in combat.enemies:
+            enemy.max_hp = 100
+            enemy.current_hp = 100
+        combat.hand = [make_whirlwind()]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert [enemy.current_hp for enemy in combat.enemies] == [85, 85]
+
+    def test_cascade_uses_x_value_to_autoplay_top_draw_cards(self):
+        """Matches Cascade.cs: auto-play the top X draw-pile cards."""
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.max_hp = 100
+        enemy.current_hp = 100
+        combat.hand = [make_cascade()]
+        combat.draw_pile = [make_strike_ironclad(), make_strike_ironclad()]
+        combat.energy = 2
+
+        assert combat.play_card(0)
+        assert combat.energy == 0
+        assert enemy.current_hp == 88

@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable
 
 from sts2_env.core.selection import CardChoiceOption, PendingCardChoice
+from sts2_env.core.rng import Rng, deterministic_hash_code
 
 if TYPE_CHECKING:
     from sts2_env.cards.base import CardInstance
@@ -37,6 +38,7 @@ class EventModel:
     """
 
     event_id: str = ""
+    is_shared: bool = False
 
     @property
     def pending_choice(self) -> PendingCardChoice | None:
@@ -53,8 +55,54 @@ class EventModel:
         """
         return True
 
+    @property
+    def rng(self) -> Rng | None:
+        return getattr(self, "_rng", None)
+
+    @rng.setter
+    def rng(self, value: Rng | None) -> None:
+        self._rng = value
+
+    def event_entry(self) -> str:
+        source = self.event_id or self.__class__.__name__
+        chars: list[str] = []
+        for index, char in enumerate(source.strip()):
+            if char.isalnum():
+                if index > 0 and char.isupper() and source[index - 1].isalnum() and not source[index - 1].isupper():
+                    chars.append("_")
+                chars.append(char.upper())
+            elif chars and chars[-1] != "_":
+                chars.append("_")
+        return "".join(chars).strip("_")
+
+    def create_event_rng(self, run_state: RunState) -> Rng:
+        player_offset = 0 if self.is_shared else getattr(run_state.player, "player_id", 1)
+        return Rng(run_state.rng.seed + player_offset + deterministic_hash_code(self.event_entry()))
+
+    def get_rng(self, run_state: RunState) -> Rng:
+        if self.rng is None:
+            self.rng = self.create_event_rng(run_state)
+        return self.rng
+
+    def reset_rng_for_run(self, run_state: RunState) -> None:
+        self.rng = self.create_event_rng(run_state)
+        self._vars_calculated_for_run = None
+
+    def ensure_vars_calculated(self, run_state: RunState) -> None:
+        run_key = id(run_state)
+        if getattr(self, "_vars_calculated_for_run", None) == run_key:
+            return
+        self.calculate_vars(run_state)
+        self._vars_calculated_for_run = run_key
+
     def calculate_vars(self, run_state: RunState) -> None:
         """Randomize dynamic variables (damage, gold, etc.) before display."""
+        pass
+
+    def before_event_started(self, run_state: RunState) -> None:
+        pass
+
+    def on_event_finished(self, run_state: RunState) -> None:
         pass
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
@@ -80,6 +128,34 @@ class EventModel:
         max_count: int = 1,
         description: str = "",
     ) -> EventResult:
+        if not cards or max_count <= 0:
+            return EventResult(finished=True, description=description or prompt)
+        self.pending_choice = PendingCardChoice(
+            prompt=prompt,
+            options=[CardChoiceOption(card=card, source_pile=source_pile) for card in cards],
+            resolver=resolver,
+            allow_skip=allow_skip,
+            min_choices=min_count,
+            max_choices=max_count,
+        )
+        return EventResult(finished=False, description=description or prompt)
+
+    def request_multi_card_choice(
+        self,
+        *,
+        prompt: str,
+        cards: list[CardInstance],
+        source_pile: str,
+        resolver: Callable[[list[CardInstance]], EventResult | None],
+        allow_skip: bool = False,
+        min_count: int = 1,
+        max_count: int | None = None,
+        description: str = "",
+    ) -> EventResult:
+        if max_count is None:
+            max_count = len(cards)
+        if not cards or max_count <= 0:
+            return EventResult(finished=True, description=description or prompt)
         self.pending_choice = PendingCardChoice(
             prompt=prompt,
             options=[CardChoiceOption(card=card, source_pile=source_pile) for card in cards],

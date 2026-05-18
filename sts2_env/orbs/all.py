@@ -40,20 +40,20 @@ class LightningOrb(OrbInstance):
         value = self.get_passive_value(combat)
         if value <= 0:
             return
-        alive = combat.alive_enemies
+        alive = combat.hittable_enemies
         if alive:
-            target = combat.rng.choice(alive)
-            apply_damage(target, value, ValueProp.NONE, combat, combat.player)
+            target = combat.combat_targets_rng.choice(alive)
+            apply_damage(target, value, ValueProp.UNPOWERED, combat, combat.player)
 
     def on_evoke(self, combat: CombatState) -> None:
         from sts2_env.core.damage import apply_damage
         value = self.get_evoke_value(combat)
         if value <= 0:
             return
-        alive = combat.alive_enemies
+        alive = combat.hittable_enemies
         if alive:
-            target = combat.rng.choice(alive)
-            apply_damage(target, value, ValueProp.NONE, combat, combat.player)
+            target = combat.combat_targets_rng.choice(alive)
+            apply_damage(target, value, ValueProp.UNPOWERED, combat, combat.player)
 
 
 # ---------------------------------------------------------------------------
@@ -130,12 +130,11 @@ class DarkOrb(OrbInstance):
         value = self.get_evoke_value(combat)
         if value <= 0:
             return
-        alive = combat.alive_enemies
-        if not alive:
+        hittable = combat.hittable_enemies
+        if not hittable:
             return
-        # Target lowest HP enemy
-        target = min(alive, key=lambda e: e.current_hp)
-        apply_damage(target, value, ValueProp.NONE, combat, combat.player)
+        target = min(hittable, key=lambda e: e.current_hp)
+        apply_damage(target, value, ValueProp.UNPOWERED, combat, combat.player)
 
 
 # ---------------------------------------------------------------------------
@@ -204,8 +203,8 @@ class GlassOrb(OrbInstance):
         from sts2_env.core.damage import apply_damage
         value = self.get_passive_value(combat)
         if value > 0:
-            for enemy in combat.alive_enemies:
-                apply_damage(enemy, value, ValueProp.NONE, combat, combat.player)
+            for enemy in combat.hittable_enemies:
+                apply_damage(enemy, value, ValueProp.UNPOWERED, combat, combat.player)
         # Decay: reduce by 1 each trigger
         self._current_passive = max(0, self._current_passive - 1)
 
@@ -213,8 +212,8 @@ class GlassOrb(OrbInstance):
         from sts2_env.core.damage import apply_damage
         value = self.get_evoke_value(combat)
         if value > 0:
-            for enemy in combat.alive_enemies:
-                apply_damage(enemy, value, ValueProp.NONE, combat, combat.player)
+            for enemy in combat.hittable_enemies:
+                apply_damage(enemy, value, ValueProp.UNPOWERED, combat, combat.player)
 
 
 # ---------------------------------------------------------------------------

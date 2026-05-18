@@ -68,6 +68,7 @@ class TestRelicParityStarterCommonExtra4:
         """Matches HappyFlower.cs: +1 energy on every 3rd player turn, counter persists."""
         run_state = RunState(seed=903, character_id="Ironclad")
         assert run_state.player.obtain_relic("HAPPY_FLOWER")
+        relic = next(relic for relic in run_state.player.relic_objects if relic.relic_id.name == "HAPPY_FLOWER")
 
         combat1 = _make_ironclad_combat(
             seed=903,
@@ -76,14 +77,17 @@ class TestRelicParityStarterCommonExtra4:
             player_state=run_state.player,
         )
         assert combat1.energy == 3
+        assert relic._turns_seen == 1  # noqa: SLF001
 
         combat1.end_player_turn()
         assert combat1.round_number == 2
         assert combat1.energy == 3
+        assert relic._turns_seen == 2  # noqa: SLF001
 
         combat1.end_player_turn()
         assert combat1.round_number == 3
         assert combat1.energy == 4
+        assert relic._turns_seen == 0  # noqa: SLF001
 
         combat2 = _make_ironclad_combat(
             seed=904,
@@ -92,14 +96,17 @@ class TestRelicParityStarterCommonExtra4:
             player_state=run_state.player,
         )
         assert combat2.energy == 3
+        assert relic._turns_seen == 1  # noqa: SLF001
 
         combat2.end_player_turn()
         assert combat2.round_number == 2
         assert combat2.energy == 3
+        assert relic._turns_seen == 2  # noqa: SLF001
 
         combat2.end_player_turn()
         assert combat2.round_number == 3
         assert combat2.energy == 4
+        assert relic._turns_seen == 0  # noqa: SLF001
 
     def test_meal_ticket_heals_only_when_entering_shop_rooms(self):
         """Matches MealTicket.cs: heal 15 when entering Merchant rooms only."""

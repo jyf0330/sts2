@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from sts2_env.core.combat import CombatState
 from sts2_env.monsters.act3 import (
     create_devoted_sculptor,
+    create_living_shield,
     create_scroll_of_biting,
     create_turret_operator,
     create_axebot,
@@ -26,12 +27,12 @@ from sts2_env.monsters.act3 import (
     create_mecha_knight,
     create_soul_nexus,
     create_door,
-    create_doormaker,
     create_queen,
     create_test_subject,
 )
 from sts2_env.monsters.act1 import create_cubex_construct
 from sts2_env.monsters.act4 import create_punch_construct
+from sts2_env.monsters.shared import create_torch_head_amalgam
 
 EncounterSetup = Callable[..., None]
 
@@ -44,12 +45,15 @@ def setup_devoted_sculptor_weak(combat: CombatState, rng: Rng) -> None:
 
 
 def setup_scrolls_of_biting_weak(combat: CombatState, rng: Rng) -> None:
-    for _ in range(3):
-        creature, ai = create_scroll_of_biting(rng)
+    starter_move_idx = rng.next_int(0, 2)
+    for offset in range(3):
+        creature, ai = create_scroll_of_biting(rng, (starter_move_idx + offset) % 3)
         combat.add_enemy(creature, ai)
 
 
 def setup_turret_operator_weak(combat: CombatState, rng: Rng) -> None:
+    shield, shield_ai = create_living_shield(rng)
+    combat.add_enemy(shield, shield_ai)
     creature, ai = create_turret_operator(rng)
     combat.add_enemy(creature, ai)
 
@@ -99,9 +103,12 @@ def setup_owl_magistrate_normal(combat: CombatState, rng: Rng) -> None:
 
 
 def setup_scrolls_of_biting_normal(combat: CombatState, rng: Rng) -> None:
-    for _ in range(4):
-        creature, ai = create_scroll_of_biting(rng)
+    starter_move_idx = rng.next_int(0, 2)
+    for offset in range(3):
+        creature, ai = create_scroll_of_biting(rng, (starter_move_idx + offset) % 3)
         combat.add_enemy(creature, ai)
+    creature, ai = create_scroll_of_biting(rng, 2)
+    combat.add_enemy(creature, ai)
 
 
 def setup_slimed_berserker_normal(combat: CombatState, rng: Rng) -> None:
@@ -132,9 +139,7 @@ NORMAL_ENCOUNTERS: list[EncounterSetup] = [
 # ---- Elite Encounters ----
 
 def setup_knights_elite(combat: CombatState, rng: Rng) -> None:
-    knight_creators = [create_flail_knight, create_magi_knight, create_spectral_knight]
-    chosen = rng.sample(knight_creators, 2)
-    for creator in chosen:
+    for creator in (create_flail_knight, create_spectral_knight, create_magi_knight):
         creature, ai = creator(rng)
         combat.add_enemy(creature, ai)
 
@@ -161,11 +166,11 @@ ELITE_ENCOUNTERS: list[EncounterSetup] = [
 def setup_doormaker_boss(combat: CombatState, rng: Rng) -> None:
     door, door_ai = create_door(rng)
     combat.add_enemy(door, door_ai)
-    doormaker, doormaker_ai = create_doormaker(rng)
-    combat.add_enemy(doormaker, doormaker_ai)
 
 
 def setup_queen_boss(combat: CombatState, rng: Rng) -> None:
+    amalgam, amalgam_ai = create_torch_head_amalgam(rng)
+    combat.add_enemy(amalgam, amalgam_ai)
     creature, ai = create_queen(rng)
     combat.add_enemy(creature, ai)
 
@@ -176,15 +181,29 @@ def setup_test_subject_boss(combat: CombatState, rng: Rng) -> None:
 
 
 BOSS_ENCOUNTERS: list[EncounterSetup] = [
-    setup_doormaker_boss,
     setup_queen_boss,
     setup_test_subject_boss,
+    setup_doormaker_boss,
 ]
 
 
-ALL_ACT3_ENCOUNTERS: list[EncounterSetup] = (
-    list(WEAK_ENCOUNTERS) +
-    list(NORMAL_ENCOUNTERS) +
-    list(ELITE_ENCOUNTERS) +
-    list(BOSS_ENCOUNTERS)
-)
+ALL_ACT3_ENCOUNTERS: list[EncounterSetup] = [
+    setup_axebots_normal,
+    setup_construct_menagerie_normal,
+    setup_devoted_sculptor_weak,
+    setup_doormaker_boss,
+    setup_fabricator_normal,
+    setup_frog_knight_normal,
+    setup_globe_head_normal,
+    setup_knights_elite,
+    setup_mecha_knight_elite,
+    setup_owl_magistrate_normal,
+    setup_queen_boss,
+    setup_scrolls_of_biting_normal,
+    setup_scrolls_of_biting_weak,
+    setup_slimed_berserker_normal,
+    setup_soul_nexus_elite,
+    setup_test_subject_boss,
+    setup_the_lost_and_forgotten_normal,
+    setup_turret_operator_weak,
+]

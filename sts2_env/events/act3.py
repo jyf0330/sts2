@@ -60,6 +60,7 @@ class WarHistorianRepy(EventModel):
     """
 
     event_id = "WarHistorianRepy"
+    is_shared = True
 
     def is_allowed(self, run_state: RunState) -> bool:
         return False
@@ -148,12 +149,27 @@ class Neow(EventModel):
 
     def __init__(self) -> None:
         self._choices: dict[str, str] = {}
+        self._modifier_options: list[tuple[str, object]] = []
 
     def is_allowed(self, run_state: RunState) -> bool:
         # Only triggered at run start by game logic, not from random pool
         return False
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
+        if getattr(run_state, "modifiers", []):
+            self._modifier_options = []
+            for modifier in run_state.modifiers:
+                generator = getattr(modifier, "generate_neow_event_result", None)
+                if not callable(generator):
+                    continue
+                option_id = f"modifier_{len(self._modifier_options)}"
+                self._modifier_options.append((option_id, modifier))
+            if self._modifier_options:
+                option_id, modifier = self._modifier_options[0]
+                title = getattr(modifier, "neow_option_title", option_id)
+                description = getattr(modifier, "neow_option_description", title)
+                return [EventOption(option_id, title, description)]
+
         from sts2_env.relics.shop_event import ScrollBoxes
 
         cursed_pool = list(self._CURSED_POOL)
@@ -189,6 +205,27 @@ class Neow(EventModel):
         ]
 
     def choose(self, run_state: RunState, option_id: str) -> EventResult:
+        if option_id.startswith("modifier_"):
+            try:
+                index = int(option_id.split("_", 1)[1])
+            except ValueError:
+                return EventResult(finished=True, description="No modifier option.")
+            if 0 <= index < len(self._modifier_options):
+                _, modifier = self._modifier_options[index]
+                result = modifier.generate_neow_event_result(run_state)
+                if result is None:
+                    result = EventResult(finished=True, description="Applied modifier option.")
+                if index + 1 < len(self._modifier_options):
+                    next_id, next_modifier = self._modifier_options[index + 1]
+                    title = getattr(next_modifier, "neow_option_title", next_id)
+                    description = getattr(next_modifier, "neow_option_description", title)
+                    return EventResult(
+                        finished=False,
+                        description=result.description,
+                        rewards=result.rewards,
+                        next_options=[EventOption(next_id, title, description)],
+                    )
+                return result
         relic_id = self._choices.get(option_id)
         if relic_id is not None:
             if _should_defer_event_rewards(run_state):

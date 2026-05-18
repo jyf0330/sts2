@@ -177,12 +177,9 @@ class DebilitatePower(PowerInstance):
     def __init__(self, amount: int):
         super().__init__(PowerId.DEBILITATE, amount)
 
-    def on_turn_end_enemy_side(self, owner: Creature) -> None:
-        """Ticks down at end of owner's side turn (C#: side == owner.Side)."""
-        if self.skip_next_tick:
-            self.skip_next_tick = False
-            return
-        self.amount -= 1
+    def after_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
+        if side == owner.side:
+            self.amount -= 1
 
 
 # ── PainfulStabsPower ────────────────────────────────────────────────────
@@ -201,23 +198,34 @@ class PainfulStabsPower(PowerInstance):
     def __init__(self, amount: int):
         super().__init__(PowerId.PAINFUL_STABS, amount)
 
-    def after_damage_given(
+    def after_attack(self, owner: Creature, attack: object, combat: CombatState) -> None:
+        if getattr(attack, "attacker", None) is not owner:
+            return
+        if not getattr(attack, "damage_props", ValueProp.NONE).is_powered():
+            return
+        wounds_by_player: dict[Creature, int] = {}
+        for result in getattr(attack, "results", ()):
+            target = getattr(result, "target", None)
+            if target is None or target.side == owner.side or not getattr(target, "is_player", False):
+                continue
+            if getattr(result, "unblocked_damage", 0) > 0:
+                wounds_by_player[target] = wounds_by_player.get(target, 0) + self.amount
+        for target, count in wounds_by_player.items():
+            combat.add_status_cards_to_discard(target, "WOUND", count)
+
+    def should_power_be_removed_after_owner_death(
         self,
         owner: Creature,
-        dealer: Creature,
-        target: Creature,
-        damage: int,
-        props: ValueProp,
         combat: CombatState,
-    ) -> None:
-        if dealer is not owner:
-            return
-        if not props.is_powered():
-            return
-        if damage <= 0:
-            return
-        if getattr(target, "is_player", False):
-            combat.add_status_cards_to_discard(target, "WOUND", self.amount)
+    ) -> bool:
+        return False
+
+    def should_creature_be_removed_from_combat_after_death(
+        self,
+        owner: Creature,
+        combat: CombatState,
+    ) -> bool:
+        return False
 
 
 # ── LethalityPower ───────────────────────────────────────────────────────

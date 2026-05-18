@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from sts2_env.cards.base import CardInstance
     from sts2_env.core.creature import Creature
     from sts2_env.core.combat import CombatState
+    from sts2_env.potions.base import PotionInstance
     from sts2_env.run.rest_site import RestSiteOption
     from sts2_env.run.reward_objects import CardReward, Reward
     from sts2_env.run.rewards import CardRewardGenerationOptions
@@ -357,10 +358,19 @@ class RelicInstance:
     relic_id: RelicId
     rarity: RelicRarity = RelicRarity.COMMON
     pool: RelicPool = RelicPool.SHARED
+    is_stackable: bool = False
 
     def __init__(self, relic_id: RelicId):
         self.relic_id = relic_id
         self.enabled: bool = True
+
+    def is_allowed(self, run_state: RunState) -> bool:
+        return True
+
+    @staticmethod
+    def is_before_act3_treasure_chest(run_state: RunState) -> bool:
+        threshold = 38 if len(getattr(run_state, "players", [])) > 1 else 41
+        return getattr(run_state, "total_floor", 0) < threshold
 
     # ─── Damage Modification Hooks ──────────────────────────────────────
 
@@ -395,6 +405,16 @@ class RelicInstance:
     ) -> float:
         return 1.0
 
+    def after_modifying_block_amount(
+        self,
+        owner: Creature,
+        modified_amount: int,
+        card_source: object | None,
+        card_play: object | None,
+        combat: CombatState,
+    ) -> None:
+        pass
+
     # ─── HP Loss Modification ───────────────────────────────────────────
 
     def modify_hp_lost(
@@ -403,18 +423,108 @@ class RelicInstance:
     ) -> float:
         return amount
 
+    def modify_hp_lost_before_osty(
+        self, owner: Creature, target: Creature, amount: float,
+        dealer: Creature | None, props: ValueProp
+    ) -> float:
+        return amount
+
+    def modify_hp_lost_before_osty_late(
+        self, owner: Creature, target: Creature, amount: float,
+        dealer: Creature | None, props: ValueProp
+    ) -> float:
+        return amount
+
+    def modify_hp_lost_after_osty(
+        self, owner: Creature, target: Creature, amount: float,
+        dealer: Creature | None, props: ValueProp
+    ) -> float:
+        return amount
+
+    # ─── Power Application ──────────────────────────────────────────────
+
+    def modify_power_amount_given(
+        self,
+        owner: Creature,
+        power_id: PowerId,
+        amount: int,
+        giver: Creature,
+        target: Creature | None,
+        source: object | None,
+        combat: CombatState,
+    ) -> int:
+        return amount
+
+    def after_modifying_power_amount_given(
+        self,
+        owner: Creature,
+        power_id: PowerId,
+        original_amount: int,
+        modified_amount: int,
+        giver: Creature,
+        target: Creature | None,
+        source: object | None,
+        combat: CombatState,
+    ) -> None:
+        pass
+
+    def modify_power_amount_received(
+        self,
+        owner: Creature,
+        power_id: PowerId,
+        amount: int,
+        target: Creature,
+        applier: Creature | None,
+        source: object | None,
+        combat: CombatState,
+    ) -> int:
+        return amount
+
+    def after_modifying_power_amount_received(
+        self,
+        owner: Creature,
+        power_id: PowerId,
+        original_amount: int,
+        modified_amount: int,
+        target: Creature,
+        applier: Creature | None,
+        source: object | None,
+        combat: CombatState,
+    ) -> None:
+        pass
+
     # ─── Block Clearing ─────────────────────────────────────────────────
 
     def should_clear_block(self, owner: Creature, creature: Creature) -> bool | None:
         return None
+
+    def after_preventing_block_clear(
+        self,
+        owner: Creature,
+        creature: Creature,
+        combat: CombatState,
+    ) -> None:
+        pass
 
     # ─── Draw / Energy Modification ─────────────────────────────────────
 
     def modify_hand_draw(self, owner: Creature, draw: int, combat: CombatState) -> int:
         return draw
 
+    def modify_hand_draw_late(self, owner: Creature, draw: int, combat: CombatState) -> int:
+        return draw
+
+    def after_modifying_hand_draw(self, owner: Creature, combat: CombatState) -> None:
+        pass
+
     def modify_max_energy(self, owner: Creature, energy: int) -> int:
         return energy
+
+    def should_draw(self, owner: Creature, from_hand_draw: bool, combat: CombatState) -> bool | None:
+        return None
+
+    def after_preventing_draw(self, owner: Creature, combat: CombatState) -> None:
+        pass
 
     # ─── Card Play Count ────────────────────────────────────────────────
 
@@ -424,15 +534,63 @@ class RelicInstance:
     def after_modifying_card_play_count(self, owner: Creature, card: object, combat: CombatState) -> None:
         pass
 
+    def after_card_entered_combat(self, owner: Creature, card: object, combat: CombatState) -> None:
+        pass
+
+    def after_card_generated_for_combat(
+        self,
+        owner: Creature,
+        card: object,
+        added_by_player: bool,
+        combat: CombatState,
+    ) -> None:
+        pass
+
+    def modify_card_cost(self, owner: Creature, card: object, combat: CombatState) -> int | None:
+        return None
+
+    def modify_star_cost(self, owner: Creature, card: object, combat: CombatState) -> int | None:
+        return None
+
     # ─── Turn Lifecycle Hooks ───────────────────────────────────────────
 
     def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         pass
 
+    def before_hand_draw(self, owner: Creature, combat: CombatState) -> None:
+        pass
+
+    def before_hand_draw_late(self, owner: Creature, combat: CombatState) -> None:
+        pass
+
+    def after_player_turn_start_early(self, owner: Creature, combat: CombatState) -> None:
+        pass
+
+    def after_player_turn_start(self, owner: Creature, combat: CombatState) -> None:
+        pass
+
+    def after_player_turn_start_late(self, owner: Creature, combat: CombatState) -> None:
+        pass
+
     def after_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         pass
 
+    def before_play_phase_start(self, owner: Creature, player: Creature, combat: CombatState) -> None:
+        pass
+
+    def before_turn_end_very_early(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
+        pass
+
+    def before_turn_end_early(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
+        pass
+
     def before_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
+        pass
+
+    def before_flush(self, owner: Creature, flushing_owner: Creature, combat: CombatState) -> None:
+        pass
+
+    def before_flush_late(self, owner: Creature, flushing_owner: Creature, combat: CombatState) -> None:
         pass
 
     def after_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
@@ -466,6 +624,15 @@ class RelicInstance:
     ) -> None:
         pass
 
+    def after_current_hp_changed(
+        self,
+        owner: Creature,
+        creature: Creature,
+        delta: int,
+        combat: CombatState,
+    ) -> None:
+        pass
+
     def after_damage_given(
         self, owner: Creature, dealer: Creature, target: Creature,
         damage: int, props: ValueProp, combat: CombatState
@@ -493,12 +660,18 @@ class RelicInstance:
     def before_combat_start(self, owner: Creature, combat: CombatState) -> None:
         pass
 
+    def before_combat_start_late(self, owner: Creature, combat: CombatState) -> None:
+        pass
+
     def after_creature_added_to_combat(
         self,
         owner: Creature,
         creature: Creature,
         combat: CombatState,
     ) -> None:
+        pass
+
+    def after_combat_victory_early(self, owner: Creature, combat: CombatState) -> None:
         pass
 
     def after_combat_victory(self, owner: Creature, combat: CombatState) -> None:
@@ -559,6 +732,9 @@ class RelicInstance:
     def after_energy_reset(self, owner: Creature, combat: CombatState) -> None:
         pass
 
+    def after_energy_reset_late(self, owner: Creature, combat: CombatState) -> None:
+        pass
+
     def should_reset_energy(self, owner: Creature, combat: CombatState) -> bool | None:
         """Return False to prevent energy reset. None = no opinion."""
         return None
@@ -600,6 +776,27 @@ class RelicInstance:
     def after_obtained(self, owner: Creature) -> None:
         pass
 
+    def modify_generated_map(
+        self,
+        owner: Creature,
+        run_state: RunState,
+        act_map: object,
+        act_index: int,
+    ) -> object:
+        return act_map
+
+    def modify_generated_map_late(
+        self,
+        owner: Creature,
+        run_state: RunState,
+        act_map: object,
+        act_index: int,
+    ) -> object:
+        return act_map
+
+    def modify_unknown_map_point_room_types(self, owner: Creature, room_types: set[object]) -> set[object]:
+        return room_types
+
     # ─── Reward Hooks ───────────────────────────────────────────────────
 
     def modify_rewards(
@@ -637,6 +834,14 @@ class RelicInstance:
         card: CardInstance,
     ) -> CardInstance:
         return card
+
+    def on_card_added_to_deck(
+        self,
+        owner: Creature,
+        card: CardInstance,
+        source: object | None = None,
+    ) -> None:
+        pass
 
     def allow_card_reward_reroll(
         self,
@@ -691,7 +896,15 @@ class RelicInstance:
     ) -> bool | None:
         return None
 
-    def on_item_purchased(self, owner: Creature) -> None:
+    def on_item_purchased(
+        self,
+        owner: Creature,
+        *,
+        item_kind: str = "",
+        item: object | None = None,
+        run_state: RunState | None = None,
+        gold_spent: int = 0,
+    ) -> None:
         pass
 
     # ─── Rest Site Hooks ────────────────────────────────────────────────
@@ -749,6 +962,40 @@ class RelicInstance:
     def should_force_potion_reward(self, owner: Creature) -> bool | None:
         """Return True to force potion reward. None = no opinion."""
         return None
+
+    def before_potion_used(
+        self,
+        owner: Creature,
+        potion: PotionInstance,
+        target: Creature | None,
+        combat: CombatState,
+    ) -> None:
+        pass
+
+    def after_potion_procured(
+        self,
+        owner: Creature,
+        potion: PotionInstance,
+        combat: CombatState | None,
+    ) -> None:
+        pass
+
+    def after_potion_discarded(
+        self,
+        owner: Creature,
+        potion: PotionInstance,
+        combat: CombatState | None,
+    ) -> None:
+        pass
+
+    def after_potion_used(
+        self,
+        owner: Creature,
+        potion: PotionInstance,
+        target: Creature | None,
+        combat: CombatState,
+    ) -> None:
+        pass
 
     # ─── X Value ────────────────────────────────────────────────────────
 

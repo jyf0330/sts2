@@ -38,9 +38,10 @@ EncounterSetup = Callable[..., None]
 # ---- Weak Encounters ----
 
 def setup_corpse_slugs_weak(combat: CombatState, rng: Rng) -> None:
-    c1, a1 = create_corpse_slug(rng, starter_idx=0)
+    starter_idx = rng.next_int(0, 2)
+    c1, a1 = create_corpse_slug(rng, starter_idx=starter_idx)
     combat.add_enemy(c1, a1)
-    c2, a2 = create_corpse_slug(rng, starter_idx=1)
+    c2, a2 = create_corpse_slug(rng, starter_idx=(starter_idx + 1) % 3)
     combat.add_enemy(c2, a2)
 
 
@@ -72,8 +73,9 @@ WEAK_ENCOUNTERS: list[EncounterSetup] = [
 # ---- Normal Encounters ----
 
 def setup_corpse_slugs_normal(combat: CombatState, rng: Rng) -> None:
-    for i in range(3):
-        creature, ai = create_corpse_slug(rng, starter_idx=i)
+    starter_idx = rng.next_int(0, 2)
+    for offset in range(3):
+        creature, ai = create_corpse_slug(rng, starter_idx=(starter_idx + offset) % 3)
         combat.add_enemy(creature, ai)
 
 
@@ -120,18 +122,17 @@ def setup_sewer_clam_normal(combat: CombatState, rng: Rng) -> None:
 
 
 def setup_toadpoles_normal(combat: CombatState, rng: Rng) -> None:
-    for slot in ["first", "second"]:
-        creature, ai = create_toadpole(rng, slot=slot)
-        combat.add_enemy(creature, ai)
-    c3, a3 = create_toadpole(rng, slot="first")
-    combat.add_enemy(c3, a3)
+    cultist, cultist_ai = create_calcified_cultist(rng)
+    combat.add_enemy(cultist, cultist_ai)
+    creature, ai = create_toadpole(rng, slot="back")
+    combat.add_enemy(creature, ai)
 
 
 def setup_two_tailed_rats_normal(combat: CombatState, rng: Rng) -> None:
-    c1, a1 = create_two_tailed_rat(rng, slot="first")
-    combat.add_enemy(c1, a1)
-    c2, a2 = create_two_tailed_rat(rng, slot="second")
-    combat.add_enemy(c2, a2)
+    starter_idx = rng.next_int(0, 2)
+    for offset in range(3):
+        creature, ai = create_two_tailed_rat(rng, starter_move_idx=(starter_idx + offset) % 3)
+        combat.add_enemy(creature, ai)
 
 
 NORMAL_ENCOUNTERS: list[EncounterSetup] = [
@@ -151,8 +152,8 @@ NORMAL_ENCOUNTERS: list[EncounterSetup] = [
 # ---- Elite Encounters ----
 
 def setup_phantasmal_gardeners_elite(combat: CombatState, rng: Rng) -> None:
-    for _ in range(2):
-        creature, ai = create_phantasmal_gardener(rng)
+    for slot in ("first", "second", "third", "fourth"):
+        creature, ai = create_phantasmal_gardener(rng, slot=slot)
         combat.add_enemy(creature, ai)
 
 

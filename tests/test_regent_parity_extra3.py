@@ -77,6 +77,37 @@ class TestRegentParityExtra3:
         assert combat.stars == 0
         assert combat.energy == 3
 
+    def test_void_form_waives_star_cost_for_covered_card_play(self):
+        """Matches VoidFormPower.cs: TryModifyStarCost returns 0 for covered cards."""
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = enemy.max_hp = 100
+        card = create_card(CardId.GUIDING_STAR)
+        combat.hand = [card]
+        combat.energy = 1
+        combat.apply_power_to(combat.player, PowerId.VOID_FORM, 1)
+
+        assert card.star_cost == 2
+        assert combat.modified_star_cost(combat.player, card) == 0
+        assert combat.can_play_card(card) is True
+        assert combat.play_card(0, 0)
+        assert combat.stars == 0
+        assert enemy.current_hp == 88
+
+    def test_void_form_counts_replayed_card_once_for_coverage(self):
+        """Matches VoidFormPower.cs: AfterCardPlayed counts only the last play in a series."""
+        combat = _make_combat()
+        first = create_card(CardId.GUIDING_STAR)
+        first.base_replay_count = 1
+        second = create_card(CardId.ALIGNMENT)
+        combat.hand = [first, second]
+        combat.energy = 2
+        combat.apply_power_to(combat.player, PowerId.VOID_FORM, 2)
+
+        assert combat.play_card(0, 0)
+        assert combat.modified_star_cost(combat.player, second) == 0
+        assert combat.modified_card_cost(combat.player, second) == 0
+
     def test_particle_wall_returns_to_hand_after_play(self):
         """Matches ParticleWall.cs: gain block and return to hand instead of discarding."""
         combat = _make_combat()

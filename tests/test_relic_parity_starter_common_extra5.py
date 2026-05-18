@@ -99,12 +99,13 @@ class TestRelicParityStarterCommonExtra5:
         assert combat.round_number == 3
         assert osty.max_hp == 52
 
-    def test_divine_right_grants_three_stars_at_first_player_turn_start(self):
-        """Matches DivineRight.cs: gain 3 Stars on round 1 only."""
+    def test_divine_right_grants_three_stars_before_first_player_turn(self):
+        """Matches DivineRight.cs: entering a combat room grants 3 Stars before turn tracking starts."""
         combat = _make_regent_combat(["DivineRight"], seed=1203)
 
         assert combat.stars == 3
         assert combat.player.stars == 3
+        assert combat.count_stars_gained_this_turn(combat.player) == 0
 
         combat.end_player_turn()
         assert combat.round_number == 2

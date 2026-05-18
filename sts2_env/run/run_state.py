@@ -17,16 +17,41 @@ from sts2_env.cards.factory import (
 )
 from sts2_env.core.selection import CardChoiceOption, PendingCardChoice
 from sts2_env.core.enums import CardId, CardRarity, CardType
-from sts2_env.core.rng import Rng
+from sts2_env.core.rng import Rng, deterministic_hash_code
 from sts2_env.core.enums import MapPointType, RoomType
-from sts2_env.characters.all import ALL_CHARACTERS, get_character
+from sts2_env.characters.all import get_character
 from sts2_env.map.map_point import MapCoord, MapPoint
-from sts2_env.map.generator import ActMap, generate_act_map
+from sts2_env.map.generator import ActMap, generate_act_map, generate_spoils_act_map
 from sts2_env.map.acts import ActConfig, get_act_config, ALL_ACTS
 from sts2_env.potions.base import PotionInstance
 from sts2_env.relics.base import RelicRarity
 from sts2_env.cards.base import CardInstance
 from sts2_env.run.odds import UnknownMapPointOdds, CardRarityOdds, PotionRewardOdds
+
+
+_MULTIPLAYER_ONLY_CARD_IDS = frozenset({
+    CardId.BEACON_OF_HOPE,
+    CardId.BELIEVE_IN_YOU,
+    CardId.COORDINATE_CARD,
+    CardId.DEMONIC_SHIELD,
+    CardId.ENERGY_SURGE,
+    CardId.FLANKING,
+    CardId.GANG_UP,
+    CardId.GLIMPSE_BEYOND,
+    CardId.HAMMER_TIME,
+    CardId.HUDDLE_UP,
+    CardId.IGNITION,
+    CardId.INTERCEPT_CARD,
+    CardId.KNOCKDOWN,
+    CardId.LARGESSE,
+    CardId.LEGION_OF_BONE,
+    CardId.LIFT,
+    CardId.MIMIC,
+    CardId.RALLY,
+    CardId.SNEAKY_CARD,
+    CardId.TAG_TEAM,
+    CardId.TANK_CARD,
+})
 
 
 @dataclass
@@ -42,6 +67,7 @@ class PlayerState:
     relics: list[str] = field(default_factory=list)
     relic_objects: list[Any] = field(default_factory=list)
     potions: list[PotionInstance | None] = field(default_factory=list)
+    can_remove_potions: bool = True
     max_potion_slots: int = 3
     max_energy: int = 3
     base_orb_slot_count: int = 0
@@ -196,14 +222,15 @@ class PlayerState:
         ]
 
     def has_available_relics(self) -> bool:
+        from sts2_env.relics.registry import create_relic_by_name
+
         if not self.relic_grab_bag_by_rarity and not self.relic_grab_bag_fallback:
             self.populate_relic_grab_bag()
-        return any(self.relic_grab_bag_by_rarity.get(rarity) for rarity in (
-            RelicRarity.COMMON,
-            RelicRarity.UNCOMMON,
-            RelicRarity.RARE,
-            RelicRarity.SHOP,
-        )) or bool(self.relic_grab_bag_fallback)
+        for rarity in (RelicRarity.COMMON, RelicRarity.UNCOMMON, RelicRarity.RARE, RelicRarity.SHOP):
+            for relic_id in self.relic_grab_bag_by_rarity.get(rarity, []):
+                if create_relic_by_name(relic_id).is_allowed(self.run_state):
+                    return True
+        return any(create_relic_by_name(relic_id).is_allowed(self.run_state) for relic_id in self.relic_grab_bag_fallback)
 
     def _relic_grab_bag_order(self, rarity: RelicRarity) -> list[RelicRarity]:
         if rarity is RelicRarity.SHOP:
@@ -232,6 +259,8 @@ class PlayerState:
         rng_stream: str = "rewards",
         excluded_relic_ids: set[str] | None = None,
     ) -> str | None:
+        from sts2_env.relics.registry import create_relic_by_name
+
         if not self.relic_grab_bag_by_rarity and not self.relic_grab_bag_fallback:
             self.populate_relic_grab_bag()
         relic_rng = getattr(self.run_state.rng, rng_stream, self.run_state.rng.rewards)
@@ -243,6 +272,8 @@ class PlayerState:
             for idx, relic_id in enumerate(list(deque)):
                 if relic_id in excluded:
                     continue
+                if not create_relic_by_name(relic_id).is_allowed(self.run_state):
+                    continue
                 deque.pop(idx)
                 if relic_id in self.relic_grab_bag:
                     self.relic_grab_bag.remove(relic_id)
@@ -250,11 +281,13 @@ class PlayerState:
         for idx, relic_id in enumerate(list(self.relic_grab_bag_fallback)):
             if relic_id in excluded:
                 continue
+            if not create_relic_by_name(relic_id).is_allowed(self.run_state):
+                continue
             self.relic_grab_bag_fallback.pop(idx)
             if relic_id in self.relic_grab_bag:
                 self.relic_grab_bag.remove(relic_id)
             return relic_id
-        return None
+        return "CIRCLET"
 
     def upgrade_card_instance(self, card: CardInstance | None) -> CardInstance | None:
         if card is None or card.upgraded:
@@ -294,16 +327,16 @@ class PlayerState:
                 modified = updated
         return modified
 
-    def add_card_instance_to_deck(self, card: CardInstance) -> None:
-        self.deck.append(self.modify_card_being_added_to_deck(card))
+    def add_card_instance_to_deck(self, card: CardInstance, source: object | None = None) -> None:
+        card = self.modify_card_being_added_to_deck(card)
+        self.deck.append(card)
         for relic in self.get_relic_objects():
             on_card_added = getattr(relic, "on_card_added_to_deck", None)
             if callable(on_card_added):
-                on_card_added(self)
-        if card.card_type == CardType.CURSE:
-            for relic in self.get_relic_objects():
-                if getattr(getattr(relic, "relic_id", None), "name", "") == "DARKSTONE_PERIAPT":
-                    self.gain_max_hp(6)
+                on_card_added(self, card, source)
+        if self.run_state is not None:
+            for modifier in self.run_state.modifiers:
+                modifier.after_card_added_to_deck(self, card, source)
 
     def gain_max_hp(self, amount: int) -> None:
         self.max_hp += amount
@@ -355,14 +388,21 @@ class PlayerState:
         return enchanted
 
     def enchant_all_cards(self, enchantment: str, amount: int = 1) -> int:
+        enchanted = 0
         for card in self.deck:
-            card.add_enchantment(enchantment, amount)
-        return len(self.deck)
+            if can_enchant_card(card, enchantment):
+                card.add_enchantment(enchantment, amount)
+                enchanted += 1
+        return enchanted
 
     def enchant_basic_strikes(self, enchantment: str, amount: int = 1) -> int:
         enchanted = 0
         for card in self.deck:
-            if card.rarity.name == "BASIC" and "STRIKE" in card.card_id.name:
+            if (
+                card.rarity.name == "BASIC"
+                and "STRIKE" in card.card_id.name
+                and can_enchant_card(card, enchantment)
+            ):
                 card.add_enchantment(enchantment, amount)
                 enchanted += 1
         return enchanted
@@ -402,13 +442,12 @@ class PlayerState:
         self.add_card_instance_to_deck(create_card(card_id, upgraded=upgraded))
         return True
 
-    def add_random_curses(self, count: int) -> int:
-        curse_ids = eligible_registered_cards(card_type=CardType.CURSE, generation_context=None)
+    def add_random_curses(self, count: int, rng: Rng | None = None) -> int:
+        curse_ids = eligible_registered_cards(card_type=CardType.CURSE, generation_context="modifier")
+        selected_rng = rng or self.run_state.rng.rewards
+        chosen_ids = selected_rng.sample(curse_ids, min(max(0, count), len(curse_ids)))
         added = 0
-        for _ in range(max(0, count)):
-            if not curse_ids:
-                break
-            card_id = self.run_state.rng.rewards.choice(curse_ids)
+        for card_id in chosen_ids:
             self.add_card_instance_to_deck(create_card(card_id))
             added += 1
         return added
@@ -460,10 +499,10 @@ class PlayerState:
         self.add_card_instance_to_deck(candidates[0].clone(20_000_000 + len(self.deck)))
         return True
 
-    def duplicate_last_added_card(self) -> bool:
+    def duplicate_last_added_card(self, source: object | None = None) -> bool:
         if not self.deck:
             return False
-        self.add_card_instance_to_deck(self.deck[-1].clone(20_000_000 + len(self.deck)))
+        self.add_card_instance_to_deck(self.deck[-1].clone(20_000_000 + len(self.deck)), source=source)
         return True
 
     def upgrade_selected_cards(self, count: int, *, cards: list[CardInstance] | None = None) -> int:
@@ -517,13 +556,19 @@ class PlayerState:
         self.deck = remaining
         return removed
 
-    def transform_cards(self, count: int, *, cards: list[CardInstance] | None = None) -> int:
+    def transform_cards(
+        self,
+        count: int,
+        *,
+        cards: list[CardInstance] | None = None,
+        rng: Rng | None = None,
+    ) -> int:
         candidates = list(cards) if cards is not None else self.transformable_deck_cards()
         required = min(count, len(candidates))
         if required > 0 and self.request_deck_choice(
             prompt=f"Choose {min(count, len(candidates))} cards to transform",
             cards=candidates,
-            resolver=lambda selected: self._transform_selected_cards(selected),
+            resolver=lambda selected: self._transform_selected_cards(selected, rng=rng),
             allow_skip=False,
             min_count=required,
             max_count=required,
@@ -535,7 +580,7 @@ class PlayerState:
             replacement = create_transform_card(
                 card,
                 character_id=self.character_id,
-                rng=self.run_state.rng.niche,
+                rng=rng or self.run_state.rng.niche,
                 generation_context=None,
             )
             self._apply_card_replacement(card, replacement)
@@ -553,8 +598,8 @@ class PlayerState:
         basics = self.basic_strike_defend_cards()
         return self.transform_cards(len(basics), cards=basics)
 
-    def transform_specific_cards(self, cards: list[CardInstance]) -> int:
-        return self._transform_selected_cards(list(cards))
+    def transform_specific_cards(self, cards: list[CardInstance], rng: Rng | None = None) -> int:
+        return self._transform_selected_cards(list(cards), rng=rng)
 
     def transform_specific_cards_with_mapping(
         self,
@@ -621,19 +666,25 @@ class PlayerState:
             transformed += 1
         return transformed
 
-    def transform_and_upgrade_cards(self, count: int, *, cards: list[CardInstance] | None = None) -> int:
+    def transform_and_upgrade_cards(
+        self,
+        count: int,
+        *,
+        cards: list[CardInstance] | None = None,
+        rng: Rng | None = None,
+    ) -> int:
         candidates = list(cards) if cards is not None else self.transformable_deck_cards()
         required = min(count, len(candidates))
         if required > 0 and self.request_deck_choice(
             prompt=f"Choose {min(count, len(candidates))} cards to transform and upgrade",
             cards=candidates,
-            resolver=lambda selected: self._transform_and_upgrade_selected(selected),
+            resolver=lambda selected: self._transform_and_upgrade_selected(selected, rng=rng),
             allow_skip=False,
             min_count=required,
             max_count=required,
         ):
             return 0
-        return self._transform_and_upgrade_selected(candidates[:count])
+        return self._transform_and_upgrade_selected(candidates[:count], rng=rng)
 
     def _apply_card_replacement(self, card: CardInstance, replacement: CardInstance) -> None:
         original_enchantments = dict(card.enchantments)
@@ -654,13 +705,13 @@ class PlayerState:
         card.original_cost = replacement.original_cost
         return original_enchantments
 
-    def _transform_selected_cards(self, cards: list[CardInstance]) -> int:
+    def _transform_selected_cards(self, cards: list[CardInstance], rng: Rng | None = None) -> int:
         transformed = 0
         for card in cards:
             replacement = create_transform_card(
                 card,
                 character_id=self.character_id,
-                rng=self.run_state.rng.niche,
+                rng=rng or self.run_state.rng.niche,
                 generation_context=None,
             )
             self._apply_card_replacement(card, replacement)
@@ -686,8 +737,8 @@ class PlayerState:
             transformed += 1
         return transformed
 
-    def _transform_and_upgrade_selected(self, cards: list[CardInstance]) -> int:
-        transformed = self._transform_selected_cards(cards)
+    def _transform_and_upgrade_selected(self, cards: list[CardInstance], rng: Rng | None = None) -> int:
+        transformed = self._transform_selected_cards(cards, rng=rng)
         for card in cards:
             self.upgrade_card_instance(card)
         return transformed
@@ -706,11 +757,13 @@ class PlayerState:
             transformed += 1
         return transformed
 
-    def upgrade_random_cards(self, card_type: CardType | None, count: int) -> int:
+    def upgrade_random_cards(self, card_type: CardType | None, count: int, rng: Rng | None = None) -> int:
         candidates = [card for card in self.deck if not card.upgraded and (card_type is None or card.card_type == card_type)]
-        if not candidates:
+        if not candidates or count <= 0:
             return 0
-        self.run_state.rng.rewards.shuffle(candidates)
+        selected_rng = rng or self.run_state.rng.rewards
+        candidates.sort(key=lambda card: (card.card_id.name, card.upgraded))
+        selected_rng.shuffle(candidates)
         upgraded = 0
         for card in candidates[:count]:
             if self.upgrade_card_instance(card) is not None and card.upgraded:
@@ -725,7 +778,11 @@ class PlayerState:
             if callable(should_procure) and should_procure(self) is False:
                 return False
         if potion_id == "random":
-            model = roll_random_potion_model(self.run_state.rng.rewards, character_id=self.character_id, in_combat=False)
+            model = roll_random_potion_model(
+                self.run_state.rng.combat_potion_generation,
+                character_id=self.character_id,
+                in_combat=False,
+            )
             if model is None:
                 return False
             return self.add_potion(create_potion(model.potion_id))
@@ -742,17 +799,27 @@ class PlayerState:
     def offer_card_reward(self) -> None:
         from sts2_env.run.reward_objects import CardReward
 
-        self.run_state.pending_rewards.append(CardReward(self.player_id))
+        self.run_state.pending_rewards.append(
+            CardReward(self.player_id, generation_context=None, card_creation_source="other")
+        )
 
     def offer_custom_card_reward(
         self,
         *,
         context: str = "regular",
         option_count: int | None = None,
+        cards_to_pick: int = 1,
+        skippable: bool = True,
         character_ids: tuple[str, ...] | None = None,
         forced_rarities: tuple[CardRarity, ...] | None = None,
         include_colorless: bool = False,
         use_default_character_pool: bool = True,
+        generation_context: str | None = "combat",
+        roll_upgrade: bool = True,
+        card_creation_source: str | None = None,
+        allow_card_pool_modifications: bool = True,
+        has_custom_card_pool: bool = False,
+        custom_card_ids: tuple[CardId, ...] | None = None,
         cards: list[CardInstance] | None = None,
     ) -> None:
         from sts2_env.run.reward_objects import CardReward
@@ -761,10 +828,18 @@ class PlayerState:
             self.player_id,
             context=context,
             option_count=option_count,
+            cards_to_pick=cards_to_pick,
+            skippable=skippable,
             character_ids=character_ids,
             forced_rarities=forced_rarities,
             include_colorless=include_colorless,
             use_default_character_pool=use_default_character_pool,
+            generation_context=generation_context,
+            roll_upgrade=roll_upgrade,
+            card_creation_source=card_creation_source,
+            allow_card_pool_modifications=allow_card_pool_modifications,
+            has_custom_card_pool=has_custom_card_pool,
+            custom_card_ids=custom_card_ids,
             cards=cards,
         )
         self.run_state.pending_rewards.append(reward)
@@ -774,13 +849,31 @@ class PlayerState:
             option_count=count,
             include_colorless=True,
             use_default_character_pool=False,
+            generation_context=None,
+            card_creation_source="other",
+            has_custom_card_pool=True,
         )
 
     def offer_multiplayer_cards(self, count: int) -> None:
+        custom_card_ids = []
+        seen_ids = set()
+        for card_id in eligible_registered_cards(module_name="sts2_env.cards.colorless", generation_context=None):
+            if card_id in _MULTIPLAYER_ONLY_CARD_IDS:
+                custom_card_ids.append(card_id)
+                seen_ids.add(card_id)
+        for card_id in get_character(self.character_id).card_pool:
+            if card_id in _MULTIPLAYER_ONLY_CARD_IDS and card_id not in seen_ids:
+                custom_card_ids.append(card_id)
+                seen_ids.add(card_id)
         self.offer_custom_card_reward(
             option_count=count,
-            character_ids=tuple(character.character_id for character in ALL_CHARACTERS),
-            include_colorless=True,
+            character_ids=(),
+            include_colorless=False,
+            use_default_character_pool=False,
+            generation_context=None,
+            card_creation_source="other",
+            has_custom_card_pool=True,
+            custom_card_ids=tuple(custom_card_ids),
         )
 
     def offer_relic_rewards(
@@ -854,11 +947,19 @@ class PlayerState:
         upgrade: bool = False,
         cards: list[CardInstance] | None = None,
         mapping: dict[CardId, CardId] | None = None,
+        rng_stream: str = "niche",
     ) -> None:
         from sts2_env.run.reward_objects import TransformCardsReward
 
         self.run_state.pending_rewards.append(
-            TransformCardsReward(self.player_id, count=count, upgrade=upgrade, cards=cards, mapping=mapping)
+            TransformCardsReward(
+                self.player_id,
+                count=count,
+                upgrade=upgrade,
+                cards=cards,
+                mapping=mapping,
+                rng_stream=rng_stream,
+            )
         )
 
     def offer_duplicate_card_reward(self, count: int = 1, *, cards: list[CardInstance] | None = None) -> None:
@@ -896,13 +997,29 @@ class PlayerState:
             self.offer_potion_reward()
 
     def offer_card_bundles(self) -> None:
-        bundle_rarities = (
-            CardRarity.COMMON,
-            CardRarity.COMMON,
-            CardRarity.UNCOMMON,
-        )
-        self.offer_custom_card_reward(forced_rarities=bundle_rarities)
-        self.offer_custom_card_reward(forced_rarities=bundle_rarities)
+        from sts2_env.run.reward_objects import CardBundlesReward
+
+        common_ids = eligible_character_cards(self.character_id, rarity=CardRarity.COMMON, generation_context=None)
+        uncommon_ids = eligible_character_cards(self.character_id, rarity=CardRarity.UNCOMMON, generation_context=None)
+        used_ids: set[CardId] = set()
+        bundles: list[list[CardInstance]] = []
+        for _ in range(2):
+            if self.character_id == "Defect" and self.run_state.rng.rewards.next_int_exclusive(0, 100) < 1:
+                bundles.append([create_card(CardId.CLAW), create_card(CardId.CLAW), create_card(CardId.CLAW)])
+                continue
+            bundle: list[CardInstance] = []
+            available_common = [card_id for card_id in common_ids if card_id not in used_ids]
+            for _ in range(2):
+                card_id = self.run_state.rng.rewards.choice(available_common)
+                bundle.append(create_card(card_id))
+                used_ids.add(card_id)
+                available_common.remove(card_id)
+            available_uncommon = [card_id for card_id in uncommon_ids if card_id not in used_ids]
+            card_id = self.run_state.rng.rewards.choice(available_uncommon)
+            bundle.append(create_card(card_id))
+            used_ids.add(card_id)
+            bundles.append(bundle)
+        self.run_state.pending_rewards.append(CardBundlesReward(self.player_id, bundles))
 
     def roll_relic_reward_id(
         self,
@@ -964,13 +1081,26 @@ class PlayerState:
     ) -> bool:
         from sts2_env.relics.registry import create_relic_by_name
 
-        if relic_id in self.relics:
-            return False
-        self.remove_relic_from_grab_bag(relic_id)
-        self.relics.append(relic_id)
         try:
             relic = create_relic_by_name(relic_id)
         except KeyError:
+            relic = None
+        canonical_relic_id = relic.relic_id.name if relic is not None else relic_id
+        if relic is None and relic_id in self.relics:
+            return False
+        if relic is not None and not relic.is_stackable:
+            for owned_relic_id in self.relics:
+                try:
+                    if create_relic_by_name(owned_relic_id).relic_id == relic.relic_id:
+                        return False
+                except KeyError:
+                    if owned_relic_id == relic_id:
+                        return False
+        self.remove_relic_from_grab_bag(canonical_relic_id)
+        if canonical_relic_id != relic_id:
+            self.remove_relic_from_grab_bag(relic_id)
+        self.relics.append(canonical_relic_id)
+        if relic is None:
             return True
         for key, value in (setup_attrs or {}).items():
             setattr(relic, key, value)
@@ -1010,23 +1140,29 @@ class RunRngSet:
     """Separate seeded RNG streams for determinism."""
 
     def __init__(self, master_seed: int):
-        master = Rng(master_seed)
+        self.seed = deterministic_hash_code(str(master_seed))
+        player_seed = self.seed + 1
         self.map_rngs: dict[int, Rng] = {}
-        self.up_front = Rng(master.next_int(0, 2**31))
-        self.unknown_map_point = Rng(master.next_int(0, 2**31))
-        self.treasure_room = Rng(master.next_int(0, 2**31))
-        self.niche = Rng(master.next_int(0, 2**31))
-        self.combat_potion = Rng(master.next_int(0, 2**31))
-        self.rewards = Rng(master.next_int(0, 2**31))
-        self.shops = Rng(master.next_int(0, 2**31))
-        self._master_seed = master_seed
-        self._master = master
+        self.up_front = Rng(self.seed, "up_front")
+        self.shuffle = Rng(self.seed, "shuffle")
+        self.unknown_map_point = Rng(self.seed, "unknown_map_point")
+        self.combat_card_generation = Rng(self.seed, "combat_card_generation")
+        self.combat_potion_generation = Rng(self.seed, "combat_potion_generation")
+        self.combat_card_selection = Rng(self.seed, "combat_card_selection")
+        self.combat_energy_costs = Rng(self.seed, "combat_energy_costs")
+        self.combat_targets = Rng(self.seed, "combat_targets")
+        self.monster_ai = Rng(self.seed, "monster_ai")
+        self.niche = Rng(self.seed, "niche")
+        self.combat_orbs = Rng(self.seed, "combat_orbs")
+        self.treasure_room = Rng(self.seed, "treasure_room_relics")
+        self.combat_potion = self.combat_potion_generation
+        self.rewards = Rng(player_seed, "rewards")
+        self.shops = Rng(player_seed, "shops")
+        self.transformations = Rng(player_seed, "transformations")
 
     def get_map_rng(self, act_index: int) -> Rng:
         if act_index not in self.map_rngs:
-            self.map_rngs[act_index] = Rng(
-                self._master_seed + act_index * 1000 + 7
-            )
+            self.map_rngs[act_index] = Rng(self.seed, f"act_{act_index + 1}_map")
         return self.map_rngs[act_index]
 
 
@@ -1060,6 +1196,7 @@ class RunState:
         # Event tracking
         self.visited_event_ids: set[str] = set()
         self.extra_fields: dict[str, Any] = {}
+        self.modifiers: list[Any] = []
 
         # Primary-player compatibility aliases.
         self.relics = self.player.relics
@@ -1126,9 +1263,16 @@ class RunState:
     def initialize_run(self) -> None:
         """Set up a new run: apply ascension, generate first map."""
         self._apply_ascension_effects()
+        for modifier in self.modifiers:
+            on_run_created = getattr(modifier, "on_run_created", None)
+            if callable(on_run_created):
+                on_run_created(self)
         for player in self.players:
             player.populate_relic_grab_bag()
+        for modifier in self.modifiers:
+            modifier.after_relic_grab_bags_populated(self)
         self.generate_map()
+        self._fire_after_act_entered()
 
     def _apply_ascension_effects(self) -> None:
         """Apply all ascension effects matching AscensionManager.ApplyEffectsTo
@@ -1191,13 +1335,46 @@ class RunState:
     def generate_map(self) -> None:
         """Generate the map for the current act."""
         act = self.current_act
-        map_rng = self.rng.get_map_rng(self.current_act_index)
-        self.map = generate_act_map(
-            num_rooms=act.num_rooms,
-            rng=map_rng,
-            ascension_level=self.ascension_level,
-            act_index=self.current_act_index,
-        )
+        spoils_cards = [
+            card
+            for player in self.players
+            for card in player.deck
+            if (
+                card.card_id == CardId.SPOILS_MAP
+                and card.effect_vars.get("spoils_act_index", 1) == self.current_act_index
+            )
+        ]
+        if spoils_cards:
+            act_map = generate_spoils_act_map(
+                num_rooms=act.num_rooms,
+                rng=Rng(self.rng.seed, "spoils_map"),
+                ascension_level=self.ascension_level,
+                act_index=self.current_act_index,
+            )
+        else:
+            map_rng = self.rng.get_map_rng(self.current_act_index)
+            act_map = generate_act_map(
+                num_rooms=act.num_rooms,
+                rng=map_rng,
+                ascension_level=self.ascension_level,
+                act_index=self.current_act_index,
+            )
+        for player in self.players:
+            for relic in player.get_relic_objects():
+                act_map = relic.modify_generated_map(player, self, act_map, self.current_act_index)
+        for player in self.players:
+            for modifier in self.modifiers:
+                act_map = modifier.modify_generated_map(player, self, act_map, self.current_act_index)
+        for player in self.players:
+            for relic in player.get_relic_objects():
+                act_map = relic.modify_generated_map_late(player, self, act_map, self.current_act_index)
+        treasure = next((point for point in act_map.room_points() if point.point_type == MapPointType.TREASURE), None)
+        if treasure is not None:
+            for card in spoils_cards:
+                card.effect_vars["spoils_col"] = treasure.col
+                card.effect_vars["spoils_row"] = treasure.row
+                treasure.add_quest(card)
+        self.map = act_map
 
     def enter_act(self, act_index: int) -> None:
         """Transition to a new act."""
@@ -1206,6 +1383,11 @@ class RunState:
         self.act_floor = 0
         self.unknown_odds.reset_to_base()
         self.generate_map()
+        self._fire_after_act_entered()
+
+    def _fire_after_act_entered(self) -> None:
+        for modifier in self.modifiers:
+            modifier.after_act_entered(self)
 
     def enter_next_act(self) -> bool:
         """Move to the next act. Returns False if run is over (won)."""
@@ -1250,7 +1432,26 @@ class RunState:
             MapPointType.ANCIENT: RoomType.EVENT,
         }
         if point_type == MapPointType.UNKNOWN:
-            return self.unknown_odds.roll(self.rng.unknown_map_point, self)
+            if (
+                self.current_act_index == 2
+                and any(card.card_id == CardId.LANTERN_KEY for player in self.players for card in player.deck)
+            ):
+                return RoomType.EVENT
+            room_types = {RoomType.EVENT, RoomType.MONSTER, RoomType.ELITE, RoomType.TREASURE, RoomType.SHOP}
+            for player in self.players:
+                for relic in player.get_relic_objects():
+                    room_types = relic.modify_unknown_map_point_room_types(player, room_types)
+            if room_types == {RoomType.EVENT}:
+                return RoomType.EVENT
+            blacklist: set[RoomType] = set()
+            blacklist.update(
+                room_type
+                for room_type in (RoomType.MONSTER, RoomType.ELITE, RoomType.TREASURE, RoomType.SHOP)
+                if room_type not in room_types
+            )
+            if RoomType.EVENT not in room_types:
+                blacklist.add(RoomType.EVENT)
+            return self.unknown_odds.roll(self.rng.unknown_map_point, self, blacklist=blacklist)
         return mapping.get(point_type, RoomType.MONSTER)
 
     def win_run(self) -> None:

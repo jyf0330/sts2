@@ -1575,54 +1575,56 @@ Encounters: CorpseSlugsWeak, SeapunkWeak, SludgeSpinnerWeak, ToadpolesWeak, Corp
 ### Seapunk
 - ID: SEAPUNK
 - Type: Normal (Weak encounter)
-- HP: 35-38 (ascension: 37-40)
-- Damage Values: {Jab: 6 (7), PoisonSpit: 9 (10)}
-- Block Values: none
+- HP: 44-46 (ascension: 47-49)
+- Damage Values: {SeaKick: 11 (12), SpinningKick: 2 x4}
+- Block Values: {BubbleBurp: 7 (8)}
 - AI State Machine:
   ```
-  INITIAL: JAB_MOVE
-  JAB_MOVE -> POISON_SPIT_MOVE -> JAB_MOVE (alternating)
+  INITIAL: SEA_KICK_MOVE
+  SEA_KICK_MOVE -> SPINNING_KICK_MOVE -> BUBBLE_BURP_MOVE -> SEA_KICK_MOVE (cycle)
   ```
 - Moves:
-  - JAB_MOVE: Deal JabDamage [SingleAttack]
-  - POISON_SPIT_MOVE: Deal PoisonSpitDamage + apply poison [SingleAttack + Debuff]
+  - SEA_KICK_MOVE: Deal SeaKickDamage [SingleAttack]
+  - SPINNING_KICK_MOVE: Deal SpinningKickDamage x4 [MultiAttack]
+  - BUBBLE_BURP_MOVE: Gain BubbleBlock and Strength 1 (2 asc) [Buff + Defend]
 
 ---
 
 ### SludgeSpinner
 - ID: SLUDGE_SPINNER
 - Type: Normal (Weak encounter)
-- HP: 20-23 (ascension: 22-25)
-- Damage Values: {SludgeBall: 6 (7)}
+- HP: 37-39 (ascension: 41-42)
+- Damage Values: {OilSpray: 8 (9), Slam: 11 (12), Rage: 6 (7)}
 - Block Values: none
 - AI State Machine:
   ```
-  INITIAL: TOXIC_SPRAY_MOVE
-  TOXIC_SPRAY -> SLUDGE_BALL -> SLUDGE_BALL (repeat)
+  INITIAL: OIL_SPRAY_MOVE
+  OIL_SPRAY_MOVE / SLAM_MOVE / RAGE_MOVE -> RAND(CannotRepeat among all three)
   ```
 - Moves:
-  - TOXIC_SPRAY_MOVE: Apply 2 Weak to targets [Debuff]
-  - SLUDGE_BALL_MOVE: Deal SludgeBallDamage [SingleAttack]
+  - OIL_SPRAY_MOVE: Deal OilSprayDamage and apply 1 Weak [SingleAttack + Debuff]
+  - SLAM_MOVE: Deal SlamDamage [SingleAttack]
+  - RAGE_MOVE: Deal RageDamage and gain 3 Strength [SingleAttack + Buff]
 
 ---
 
 ### Toadpole
 - ID: TOADPOLE
 - Type: Normal (Weak and Normal encounters)
-- HP: 14-16 (ascension: 15-17)
-- Damage Values: {Tongue: 5 (6), Chomp: 9 (10)}
+- HP: 21-25 (ascension: 22-26)
+- Damage Values: {SpikeSpit: 3 x3 (4 x3), Whirl: 7 (8)}
 - Block Values: none
 - AI State Machine:
   ```
-  INITIAL: CONDITIONAL by slot:
-    "first": TONGUE_MOVE
-    "second": CHOMP_MOVE
-    else: RAND
-  TONGUE -> CHOMP -> RAND(Tongue CannotRepeat, Chomp CannotRepeat)
+  INITIAL: INIT_MOVE:
+    front: SPIKEN_MOVE
+    not front: WHIRL_MOVE
+  SPIKEN_MOVE -> SPIKE_SPIT_MOVE -> WHIRL_MOVE -> SPIKEN_MOVE (cycle)
   ```
 - Moves:
-  - TONGUE_MOVE: Deal TongueDamage [SingleAttack]
-  - CHOMP_MOVE: Deal ChompDamage [SingleAttack]
+  - SPIKEN_MOVE: Gain 2 Thorns [Buff]
+  - SPIKE_SPIT_MOVE: Remove 2 Thorns, then deal SpikeSpitDamage x3 [MultiAttack]
+  - WHIRL_MOVE: Deal WhirlDamage [SingleAttack]
 
 ---
 
@@ -1706,36 +1708,39 @@ Encounters: CorpseSlugsWeak, SeapunkWeak, SludgeSpinnerWeak, ToadpolesWeak, Corp
 ### HauntedShip
 - ID: HAUNTED_SHIP
 - Type: Normal
-- HP: 58-62 (ascension: 61-65)
-- Damage Values: {Broadside: 7 (8) x2, RammingSpeed: 18 (20)}
+- HP: 63 (ascension: 67)
+- Damage Values: {RammingSpeed: 10 (11), Swipe: 13 (14), Stomp: 4 (5) x3}
 - Block Values: none
 - AI State Machine:
   ```
-  INITIAL: BROADSIDE_MOVE
-  BROADSIDE -> RAMMING_SPEED -> BROADSIDE (alternating)
+  INITIAL: RAMMING_SPEED_MOVE
+  All moves -> RAND:
+    odd rounds: RAMMING_SPEED_MOVE / SWIPE_MOVE / STOMP_MOVE, CannotRepeat
+    even rounds: HAUNT_MOVE, UseOnlyOnce
   ```
 - Moves:
-  - BROADSIDE_MOVE: Deal BroadsideDamage x2 [MultiAttack]
-  - RAMMING_SPEED_MOVE: Deal RammingSpeedDamage [SingleAttack]
-- Special: AfterAddedToRoom: applies HauntedPower
+  - RAMMING_SPEED_MOVE: Deal RammingSpeedDamage and add 2 Wounds to discard [SingleAttack + Status]
+  - SWIPE_MOVE: Deal SwipeDamage [SingleAttack]
+  - STOMP_MOVE: Deal StompDamage x3 [MultiAttack]
+  - HAUNT_MOVE: Apply 2 Weak, 2 Frail, and 2 Vulnerable [Debuff]
 
 ---
 
 ### LivingFog
 - ID: LIVING_FOG
 - Type: Normal
-- HP: 70-74 (ascension: 73-77)
-- Damage Values: {Engulf: 10 (12)}
+- HP: 80 (ascension: 82)
+- Damage Values: {AdvancedGas: 8 (9), Bloat: 5 (6), SuperGasBlast: 8 (9)}
 - Block Values: none
 - AI State Machine:
   ```
-  INITIAL: SPAWN_MOVE
-  SPAWN_MOVE -> ENGULF_MOVE -> SPAWN_MOVE (alternating)
+  INITIAL: ADVANCED_GAS_MOVE
+  ADVANCED_GAS_MOVE -> BLOAT_MOVE -> SUPER_GAS_BLAST_MOVE -> BLOAT_MOVE (loop)
   ```
 - Moves:
-  - SPAWN_MOVE: Summon GasBomb minion [Summon]
-  - ENGULF_MOVE: Deal EngulfDamage + apply debuff [SingleAttack + Debuff]
-- Special: Summons GasBomb minions
+  - ADVANCED_GAS_MOVE: Deal AdvancedGasDamage and apply 1 Smoggy [SingleAttack + CardDebuff]
+  - BLOAT_MOVE: Summon GasBombs, incrementing from 1 up to 5, then deal BloatDamage [SingleAttack + Summon]
+  - SUPER_GAS_BLAST_MOVE: Deal SuperGasBlastDamage [SingleAttack]
 
 ---
 
@@ -1759,55 +1764,61 @@ Encounters: CorpseSlugsWeak, SeapunkWeak, SludgeSpinnerWeak, ToadpolesWeak, Corp
 ### PunchConstruct
 - ID: PUNCH_CONSTRUCT
 - Type: Normal
-- HP: 55-59 (ascension: 58-62)
-- Damage Values: {Punch: 9 (10), HeavyPunch: 17 (19)}
-- Block Values: none
+- HP: 55 (ascension: 60)
+- Damage Values: {StrongPunch: 14 (16), FastPunch: 5 (6) x2}
+- Block Values: {Ready: 10}
 - AI State Machine:
   ```
-  INITIAL: PUNCH_MOVE
-  PUNCH -> HEAVY_PUNCH -> PUNCH (alternating)
+  INITIAL: READY_MOVE, or STRONG_PUNCH_MOVE if StartsWithStrongPunch
+  READY_MOVE -> STRONG_PUNCH_MOVE -> FAST_PUNCH_MOVE -> READY_MOVE (cycle)
   ```
 - Moves:
-  - PUNCH_MOVE: Deal PunchDamage [SingleAttack]
-  - HEAVY_PUNCH_MOVE: Deal HeavyPunchDamage [SingleAttack]
+  - READY_MOVE: Gain 10 Block [Defend]
+  - STRONG_PUNCH_MOVE: Deal StrongPunchDamage [SingleAttack]
+  - FAST_PUNCH_MOVE: Deal FastPunchDamage x2 and apply 1 Weak [MultiAttack + Debuff]
+- Special: AfterAddedToRoom applies Artifact(1). Punch Off variants can start on Strong Punch or with reduced HP.
 
 ---
 
 ### SewerClam
 - ID: SEWER_CLAM
 - Type: Normal
-- HP: 50-54 (ascension: 53-57)
-- Damage Values: {Snap: 8 (9), PearlSpit: 5 (6)}
-- Block Values: {Shell: 10 (12)}
+- HP: 56 (ascension: 58)
+- Damage Values: {Jet: 10 (11)}
+- Block Values: none
 - AI State Machine:
   ```
-  INITIAL: SHELL_MOVE
-  SHELL -> SNAP -> PEARL_SPIT -> SHELL (cycle)
+  INITIAL: JET_MOVE
+  JET_MOVE -> PRESSURIZE_MOVE -> JET_MOVE (cycle)
   ```
 - Moves:
-  - SHELL_MOVE: Gain ShellBlock [Defend]
-  - SNAP_MOVE: Deal SnapDamage [SingleAttack]
-  - PEARL_SPIT_MOVE: Deal PearlSpitDamage + apply debuff [SingleAttack + Debuff]
+  - JET_MOVE: Deal JetDamage [SingleAttack]
+  - PRESSURIZE_MOVE: Gain 4 Strength [Buff]
+- Special: AfterAddedToRoom applies Plating(8/9 asc)
 
 ---
 
 ### TwoTailedRat
 - ID: TWO_TAILED_RAT
 - Type: Normal
-- HP: 25-28 (ascension: 27-30)
-- Damage Values: {Gnaw: 6 (7), TailWhip: 4 (5) x2}
+- HP: 17-21 (ascension: 18-22)
+- Damage Values: {Scratch: 8 (9), DiseaseBite: 6 (7)}
 - Block Values: none
 - AI State Machine:
   ```
-  INITIAL: CONDITIONAL by slot:
-    "first": GNAW_MOVE
-    "second": TAIL_WHIP_MOVE
-    else: RAND
-  GNAW -> TAIL_WHIP -> RAND(Gnaw CannotRepeat, TailWhip CannotRepeat)
+  INITIAL: RAND, or StarterMoveIndex:
+    0: SCRATCH_MOVE
+    1: DISEASE_BITE_MOVE
+    2: SCREECH_MOVE
+  All moves -> RAND:
+    before summonable: Scratch weight1, DiseaseBite weight1, Screech weight3, CannotRepeat
+    when summonable: Scratch/DiseaseBite/Screech weight 1/12, CallForBackup weight .75
   ```
 - Moves:
-  - GNAW_MOVE: Deal GnawDamage [SingleAttack]
-  - TAIL_WHIP_MOVE: Deal TailWhipDamage x2 [MultiAttack]
+  - SCRATCH_MOVE: Deal ScratchDamage [SingleAttack]
+  - DISEASE_BITE_MOVE: Deal DiseaseBiteDamage [SingleAttack]
+  - SCREECH_MOVE: Apply 1 Frail [Debuff]
+  - CALL_FOR_BACKUP_MOVE: Summon another TwoTailedRat if a slot is available [Summon]
 
 ---
 
@@ -1832,16 +1843,17 @@ Encounters: CorpseSlugsWeak, SeapunkWeak, SludgeSpinnerWeak, ToadpolesWeak, Corp
 ### SneakyGremlin
 - ID: SNEAKY_GREMLIN
 - Type: Minion (part of GremlinMerc encounter)
-- HP: 9-12 (ascension: 10-13)
-- Damage Values: {Stab: 8 (9)}
+- HP: 10-14 (ascension: 11-15)
+- Damage Values: {Tackle: 9 (10)}
 - Block Values: none
 - AI State Machine:
   ```
-  INITIAL: STAB_MOVE
-  STAB_MOVE -> STAB_MOVE (repeat)
+  INITIAL: SPAWNED_MOVE
+  SPAWNED_MOVE -> TACKLE_MOVE -> TACKLE_MOVE (repeat)
   ```
 - Moves:
-  - STAB_MOVE: Deal StabDamage [SingleAttack]
+  - SPAWNED_MOVE: Wake up [Stun]
+  - TACKLE_MOVE: Deal TackleDamage [SingleAttack]
 
 ---
 
@@ -1852,56 +1864,65 @@ Encounters: CorpseSlugsWeak, SeapunkWeak, SludgeSpinnerWeak, ToadpolesWeak, Corp
 ### PhantasmalGardener
 - ID: PHANTASMAL_GARDENER
 - Type: Elite
-- HP: 60-65 (ascension: 63-68)
-- Damage Values: {Prune: 10 (12), Uproot: 16 (18)}
+- HP: 28-32 (ascension: 29-33)
+- Damage Values: {Bite: 5, Lash: 7, Flail: 1 x3}
 - Block Values: none
 - AI State Machine:
   ```
-  INITIAL: RAND(Prune CannotRepeat, Uproot CannotRepeat)
-  All -> RAND
+  INITIAL: INIT_MOVE by slot:
+    first: FLAIL_MOVE
+    second: BITE_MOVE
+    third: LASH_MOVE
+    fourth: ENLARGE_MOVE
+  BITE_MOVE -> LASH_MOVE -> FLAIL_MOVE -> ENLARGE_MOVE -> BITE_MOVE (cycle)
   ```
 - Moves:
-  - PRUNE_MOVE: Deal PruneDamage + apply debuff [SingleAttack + Debuff]
-  - UPROOT_MOVE: Deal UprootDamage [SingleAttack]
-- Special: AfterAddedToRoom: applies ShadowForm power (Intangible cycling)
+  - BITE_MOVE: Deal BiteDamage [SingleAttack]
+  - LASH_MOVE: Deal LashDamage [SingleAttack]
+  - FLAIL_MOVE: Deal FlailDamage x3 [MultiAttack]
+  - ENLARGE_MOVE: Gain 2 Strength [Buff]
+- Special: AfterAddedToRoom applies Skittish(6/7 asc)
 
 ---
 
 ### SkulkingColony
 - ID: SKULKING_COLONY
 - Type: Elite
-- HP: 140 (ascension: 150)
-- Damage Values: {Lash: 6 (7) x3, Devour: 20 (23)}
-- Block Values: none
+- HP: 79 (ascension: 84)
+- Damage Values: {Smash: 9 (11), Zoom: 16 (17), SuperCrab: 6 (7) x2}
+- Block Values: {Inertia: 10 (13)}
 - AI State Machine:
   ```
-  INITIAL: SKULK_MOVE
-  SKULK -> LASH -> DEVOUR -> SKULK (cycle)
+  INITIAL: SMASH_MOVE
+  SMASH_MOVE -> ZOOM_MOVE -> INERTIA_MOVE -> SUPER_CRAB_MOVE -> SMASH_MOVE (cycle)
   ```
 - Moves:
-  - SKULK_MOVE: Apply debuffs [Debuff]
-  - LASH_MOVE: Deal LashDamage x3 [MultiAttack]
-  - DEVOUR_MOVE: Deal DevourDamage [SingleAttack]
-- Special: AfterAddedToRoom: applies unique colony powers
+  - SMASH_MOVE: Deal SmashDamage and add 4 Dazed to discard [SingleAttack + Status]
+  - ZOOM_MOVE: Deal ZoomDamage [SingleAttack]
+  - INERTIA_MOVE: Gain InertiaBlock and 3 Strength [Defend + Buff]
+  - SUPER_CRAB_MOVE: Deal SuperCrabDamage x2 [MultiAttack]
+- Special: AfterAddedToRoom applies HardenedShell(20)
 
 ---
 
 ### TerrorEel
 - ID: TERROR_EEL
 - Type: Elite
-- HP: 130 (ascension: 140)
-- Damage Values: {Shock: 12 (14), Coil: 8 (9) x2, Surge: 25 (28)}
+- HP: 140 (ascension: 150)
+- Damage Values: {Crash: 17 (19), Thrash: 3 (4) x3}
 - Block Values: none
 - AI State Machine:
   ```
-  INITIAL: SHOCK_MOVE
-  SHOCK -> COIL -> SURGE -> SHOCK (cycle)
+  INITIAL: CRASH_MOVE
+  CRASH_MOVE -> ThrashMove -> CRASH_MOVE (cycle)
+  Shriek stun path: STUN_MOVE -> TERROR_MOVE -> CRASH_MOVE
   ```
 - Moves:
-  - SHOCK_MOVE: Deal ShockDamage + apply debuff [SingleAttack + Debuff]
-  - COIL_MOVE: Deal CoilDamage x2 [MultiAttack]
-  - SURGE_MOVE: Deal SurgeDamage [SingleAttack]
-- Special: AfterAddedToRoom: applies TerrorPower
+  - CRASH_MOVE: Deal CrashDamage [SingleAttack]
+  - ThrashMove: Deal ThrashDamage x3 and gain 7 Vigor [MultiAttack + Buff]
+  - STUN_MOVE: Stun [Stun]
+  - TERROR_MOVE: Apply 99 Vulnerable [Debuff]
+- Special: AfterAddedToRoom applies Shriek(70/75 asc), which routes the stun into TERROR_MOVE
 
 ---
 
@@ -1912,59 +1933,69 @@ Encounters: CorpseSlugsWeak, SeapunkWeak, SludgeSpinnerWeak, ToadpolesWeak, Corp
 ### WaterfallGiant
 - ID: WATERFALL_GIANT
 - Type: Boss
-- HP: 310 (ascension: 330)
-- Damage Values: {Slam: 22 (25), Crush: 14 (16) x2, Torrent: 35 (40)}
+- HP: 250 (ascension: 260)
+- Damage Values: {Stomp: 15 (16), Ram: 10 (11), PressureUp: 13 (14), PressureGun: 20 (23) +5 each use}
 - Block Values: none
 - AI State Machine:
   ```
-  INITIAL: ROAR_MOVE
-  ROAR -> SLAM -> CRUSH -> TORRENT -> ROAR (cycle)
+  INITIAL: PRESSURIZE_MOVE
+  PRESSURIZE -> STOMP -> RAM -> SIPHON -> PRESSURE_GUN -> PRESSURE_UP -> STOMP (cycle)
+  On SteamEruption death: ABOUT_TO_BLOW -> EXPLODE
   ```
 - Moves:
-  - ROAR_MOVE: Gain Strength + apply debuffs [Buff + Debuff]
-  - SLAM_MOVE: Deal SlamDamage [SingleAttack]
-  - CRUSH_MOVE: Deal CrushDamage x2 [MultiAttack]
-  - TORRENT_MOVE: Deal TorrentDamage [SingleAttack]
-- Special: AfterAddedToRoom: applies WaterfallGiantPower. Massive HP boss with cycling pattern.
+  - PRESSURIZE_MOVE: Apply SteamEruption 15 (20 ascension) [Buff]
+  - STOMP_MOVE: Deal StompDamage + apply Weak 1 + apply SteamEruption 3 [SingleAttack + Debuff + Buff]
+  - RAM_MOVE: Deal RamDamage + apply SteamEruption 3 [SingleAttack + Buff]
+  - SIPHON_MOVE: Heal 15 per player + apply SteamEruption 3 [Heal + Buff]
+  - PRESSURE_GUN_MOVE: Deal current PressureGun damage, then increase it by 5 + apply SteamEruption 3 [SingleAttack + Buff]
+  - PRESSURE_UP_MOVE: Deal PressureUpDamage + apply SteamEruption 3 [SingleAttack + Buff]
+  - ABOUT_TO_BLOW_MOVE: Store SteamEruption amount, remove SteamEruption [Stun]
+  - EXPLODE_MOVE: Deal stored SteamEruption damage, then kill self [DeathBlow]
+- Special: SteamEruption death path keeps the boss in combat until EXPLODE_MOVE resolves.
 
 ---
 
 ### SoulFysh
 - ID: SOUL_FYSH
 - Type: Boss
-- HP: 270 (ascension: 290)
-- Damage Values: {Chomp: 16 (18), SoulDrain: 8 (10) x3, DeepDive: 30 (34)}
+- HP: 211 (ascension: 221)
+- Damage Values: {DeGas: 16 (17), Gaze: 7 (8), Scream: 11 (12)}
 - Block Values: none
 - AI State Machine:
   ```
-  INITIAL: CHOMP_MOVE
-  CHOMP -> SOUL_DRAIN -> DEEP_DIVE -> CHOMP (cycle)
+  INITIAL: BECKON_MOVE
+  BECKON -> DE_GAS -> GAZE -> FADE -> SCREAM -> BECKON (cycle)
   ```
 - Moves:
-  - CHOMP_MOVE: Deal ChompDamage [SingleAttack]
-  - SOUL_DRAIN_MOVE: Deal SoulDrainDamage x3 [MultiAttack]
-  - DEEP_DIVE_MOVE: Deal DeepDiveDamage [SingleAttack]
-- Special: AfterAddedToRoom: applies SoulFyshPower
+  - BECKON_MOVE: Add one Beckon to draw pile and one Beckon to discard pile [Status]
+  - DE_GAS_MOVE: Deal DeGasDamage [SingleAttack]
+  - GAZE_MOVE: Deal GazeDamage + add one Beckon to discard pile [SingleAttack + Status]
+  - FADE_MOVE: Gain Intangible 2 [Buff]
+  - SCREAM_MOVE: Deal ScreamDamage + apply Vulnerable 3 [SingleAttack + Debuff]
+- Special: Fade makes the boss intangible before Scream.
 
 ---
 
 ### LagavulinMatriarch
 - ID: LAGAVULIN_MATRIARCH
 - Type: Boss
-- HP: 280 (ascension: 300)
-- Damage Values: {Swipe: 18 (20), Slam: 12 (14) x2, Roar: 28 (32)}
-- Block Values: none
+- HP: 222 (ascension: 233)
+- Damage Values: {Slash: 19 (21), Disembowel: 9 (10) x2, Slash2: 12 (14)}
+- Block Values: {Slash2: 12 (14)}
 - AI State Machine:
   ```
-  INITIAL: SLEEP_MOVE (sleeps for 2 turns)
-  After wake: SWIPE -> SLAM -> ROAR -> SWIPE (cycle)
+  INITIAL: SLEEP_MOVE
+  SLEEP -> SLEEP_BRANCH
+  If Asleep: SLEEP
+  Else: SLASH -> DISEMBOWEL -> SLASH2 -> SOUL_SIPHON -> SLASH
   ```
 - Moves:
   - SLEEP_MOVE: Does nothing [Sleep]
-  - SWIPE_MOVE: Deal SwipeDamage [SingleAttack]
-  - SLAM_MOVE: Deal SlamDamage x2 [MultiAttack]
-  - ROAR_MOVE: Deal RoarDamage + debuffs [SingleAttack + Debuff]
-- Special: AfterAddedToRoom: applies MetallicizePower and Dormant power. Sleeps initially, gaining block. Wakes when attacked or after 2 turns.
+  - SLASH_MOVE: Deal SlashDamage [SingleAttack]
+  - DISEMBOWEL_MOVE: Deal DisembowelDamage x2 [MultiAttack]
+  - SLASH2_MOVE: Deal Slash2Damage + gain Slash2Block [SingleAttack + Defend]
+  - SOUL_SIPHON_MOVE: Apply Strength -2 and Dexterity -2 to players, gain Strength 2 [Debuff + Buff]
+- Special: AfterAddedToRoom applies Plating 12 and Asleep 3. Damage wake removes Plating/Asleep and inserts a stun before SLASH_MOVE; natural wake goes directly to SLASH_MOVE.
 
 ---
 
@@ -2436,13 +2467,13 @@ Encounters: CorpseSlugsWeak, SeapunkWeak, SludgeSpinnerWeak, ToadpolesWeak, Corp
 - ID: SEAPUNK_WEAK
 - Act: 4
 - Room Type: Monster (Weak)
-- Monsters: [Seapunk x2]
+- Monsters: [Seapunk x1]
 
 ### SludgeSpinnerWeak
 - ID: SLUDGE_SPINNER_WEAK
 - Act: 4
 - Room Type: Monster (Weak)
-- Monsters: [SludgeSpinner x2]
+- Monsters: [SludgeSpinner x1]
 
 ### ToadpolesWeak
 - ID: TOADPOLES_WEAK
@@ -2502,19 +2533,19 @@ Encounters: CorpseSlugsWeak, SeapunkWeak, SludgeSpinnerWeak, ToadpolesWeak, Corp
 - ID: TOADPOLES_NORMAL
 - Act: 4
 - Room Type: Monster
-- Monsters: [Toadpole x4, slots: "first", "second", "third", "fourth"]
+- Monsters: [CalcifiedCultist x1, Toadpole x1]
 
 ### TwoTailedRatsNormal
 - ID: TWO_TAILED_RATS_NORMAL
 - Act: 4
 - Room Type: Monster
-- Monsters: [TwoTailedRat x3, slots: "first", "second", "third"]
+- Monsters: [TwoTailedRat x3, each starts on a different StarterMoveIndex]
 
 ### PhantasmalGardenersElite
 - ID: PHANTASMAL_GARDENERS_ELITE
 - Act: 4
 - Room Type: Elite
-- Monsters: [PhantasmalGardener x2]
+- Monsters: [PhantasmalGardener x4, slots: "first", "second", "third", "fourth"]
 
 ### SkulkingColonyElite
 - ID: SKULKING_COLONY_ELITE

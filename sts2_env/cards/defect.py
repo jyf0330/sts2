@@ -27,9 +27,11 @@ def _owner(card: CardInstance, combat: CombatState) -> Creature:
 
 def _channel_orb(combat: CombatState, orb_type: OrbType) -> None:
     """Channel an orb through the combat orb queue, if present."""
-    queue = getattr(combat, 'orb_queue', None)
-    if queue is not None:
-        queue.channel(orb_type, combat)
+    owner = (
+        getattr(getattr(combat, "active_card_source", None), "owner", None)
+        or combat.player
+    )
+    combat.channel_orb(owner, orb_type)
 
 
 def _evoke_front(combat: CombatState) -> None:
@@ -174,10 +176,13 @@ def ball_lightning(card: CardInstance, combat: CombatState, target: Creature | N
 @register_effect(CardId.BARRAGE)
 def barrage(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
+    owner = _owner(card, combat)
     hits = _get_orb_count(combat)
     for _ in range(hits):
-        dmg = calculate_damage(card.base_damage, _owner(card, combat), target, ValueProp.MOVE, combat)
-        apply_damage(target, dmg, ValueProp.MOVE, combat, _owner(card, combat))
+        if owner.is_dead or target.is_dead:
+            break
+        dmg = calculate_damage(card.base_damage, owner, target, ValueProp.MOVE, combat)
+        apply_damage(target, dmg, ValueProp.MOVE, combat, owner)
 
 
 @register_effect(CardId.BEAM_CELL)
@@ -190,9 +195,10 @@ def beam_cell(card: CardInstance, combat: CombatState, target: Creature | None) 
 
 @register_effect(CardId.BOOST_AWAY)
 def boost_away(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    blk = calculate_block(card.base_block, _owner(card, combat), ValueProp.MOVE, combat, card_source=card)
-    _owner(card, combat).gain_block(blk)
-    combat.discard_pile.append(_make_dazed())
+    owner = _owner(card, combat)
+    blk = calculate_block(card.base_block, owner, ValueProp.MOVE, combat, card_source=card)
+    owner.gain_block(blk)
+    combat.add_generated_card_to_creature_discard(owner, _make_dazed())
 
 
 @register_effect(CardId.CHARGE_BATTERY)
@@ -244,7 +250,7 @@ def focused_strike(card: CardInstance, combat: CombatState, target: Creature | N
     assert target is not None
     dmg = calculate_damage(card.base_damage, _owner(card, combat), target, ValueProp.MOVE, combat)
     apply_damage(target, dmg, ValueProp.MOVE, combat, _owner(card, combat))
-    combat.apply_power_to(_owner(card, combat), PowerId.FOCUSED_STRIKE, card.effect_vars.get("focus", 1))
+    combat.apply_power_to(_owner(card, combat), PowerId.FOCUSED_STRIKE, card.effect_vars.get("focus_power", 1))
 
 
 @register_effect(CardId.GO_FOR_THE_EYES)
@@ -259,11 +265,13 @@ def go_for_the_eyes(card: CardInstance, combat: CombatState, target: Creature | 
 @register_effect(CardId.GUNK_UP)
 def gunk_up(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
-    # Deal damage 2 times; add Slimed to discard
-    for _ in range(2):
-        dmg = calculate_damage(card.base_damage, _owner(card, combat), target, ValueProp.MOVE, combat)
-        apply_damage(target, dmg, ValueProp.MOVE, combat, _owner(card, combat))
-    combat.discard_pile.append(_make_slimed())
+    owner = _owner(card, combat)
+    for _ in range(card.effect_vars.get("hits", 3)):
+        if owner.is_dead or target.is_dead:
+            break
+        dmg = calculate_damage(card.base_damage, owner, target, ValueProp.MOVE, combat)
+        apply_damage(target, dmg, ValueProp.MOVE, combat, owner)
+    combat.add_generated_card_to_creature_discard(owner, _make_slimed())
 
 
 @register_effect(CardId.HOLOGRAM)
@@ -283,7 +291,7 @@ def hologram(card: CardInstance, combat: CombatState, target: Creature | None) -
 @register_effect(CardId.HOTFIX)
 def hotfix(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     # Apply temporary Focus (Hotfix power)
-    combat.apply_power_to(_owner(card, combat), PowerId.FOCUS, card.effect_vars.get("focus", 2))
+    combat.apply_power_to(_owner(card, combat), PowerId.FOCUS, card.effect_vars.get("focus_power", 2))
 
 
 @register_effect(CardId.LEAP)
@@ -296,7 +304,7 @@ def leap(card: CardInstance, combat: CombatState, target: Creature | None) -> No
 def lightning_rod(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     blk = calculate_block(card.base_block, _owner(card, combat), ValueProp.MOVE, combat, card_source=card)
     _owner(card, combat).gain_block(blk)
-    combat.apply_power_to(_owner(card, combat), PowerId.LIGHTNING_ROD, card.effect_vars.get("lightning_rod", 2))
+    combat.apply_power_to(_owner(card, combat), PowerId.LIGHTNING_ROD, card.effect_vars.get("lightning_rod_power", 2))
 
 
 @register_effect(CardId.MOMENTUM_STRIKE)
@@ -308,7 +316,7 @@ def momentum_strike(card: CardInstance, combat: CombatState, target: Creature | 
 
 @register_effect(CardId.SWEEPING_BEAM)
 def sweeping_beam(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    for enemy in combat.alive_enemies:
+    for enemy in combat.hittable_enemies:
         dmg = calculate_damage(card.base_damage, _owner(card, combat), enemy, ValueProp.MOVE, combat)
         apply_damage(enemy, dmg, ValueProp.MOVE, combat, _owner(card, combat))
     combat._draw_cards(card.effect_vars.get("cards", 1))
@@ -316,21 +324,26 @@ def sweeping_beam(card: CardInstance, combat: CombatState, target: Creature | No
 
 @register_effect(CardId.TURBO)
 def turbo(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    combat.energy += card.effect_vars.get("energy", 2)
-    combat.discard_pile.append(_make_void())
+    owner = _owner(card, combat)
+    combat.gain_energy(owner, card.effect_vars.get("energy", 2))
+    combat.add_generated_card_to_creature_discard(owner, _make_void())
 
 
 @register_effect(CardId.UPROAR)
 def uproar(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
+    owner = _owner(card, combat)
     for _ in range(2):
-        dmg = calculate_damage(card.base_damage, _owner(card, combat), target, ValueProp.MOVE, combat)
-        apply_damage(target, dmg, ValueProp.MOVE, combat, _owner(card, combat))
+        if owner.is_dead or target.is_dead:
+            break
+        dmg = calculate_damage(card.base_damage, owner, target, ValueProp.MOVE, combat)
+        apply_damage(target, dmg, ValueProp.MOVE, combat, owner)
     candidates = [c for c in combat.draw_pile if c.card_type == CardType.ATTACK and not c.is_unplayable]
     if not candidates:
         candidates = [c for c in combat.draw_pile if c.card_type == CardType.ATTACK]
     if candidates:
-        combat.auto_play_card(combat.rng.choice(candidates))
+        combat.stable_shuffle_cards(candidates, combat.shuffle_rng)
+        combat.auto_play_card(candidates[0])
 
 
 # ---------------------------------------------------------------------------
@@ -361,13 +374,14 @@ def chaos(card: CardInstance, combat: CombatState, target: Creature | None) -> N
     orb_types = [OrbType.LIGHTNING, OrbType.FROST, OrbType.DARK, OrbType.PLASMA, OrbType.GLASS]
     repeat = card.effect_vars.get("repeat", 1)
     for _ in range(max(0, repeat)):
-        chosen = combat.rng.choice(orb_types)
+        chosen = combat.combat_orbs_rng.choice(orb_types)
         _channel_orb(combat, chosen)
 
 
 @register_effect(CardId.CHILL)
 def chill(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    _channel_orb(combat, OrbType.FROST)
+    for _ in combat.hittable_enemies:
+        _channel_orb(combat, OrbType.FROST)
 
 
 @register_effect(CardId.COMPACT)
@@ -383,8 +397,18 @@ def compact(card: CardInstance, combat: CombatState, target: Creature | None) ->
 
 @register_effect(CardId.DARKNESS_CARD)
 def darkness(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
+    owner = _owner(card, combat)
     _channel_orb(combat, OrbType.DARK)
-    _trigger_all_passives(combat)
+    state = combat.combat_player_state_for(owner)
+    queue = getattr(state, "orb_queue", None) if state is not None else None
+    if queue is None:
+        return
+    trigger_count = card.effect_vars.get("passives", 2 if card.upgraded else 1)
+    for orb in list(queue.orbs):
+        if orb.orb_type != OrbType.DARK:
+            continue
+        for _ in range(trigger_count):
+            orb.on_passive(combat)
 
 
 @register_effect(CardId.DOUBLE_ENERGY)
@@ -394,27 +418,34 @@ def double_energy(card: CardInstance, combat: CombatState, target: Creature | No
 
 @register_effect(CardId.ENERGY_SURGE)
 def energy_surge(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    combat.energy += card.effect_vars.get("energy", 2)
+    owner = _owner(card, combat)
+    for ally in combat.get_player_allies_of(owner):
+        combat.gain_energy(ally, card.effect_vars.get("energy", 2))
 
 
 @register_effect(CardId.FERAL)
 def feral(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    combat.apply_power_to(_owner(card, combat), PowerId.FERAL, card.effect_vars.get("feral", 1))
+    combat.apply_power_to(_owner(card, combat), PowerId.FERAL, card.effect_vars.get("feral_power", 1))
 
 
 @register_effect(CardId.FIGHT_THROUGH)
 def fight_through(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    blk = calculate_block(card.base_block, _owner(card, combat), ValueProp.MOVE, combat, card_source=card)
-    _owner(card, combat).gain_block(blk)
-    combat.discard_pile.append(_make_wound())
+    owner = _owner(card, combat)
+    blk = calculate_block(card.base_block, owner, ValueProp.MOVE, combat, card_source=card)
+    owner.gain_block(blk)
+    for _ in range(card.effect_vars.get("wounds", 2)):
+        combat.add_generated_card_to_creature_discard(owner, _make_wound())
 
 
 @register_effect(CardId.FTL)
 def ftl(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
-    dmg = calculate_damage(card.base_damage, _owner(card, combat), target, ValueProp.MOVE, combat)
-    apply_damage(target, dmg, ValueProp.MOVE, combat, _owner(card, combat))
-    combat._draw_cards(card.effect_vars.get("cards", 1))
+    owner = _owner(card, combat)
+    dmg = calculate_damage(card.base_damage, owner, target, ValueProp.MOVE, combat)
+    apply_damage(target, dmg, ValueProp.MOVE, combat, owner)
+    previous_plays = sum(1 for played in combat._played_cards_this_turn if getattr(played, "owner", None) is owner)
+    if previous_plays < card.effect_vars.get("play_max", 4 if card.upgraded else 3):
+        combat.draw_cards(owner, card.effect_vars.get("cards", 1))
 
 
 @register_effect(CardId.FUSION)
@@ -439,12 +470,12 @@ def glasswork(card: CardInstance, combat: CombatState, target: Creature | None) 
 
 @register_effect(CardId.HAILSTORM)
 def hailstorm(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    combat.apply_power_to(_owner(card, combat), PowerId.HAILSTORM, card.effect_vars.get("hailstorm", 6))
+    combat.apply_power_to(_owner(card, combat), PowerId.HAILSTORM, card.effect_vars.get("hailstorm_power", 6))
 
 
 @register_effect(CardId.ITERATION_CARD)
 def iteration(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    combat.apply_power_to(_owner(card, combat), PowerId.ITERATION, card.effect_vars.get("iteration", 2))
+    combat.apply_power_to(_owner(card, combat), PowerId.ITERATION, card.effect_vars.get("iteration_power", 2))
 
 
 @register_effect(CardId.LOOP_CARD)
@@ -463,17 +494,22 @@ def null_card(card: CardInstance, combat: CombatState, target: Creature | None) 
 
 @register_effect(CardId.OVERCLOCK)
 def overclock(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    combat._draw_cards(card.effect_vars.get("cards", 2))
-    combat.discard_pile.append(_make_burn())
+    owner = _owner(card, combat)
+    combat.draw_cards(owner, card.effect_vars.get("cards", 2))
+    combat.add_generated_card_to_creature_discard(owner, _make_burn())
 
 
 @register_effect(CardId.REFRACT)
 def refract(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
+    owner = _owner(card, combat)
     for _ in range(2):
-        dmg = calculate_damage(card.base_damage, _owner(card, combat), target, ValueProp.MOVE, combat)
-        apply_damage(target, dmg, ValueProp.MOVE, combat, _owner(card, combat))
-    _channel_orb(combat, OrbType.GLASS)
+        if owner.is_dead or target.is_dead:
+            break
+        dmg = calculate_damage(card.base_damage, owner, target, ValueProp.MOVE, combat)
+        apply_damage(target, dmg, ValueProp.MOVE, combat, owner)
+    for _ in range(card.effect_vars.get("glass", 2)):
+        _channel_orb(combat, OrbType.GLASS)
 
 
 @register_effect(CardId.ROCKET_PUNCH)
@@ -513,8 +549,13 @@ def scrape(card: CardInstance, combat: CombatState, target: Creature | None) -> 
     apply_damage(target, dmg, ValueProp.MOVE, combat, _owner(card, combat))
     draw = card.effect_vars.get("cards", 4)
     combat._draw_cards(draw)
-    # Discard non-0-cost cards drawn
-    to_discard = [c for c in combat.hand[-draw:] if c.cost != 0]
+    to_discard = [
+        c for c in combat.hand[-draw:]
+        if c.cost != 0
+        or c.has_energy_cost_x
+        or int(c.combat_vars.get("_turn_star_cost_override", c.combat_vars.get("_combat_star_cost_override", c.star_cost))) > 0
+        or c.card_id == CardId.STARDUST
+    ]
     for c in to_discard:
         combat.hand.remove(c)
         combat.discard_pile.append(c)
@@ -534,12 +575,12 @@ def skim(card: CardInstance, combat: CombatState, target: Creature | None) -> No
 
 @register_effect(CardId.SMOKESTACK)
 def smokestack(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    combat.apply_power_to(_owner(card, combat), PowerId.SMOKESTACK, card.effect_vars.get("smokestack", 5))
+    combat.apply_power_to(_owner(card, combat), PowerId.SMOKESTACK, card.effect_vars.get("smokestack_power", 5))
 
 
 @register_effect(CardId.STORM_CARD)
 def storm(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    combat.apply_power_to(_owner(card, combat), PowerId.STORM, card.effect_vars.get("storm", 1))
+    combat.apply_power_to(_owner(card, combat), PowerId.STORM, card.effect_vars.get("storm_power", 1))
 
 
 @register_effect(CardId.SUBROUTINE)
@@ -595,22 +636,22 @@ def tesla_coil(card: CardInstance, combat: CombatState, target: Creature | None)
 
 @register_effect(CardId.THUNDER_CARD)
 def thunder_card(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    combat.apply_power_to(_owner(card, combat), PowerId.THUNDER, card.effect_vars.get("thunder", 6))
+    combat.apply_power_to(_owner(card, combat), PowerId.THUNDER, card.effect_vars.get("thunder_power", 6))
 
 
 @register_effect(CardId.WHITE_NOISE)
 def white_noise(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     generated = create_character_cards(
         combat.character_id,
-        combat.rng,
+        combat.combat_card_generation_rng,
         1,
         card_type=CardType.POWER,
         generation_context="modifier",
     )
     if not generated:
         return
-    generated[0].set_temporary_cost_for_turn(0)
-    combat.move_card_to_hand(generated[0])
+    generated[0].set_temporary_free_this_turn()
+    combat.add_generated_card_to_creature_hand(_owner(card, combat), generated[0])
 
 
 # ---------------------------------------------------------------------------
@@ -629,27 +670,33 @@ def all_for_one(card: CardInstance, combat: CombatState, target: Creature | None
     assert target is not None
     dmg = calculate_damage(card.base_damage, _owner(card, combat), target, ValueProp.MOVE, combat)
     apply_damage(target, dmg, ValueProp.MOVE, combat, _owner(card, combat))
-    # Return all 0-cost cards from discard to hand
-    zero_cost = [c for c in combat.discard_pile if c.cost == 0]
-    for c in zero_cost:
-        combat.discard_pile.remove(c)
-        combat.hand.append(c)
+    owner = _owner(card, combat)
+    state = combat.combat_player_state_for(owner)
+    if state is None:
+        return
+    for discarded in list(state.discard):
+        if discarded.card_type not in (CardType.ATTACK, CardType.SKILL, CardType.POWER):
+            continue
+        if discarded.has_energy_cost_x:
+            continue
+        if combat.modified_card_cost(owner, discarded) == 0:
+            combat.move_card_to_creature_hand(owner, discarded)
 
 
 @register_effect(CardId.BUFFER_CARD)
 def buffer(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    combat.apply_power_to(_owner(card, combat), PowerId.BUFFER, card.effect_vars.get("buffer", 1))
+    combat.apply_power_to(_owner(card, combat), PowerId.BUFFER, card.effect_vars.get("buffer_power", 1))
 
 
 @register_effect(CardId.CONSUMING_SHADOW)
 def consuming_shadow(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    combat.apply_power_to(_owner(card, combat), PowerId.CONSUMING_SHADOW, card.effect_vars.get("consuming_shadow", 1))
+    combat.apply_power_to(_owner(card, combat), PowerId.CONSUMING_SHADOW, card.effect_vars.get("consuming_shadow_power", 1))
     _channel_orb(combat, OrbType.DARK)
 
 
 @register_effect(CardId.COOLANT)
 def coolant(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    combat.apply_power_to(_owner(card, combat), PowerId.COOLANT, card.effect_vars.get("coolant", 2))
+    combat.apply_power_to(_owner(card, combat), PowerId.COOLANT, card.effect_vars.get("coolant_power", 2))
 
 
 @register_effect(CardId.CREATIVE_AI_CARD)
@@ -659,7 +706,7 @@ def creative_ai(card: CardInstance, combat: CombatState, target: Creature | None
 
 @register_effect(CardId.DEFRAGMENT)
 def defragment(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    combat.apply_power_to(_owner(card, combat), PowerId.FOCUS, card.effect_vars.get("focus", 1))
+    combat.apply_power_to(_owner(card, combat), PowerId.FOCUS, card.effect_vars.get("focus_power", 1))
 
 
 @register_effect(CardId.ECHO_FORM_CARD)
@@ -675,10 +722,12 @@ def flak_cannon(card: CardInstance, combat: CombatState, target: Creature | None
     for status in statuses:
         combat.exhaust_card(status)
     for _ in range(hits):
-        alive = combat.alive_enemies
+        if owner.is_dead:
+            break
+        alive = combat.hittable_enemies
         if not alive:
             break
-        t = combat.rng.choice(alive)
+        t = combat.combat_targets_rng.choice(alive)
         dmg = calculate_damage(card.base_damage, owner, t, ValueProp.MOVE, combat)
         apply_damage(t, dmg, ValueProp.MOVE, combat, owner)
 
@@ -701,34 +750,39 @@ def genetic_algorithm(card: CardInstance, combat: CombatState, target: Creature 
 @register_effect(CardId.HELIX_DRILL)
 def helix_drill(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
+    owner = _owner(card, combat)
     # Hits scale with orb count
     hits = _get_orb_count(combat)
     for _ in range(max(1, hits)):
-        dmg = calculate_damage(card.base_damage, _owner(card, combat), target, ValueProp.MOVE, combat)
-        apply_damage(target, dmg, ValueProp.MOVE, combat, _owner(card, combat))
+        if owner.is_dead or target.is_dead:
+            break
+        dmg = calculate_damage(card.base_damage, owner, target, ValueProp.MOVE, combat)
+        apply_damage(target, dmg, ValueProp.MOVE, combat, owner)
 
 
 @register_effect(CardId.HYPERBEAM)
 def hyperbeam(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    for enemy in combat.alive_enemies:
+    for enemy in combat.hittable_enemies:
         dmg = calculate_damage(card.base_damage, _owner(card, combat), enemy, ValueProp.MOVE, combat)
         apply_damage(enemy, dmg, ValueProp.MOVE, combat, _owner(card, combat))
     # Lose Focus
-    combat.apply_power_to(_owner(card, combat), PowerId.FOCUS, -card.effect_vars.get("focus_loss", 3))
+    combat.apply_power_to(_owner(card, combat), PowerId.FOCUS, -card.effect_vars.get("focus_power", 3))
 
 
 @register_effect(CardId.ICE_LANCE)
 def ice_lance(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
-    dmg = calculate_damage(card.base_damage, _owner(card, combat), target, ValueProp.MOVE, combat)
-    apply_damage(target, dmg, ValueProp.MOVE, combat, _owner(card, combat))
-    _channel_orb(combat, OrbType.FROST)
-    _channel_orb(combat, OrbType.FROST)
+    owner = _owner(card, combat)
+    dmg = calculate_damage(card.base_damage, owner, target, ValueProp.MOVE, combat)
+    apply_damage(target, dmg, ValueProp.MOVE, combat, owner)
+    for _ in range(card.effect_vars.get("frost", 3)):
+        _channel_orb(combat, OrbType.FROST)
 
 
 @register_effect(CardId.IGNITION)
 def ignition(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    _channel_orb(combat, OrbType.PLASMA)
+    assert target is not None
+    combat.channel_orb(target, "PLASMA")
 
 
 @register_effect(CardId.MACHINE_LEARNING_CARD)
@@ -784,13 +838,13 @@ def reboot(card: CardInstance, combat: CombatState, target: Creature | None) -> 
     # Shuffle hand into draw pile, then draw
     combat.draw_pile.extend(combat.hand)
     combat.hand.clear()
-    combat.rng.shuffle(combat.draw_pile)
+    combat.shuffle_rng.shuffle(combat.draw_pile)
     combat._draw_cards(card.effect_vars.get("cards", 4))
 
 
 @register_effect(CardId.SHATTER)
 def shatter(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    for enemy in combat.alive_enemies:
+    for enemy in combat.hittable_enemies:
         dmg = calculate_damage(card.base_damage, _owner(card, combat), enemy, ValueProp.MOVE, combat)
         apply_damage(enemy, dmg, ValueProp.MOVE, combat, _owner(card, combat))
     _evoke_front(combat)
@@ -798,12 +852,12 @@ def shatter(card: CardInstance, combat: CombatState, target: Creature | None) ->
 
 @register_effect(CardId.SIGNAL_BOOST)
 def signal_boost(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    combat.apply_power_to(_owner(card, combat), PowerId.SIGNAL_BOOST, card.effect_vars.get("signal_boost", 1))
+    combat.apply_power_to(_owner(card, combat), PowerId.SIGNAL_BOOST, card.effect_vars.get("signal_boost_power", 1))
 
 
 @register_effect(CardId.SPINNER_CARD)
 def spinner_card(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    combat.apply_power_to(_owner(card, combat), PowerId.SPINNER, card.effect_vars.get("spinner", 1))
+    combat.apply_power_to(_owner(card, combat), PowerId.SPINNER, card.effect_vars.get("spinner_power", 1))
     _channel_orb(combat, OrbType.GLASS)
 
 
@@ -831,8 +885,8 @@ def voltaic(card: CardInstance, combat: CombatState, target: Creature | None) ->
 
 @register_effect(CardId.BIASED_COGNITION_CARD)
 def biased_cognition(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    combat.apply_power_to(_owner(card, combat), PowerId.FOCUS, card.effect_vars.get("focus", 4))
-    combat.apply_power_to(_owner(card, combat), PowerId.BIASED_COGNITION, card.effect_vars.get("biased_cognition", 1))
+    combat.apply_power_to(_owner(card, combat), PowerId.FOCUS, card.effect_vars.get("focus_power", 4))
+    combat.apply_power_to(_owner(card, combat), PowerId.BIASED_COGNITION, card.effect_vars.get("biased_cognition_power", 1))
 
 
 @register_effect(CardId.QUADCAST)
@@ -845,35 +899,35 @@ def quadcast(card: CardInstance, combat: CombatState, target: Creature | None) -
 #  Card factories
 # ---------------------------------------------------------------------------
 
-def make_strike_defect() -> CardInstance:
+def make_strike_defect(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.STRIKE_DEFECT, cost=1, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.BASIC,
-        base_damage=6, instance_id=_get_next_id(),
+        base_damage=9 if upgraded else 6, upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_defend_defect() -> CardInstance:
+def make_defend_defect(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.DEFEND_DEFECT, cost=1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.BASIC,
-        base_block=5, instance_id=_get_next_id(),
+        base_block=8 if upgraded else 5, upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_zap() -> CardInstance:
+def make_zap(upgraded: bool = False) -> CardInstance:
     return CardInstance(
-        card_id=CardId.ZAP, cost=1, card_type=CardType.SKILL,
+        card_id=CardId.ZAP, cost=0 if upgraded else 1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.BASIC,
-        instance_id=_get_next_id(),
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
-def make_dualcast() -> CardInstance:
+def make_dualcast(upgraded: bool = False) -> CardInstance:
     return CardInstance(
-        card_id=CardId.DUALCAST, cost=1, card_type=CardType.SKILL,
+        card_id=CardId.DUALCAST, cost=0 if upgraded else 1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.BASIC,
-        instance_id=_get_next_id(),
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
@@ -955,7 +1009,7 @@ def make_focused_strike() -> CardInstance:
     return CardInstance(
         card_id=CardId.FOCUSED_STRIKE_CARD, cost=1, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.COMMON,
-        base_damage=9, effect_vars={"focus": 1}, instance_id=_get_next_id(),
+        base_damage=9, effect_vars={"focus_power": 1}, instance_id=_get_next_id(),
     )
 
 
@@ -971,7 +1025,7 @@ def make_gunk_up() -> CardInstance:
     return CardInstance(
         card_id=CardId.GUNK_UP, cost=1, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.COMMON,
-        base_damage=4, instance_id=_get_next_id(),
+        base_damage=4, effect_vars={"hits": 3}, instance_id=_get_next_id(),
     )
 
 
@@ -987,7 +1041,7 @@ def make_hotfix() -> CardInstance:
     return CardInstance(
         card_id=CardId.HOTFIX, cost=0, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.COMMON,
-        effect_vars={"focus": 2}, instance_id=_get_next_id(),
+        effect_vars={"focus_power": 2}, instance_id=_get_next_id(),
     )
 
 
@@ -1003,7 +1057,7 @@ def make_lightning_rod() -> CardInstance:
     return CardInstance(
         card_id=CardId.LIGHTNING_ROD, cost=1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.COMMON,
-        base_block=4, effect_vars={"lightning_rod": 2}, instance_id=_get_next_id(),
+        base_block=4, effect_vars={"lightning_rod_power": 2}, instance_id=_get_next_id(),
     )
 
 
@@ -1090,10 +1144,11 @@ def make_compact() -> CardInstance:
     )
 
 
-def make_darkness() -> CardInstance:
+def make_darkness(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.DARKNESS_CARD, cost=1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
+        upgraded=upgraded, effect_vars={"passives": 2 if upgraded else 1},
         instance_id=_get_next_id(),
     )
 
@@ -1106,12 +1161,13 @@ def make_double_energy() -> CardInstance:
     )
 
 
-def make_energy_surge() -> CardInstance:
+def make_energy_surge(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.ENERGY_SURGE, cost=1, card_type=CardType.SKILL,
-        target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
+        target_type=TargetType.ALL_ALLIES, rarity=CardRarity.UNCOMMON,
         keywords=frozenset({"exhaust"}),
-        effect_vars={"energy": 2}, instance_id=_get_next_id(),
+        effect_vars={"energy": 3 if upgraded else 2}, upgraded=upgraded,
+        instance_id=_get_next_id(),
     )
 
 
@@ -1119,7 +1175,7 @@ def make_feral() -> CardInstance:
     return CardInstance(
         card_id=CardId.FERAL, cost=2, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
-        effect_vars={"feral": 1}, instance_id=_get_next_id(),
+        effect_vars={"feral_power": 1}, instance_id=_get_next_id(),
     )
 
 
@@ -1127,7 +1183,7 @@ def make_fight_through() -> CardInstance:
     return CardInstance(
         card_id=CardId.FIGHT_THROUGH, cost=1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
-        base_block=13, instance_id=_get_next_id(),
+        base_block=13, effect_vars={"wounds": 2}, instance_id=_get_next_id(),
     )
 
 
@@ -1168,7 +1224,7 @@ def make_hailstorm() -> CardInstance:
     return CardInstance(
         card_id=CardId.HAILSTORM, cost=1, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
-        effect_vars={"hailstorm": 6}, instance_id=_get_next_id(),
+        effect_vars={"hailstorm_power": 6}, instance_id=_get_next_id(),
     )
 
 
@@ -1176,7 +1232,7 @@ def make_iteration() -> CardInstance:
     return CardInstance(
         card_id=CardId.ITERATION_CARD, cost=1, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
-        effect_vars={"iteration": 2}, instance_id=_get_next_id(),
+        effect_vars={"iteration_power": 2}, instance_id=_get_next_id(),
     )
 
 
@@ -1208,7 +1264,7 @@ def make_refract() -> CardInstance:
     return CardInstance(
         card_id=CardId.REFRACT, cost=3, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.UNCOMMON,
-        base_damage=9, instance_id=_get_next_id(),
+        base_damage=9, effect_vars={"glass": 2}, instance_id=_get_next_id(),
     )
 
 
@@ -1256,7 +1312,7 @@ def make_smokestack() -> CardInstance:
     return CardInstance(
         card_id=CardId.SMOKESTACK, cost=1, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
-        effect_vars={"smokestack": 5}, instance_id=_get_next_id(),
+        effect_vars={"smokestack_power": 5}, instance_id=_get_next_id(),
     )
 
 
@@ -1264,7 +1320,7 @@ def make_storm() -> CardInstance:
     return CardInstance(
         card_id=CardId.STORM_CARD, cost=1, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
-        effect_vars={"storm": 1}, instance_id=_get_next_id(),
+        effect_vars={"storm_power": 1}, instance_id=_get_next_id(),
     )
 
 
@@ -1322,7 +1378,7 @@ def make_thunder() -> CardInstance:
     return CardInstance(
         card_id=CardId.THUNDER_CARD, cost=1, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
-        effect_vars={"thunder": 6}, instance_id=_get_next_id(),
+        effect_vars={"thunder_power": 6}, instance_id=_get_next_id(),
     )
 
 
@@ -1354,7 +1410,7 @@ def make_buffer() -> CardInstance:
     return CardInstance(
         card_id=CardId.BUFFER_CARD, cost=2, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
-        effect_vars={"buffer": 1}, instance_id=_get_next_id(),
+        effect_vars={"buffer_power": 1}, instance_id=_get_next_id(),
     )
 
 
@@ -1362,7 +1418,7 @@ def make_consuming_shadow() -> CardInstance:
     return CardInstance(
         card_id=CardId.CONSUMING_SHADOW, cost=2, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
-        effect_vars={"consuming_shadow": 1}, instance_id=_get_next_id(),
+        effect_vars={"consuming_shadow_power": 1}, instance_id=_get_next_id(),
     )
 
 
@@ -1370,7 +1426,7 @@ def make_coolant() -> CardInstance:
     return CardInstance(
         card_id=CardId.COOLANT, cost=1, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
-        effect_vars={"coolant": 2}, instance_id=_get_next_id(),
+        effect_vars={"coolant_power": 2}, instance_id=_get_next_id(),
     )
 
 
@@ -1386,7 +1442,7 @@ def make_defragment() -> CardInstance:
     return CardInstance(
         card_id=CardId.DEFRAGMENT, cost=1, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
-        effect_vars={"focus": 1}, instance_id=_get_next_id(),
+        effect_vars={"focus_power": 1}, instance_id=_get_next_id(),
     )
 
 
@@ -1430,7 +1486,7 @@ def make_hyperbeam() -> CardInstance:
     return CardInstance(
         card_id=CardId.HYPERBEAM, cost=2, card_type=CardType.ATTACK,
         target_type=TargetType.ALL_ENEMIES, rarity=CardRarity.RARE,
-        base_damage=26, effect_vars={"focus_loss": 3}, instance_id=_get_next_id(),
+        base_damage=26, effect_vars={"focus_power": 3}, instance_id=_get_next_id(),
     )
 
 
@@ -1438,15 +1494,16 @@ def make_ice_lance() -> CardInstance:
     return CardInstance(
         card_id=CardId.ICE_LANCE, cost=3, card_type=CardType.ATTACK,
         target_type=TargetType.ANY_ENEMY, rarity=CardRarity.RARE,
-        base_damage=19, instance_id=_get_next_id(),
+        base_damage=19, effect_vars={"frost": 3}, instance_id=_get_next_id(),
     )
 
 
-def make_ignition() -> CardInstance:
+def make_ignition(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.IGNITION, cost=1, card_type=CardType.SKILL,
-        target_type=TargetType.SELF, rarity=CardRarity.RARE,
-        keywords=frozenset({"exhaust"}), instance_id=_get_next_id(),
+        target_type=TargetType.ANY_ALLY, rarity=CardRarity.RARE,
+        keywords=frozenset() if upgraded else frozenset({"exhaust"}),
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
@@ -1513,7 +1570,7 @@ def make_signal_boost() -> CardInstance:
         card_id=CardId.SIGNAL_BOOST, cost=1, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
         keywords=frozenset({"exhaust"}),
-        effect_vars={"signal_boost": 1}, instance_id=_get_next_id(),
+        effect_vars={"signal_boost_power": 1}, instance_id=_get_next_id(),
     )
 
 
@@ -1521,7 +1578,7 @@ def make_spinner() -> CardInstance:
     return CardInstance(
         card_id=CardId.SPINNER_CARD, cost=1, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
-        effect_vars={"spinner": 1}, instance_id=_get_next_id(),
+        effect_vars={"spinner_power": 1}, instance_id=_get_next_id(),
     )
 
 
@@ -1555,7 +1612,7 @@ def make_biased_cognition() -> CardInstance:
     return CardInstance(
         card_id=CardId.BIASED_COGNITION_CARD, cost=1, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.ANCIENT,
-        effect_vars={"focus": 4, "biased_cognition": 1}, instance_id=_get_next_id(),
+        effect_vars={"focus_power": 4, "biased_cognition_power": 1}, instance_id=_get_next_id(),
     )
 
 

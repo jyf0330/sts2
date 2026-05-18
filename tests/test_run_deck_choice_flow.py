@@ -23,6 +23,16 @@ from sts2_env.run.run_manager import RunManager
 from sts2_env.run.shop import ShopInventory, ShopRelicEntry
 
 
+class _FailingChoiceRng:
+    def choice(self, values):
+        raise AssertionError("wrong RNG stream")
+
+
+class _FirstChoiceRng:
+    def choice(self, values):
+        return list(values)[0]
+
+
 def test_shop_remove_card_uses_run_level_deck_choice_and_resumes_shop():
     mgr = RunManager(seed=801, character_id="Ironclad")
     mgr._phase = RunManager.PHASE_SHOP
@@ -43,6 +53,8 @@ def test_shop_remove_card_uses_run_level_deck_choice_and_resumes_shop():
     assert len(mgr.run_state.player.deck) == starting_deck - 1
     assert mgr._shop_inventory is not None
     assert mgr._shop_inventory.removal_cost == 100
+    assert mgr._shop_inventory.removal_used
+    assert not any(action["action"] == "remove_card" for action in mgr.get_available_actions())
 
 
 def test_treasure_relic_with_deck_choice_pauses_then_returns_to_map():
@@ -349,12 +361,13 @@ def test_war_hammer_upgrades_random_cards_after_elite_victory():
         is_elite=True,
         combat_player_state_for=lambda owner: SimpleNamespace(player_state=mgr.run_state.player),
     )
+    upgraded_before = sum(1 for card in mgr.run_state.player.deck if card.upgraded)
 
     relic.after_combat_victory(mgr.run_state.player, combat)
 
     rewards = [reward for reward in mgr.run_state.pending_rewards if isinstance(reward, UpgradeCardsReward)]
-    assert len(rewards) == 1
-    assert rewards[0].count == 4
+    assert rewards == []
+    assert sum(1 for card in mgr.run_state.player.deck if card.upgraded) == upgraded_before + 4
 
 
 def test_after_card_reward_consumes_followup_pending_rewards_before_leaving_map():
@@ -371,6 +384,8 @@ def test_after_card_reward_consumes_followup_pending_rewards_before_leaving_map(
 
 def test_treasure_leafy_poultice_transforms_one_strike_and_one_defend_without_choice():
     mgr = RunManager(seed=818, character_id="Ironclad")
+    mgr.run_state.rng.niche = _FailingChoiceRng()
+    mgr.run_state.rng.transformations = _FirstChoiceRng()
     mgr._phase = RunManager.PHASE_TREASURE
     mgr._current_reward = RelicReward(
         mgr.run_state.player.player_id,
@@ -386,6 +401,19 @@ def test_treasure_leafy_poultice_transforms_one_strike_and_one_defend_without_ch
     mgr.take_action({"action": "choose", "index": 1})
     final = mgr.take_action({"action": "confirm_choice"})
     assert final["phase"] == RunManager.PHASE_MAP_CHOICE
+    assert sum(
+        1 for card in mgr.run_state.player.deck
+        if card.rarity.name == "BASIC" and ("STRIKE" in card.card_id.name or "DEFEND" in card.card_id.name)
+    ) == 7
+
+
+def test_leafy_poultice_immediate_transform_uses_transformations_rng():
+    mgr = RunManager(seed=825, character_id="Ironclad")
+    mgr.run_state.rng.niche = _FailingChoiceRng()
+    mgr.run_state.rng.transformations = _FirstChoiceRng()
+
+    assert mgr.run_state.player.obtain_relic("LEAFY_POULTICE")
+
     assert sum(
         1 for card in mgr.run_state.player.deck
         if card.rarity.name == "BASIC" and ("STRIKE" in card.card_id.name or "DEFEND" in card.card_id.name)
@@ -450,6 +478,24 @@ def test_treasure_archaic_tooth_routes_mapping_transform_through_reward_chain():
     final = mgr.take_action({"action": "choose", "index": 0})
     assert final["phase"] == RunManager.PHASE_MAP_CHOICE
     assert any(card.card_id.name == "BREAK" for card in mgr.run_state.player.deck)
+
+
+def test_archaic_tooth_setup_attrs_deferred_path_queues_supported_transform_reward():
+    mgr = RunManager(seed=824, character_id="Ironclad")
+    mgr.run_state.defer_followup_rewards = True
+
+    assert mgr.run_state.player.obtain_relic_with_setup(
+        "ARCHAIC_TOOTH",
+        setup_attrs={"_starter_card_id": "BASH", "_ancient_card_id": "BREAK"},
+    )
+
+    assert len(mgr.run_state.pending_rewards) == 1
+    reward = mgr.run_state.pending_rewards.pop(0)
+    assert isinstance(reward, TransformCardsReward)
+    result = reward.select(mgr)
+    assert result["pending_choice"] is True
+    assert mgr.run_state.resolve_pending_choice(0)
+    assert any(card.card_id == CardId.BREAK for card in mgr.run_state.player.deck)
 
 
 def test_treasure_storybook_auto_adds_card_and_returns_to_map():

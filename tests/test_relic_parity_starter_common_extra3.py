@@ -121,11 +121,15 @@ class TestRelicParityStarterCommonExtra3:
 
         combat.player.heal(2)
         assert combat.player.current_hp == 42
-        assert combat.player.get_power_amount(PowerId.STRENGTH) == 3
+        assert combat.player.get_power_amount(PowerId.STRENGTH) == 0
 
         combat.deal_damage(enemy, combat.player, 1, ValueProp.UNPOWERED)
         assert combat.player.current_hp == 41
         assert combat.player.get_power_amount(PowerId.STRENGTH) == 0
+
+        combat.deal_damage(enemy, combat.player, 1, ValueProp.UNPOWERED)
+        assert combat.player.current_hp == 40
+        assert combat.player.get_power_amount(PowerId.STRENGTH) == 3
 
     def test_festive_popper_deals_round_one_aoe_damage_only_once(self):
         """Matches FestivePopper.cs: deal 9 unpowered to all enemies on round 1 only."""

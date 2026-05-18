@@ -7,6 +7,7 @@ from sts2_env.cards.silent import (
     make_calculated_gamble,
     make_defend_silent,
     make_footwork,
+    make_hand_trick,
     make_leg_sweep,
     make_piercing_wail,
     make_reflex,
@@ -128,6 +129,40 @@ class TestSilentParityExtra2:
 
         assert combat.hand == [keep]
         assert combat.discard_pile == [toss]
+
+    def test_well_laid_plans_retains_extra_cards_beyond_existing_single_turn_retain(self):
+        combat = _make_combat()
+        already_retained = make_defend_silent()
+        already_retained.single_turn_retain = True
+        keep_a = make_strike_silent()
+        keep_b = make_defend_silent()
+        toss = make_strike_silent()
+        combat.hand = [make_well_laid_plans(upgraded=True), already_retained, keep_a, keep_b, toss]
+        combat.draw_pile = []
+        combat.discard_pile = []
+        combat.energy = 1
+
+        assert combat.play_card(0)
+
+        fire_before_turn_end(CombatSide.PLAYER, combat)
+        combat._resolve_end_of_turn_hand()  # noqa: SLF001
+
+        assert combat.hand == [already_retained, keep_a, keep_b]
+        assert combat.discard_pile == [toss]
+
+    def test_hand_trick_does_not_offer_already_sly_skills(self):
+        combat = _make_combat()
+        already_sly = make_reflex()
+        target_skill = make_defend_silent()
+        combat.hand = [make_hand_trick(), already_sly, target_skill]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.pending_choice is not None
+        assert [option.card for option in combat.pending_choice.options] == [target_skill]
+
+        assert combat.resolve_pending_choice(0)
+        assert target_skill.is_sly
 
     def test_reflex_draws_two_cards_when_played(self):
         combat = _make_combat()

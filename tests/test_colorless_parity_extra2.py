@@ -3,6 +3,7 @@
 import sts2_env.powers  # noqa: F401
 
 from sts2_env.cards.colorless import (
+    make_dramatic_entrance,
     make_flash_of_steel,
     make_jack_of_all_trades,
     make_mayhem_card,
@@ -10,15 +11,19 @@ from sts2_env.cards.colorless import (
     make_panache_card,
     make_rally,
     make_scrawl,
+    make_shockwave,
     make_the_bomb_card,
     make_ultimate_strike,
+    make_volley,
 )
 from sts2_env.cards.ironclad import create_ironclad_starter_deck
 from sts2_env.cards.ironclad_basic import make_strike_ironclad
 from sts2_env.core.combat import CombatState
-from sts2_env.core.enums import CardId, PowerId
+from sts2_env.core.enums import CardId, CombatSide, PowerId
+from sts2_env.core.hooks import fire_before_turn_end
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle
+from sts2_env.powers.base import PowerInstance
 from sts2_env.run.run_state import PlayerState
 
 
@@ -37,6 +42,14 @@ def _make_combat(*, extra_enemies: int = 0) -> CombatState:
         combat.add_enemy(extra_creature, extra_ai)
     combat.start_combat()
     return combat
+
+
+class _CannotHitPower(PowerInstance):
+    def __init__(self):
+        super().__init__(PowerId.COVERED, 1)
+
+    def should_allow_hitting(self, owner, combat):
+        return False
 
 
 class TestColorlessParityExtra2:
@@ -156,6 +169,76 @@ class TestColorlessParityExtra2:
         assert combat.player.get_power_amount(PowerId.THE_BOMB) == 0
         assert first_enemy.current_hp == 80
         assert second_enemy.current_hp == 80
+
+    def test_panache_damage_hits_only_hittable_enemies(self):
+        combat = _make_combat(extra_enemies=1)
+        blocked, hittable = combat.enemies
+        blocked.current_hp = blocked.max_hp = 100
+        hittable.current_hp = hittable.max_hp = 100
+        blocked.powers[PowerId.COVERED] = _CannotHitPower()
+        combat.apply_power_to(combat.player, PowerId.PANACHE, 7)
+        panache = combat.player.powers[PowerId.PANACHE]
+        card = make_strike_ironclad()
+        card.owner = combat.player
+
+        for _ in range(6):
+            panache.after_card_played(combat.player, card, combat)
+
+        assert blocked.current_hp == 100
+        assert hittable.current_hp == 93
+
+    def test_the_bomb_explosion_hits_only_hittable_enemies(self):
+        combat = _make_combat(extra_enemies=1)
+        blocked, hittable = combat.enemies
+        blocked.current_hp = blocked.max_hp = 100
+        hittable.current_hp = hittable.max_hp = 100
+        blocked.powers[PowerId.COVERED] = _CannotHitPower()
+        combat.apply_power_to(combat.player, PowerId.THE_BOMB, 1)
+
+        fire_before_turn_end(CombatSide.PLAYER, combat)
+
+        assert blocked.current_hp == 100
+        assert hittable.current_hp == 60
+
+    def test_dramatic_entrance_hits_only_hittable_enemies(self):
+        combat = _make_combat(extra_enemies=1)
+        blocked, hittable = combat.enemies
+        blocked.current_hp = blocked.max_hp = 100
+        hittable.current_hp = hittable.max_hp = 100
+        blocked.powers[PowerId.COVERED] = _CannotHitPower()
+        combat.hand = [make_dramatic_entrance()]
+        combat.energy = 0
+
+        assert combat.play_card(0)
+        assert blocked.current_hp == 100
+        assert hittable.current_hp == 89
+
+    def test_shockwave_debuffs_only_hittable_enemies(self):
+        combat = _make_combat(extra_enemies=1)
+        blocked, hittable = combat.enemies
+        blocked.powers[PowerId.COVERED] = _CannotHitPower()
+        combat.hand = [make_shockwave()]
+        combat.energy = 2
+
+        assert combat.play_card(0)
+        assert blocked.get_power_amount(PowerId.WEAK) == 0
+        assert blocked.get_power_amount(PowerId.VULNERABLE) == 0
+        assert hittable.get_power_amount(PowerId.WEAK) == 3
+        assert hittable.get_power_amount(PowerId.VULNERABLE) == 3
+
+    def test_volley_random_target_uses_only_hittable_enemies(self):
+        combat = _make_combat(extra_enemies=1)
+        blocked, hittable = combat.enemies
+        blocked.current_hp = blocked.max_hp = 100
+        hittable.current_hp = hittable.max_hp = 100
+        blocked.powers[PowerId.COVERED] = _CannotHitPower()
+        volley = make_volley()
+        combat.hand = [volley]
+        combat.energy = 2
+
+        assert combat.play_card(0)
+        assert blocked.current_hp == 100
+        assert hittable.current_hp == 80
 
     def test_ultimate_strike_and_upgrade_damage_values_match_reference(self):
         combat = _make_combat()

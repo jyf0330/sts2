@@ -15,9 +15,36 @@ The detailed backlog sections below were captured as the pre-pass baseline. Afte
 
 | Surface | Total | Directly Covered | Gap | Coverage |
 | --- | ---: | ---: | ---: | ---: |
-| Cards | 578 | 204 | 374 | 35.3% |
-| Relics | 289 | 177 | 112 | 61.2% |
+| Cards | 578 | 218 | 360 | 37.7% |
+| Relics | 289 | 206 | 83 | 71.3% |
 | Events | 68 | 68 | 0 | 100.0% |
+
+Latest local pass also added direct coverage for:
+
+- Cards: `BARRICADE_CARD`, `BLUDGEON`, `CORRUPTION_CARD`, `DEMON_FORM_CARD`, `FLAME_BARRIER_CARD`, `GOLD_AXE`
+
+Previous local pass also added direct coverage for:
+
+- Relics: `EMOTION_CHIP`, `GAMBLING_CHIP`, `GIRYA`, `JUZU_BRACELET`, `KUNAI`, `PAPER_KRANE`, `SHOVEL`, `SHURIKEN`, `SNECKO_SKULL`
+
+This pass also exposed and fixed the following logic mismatches:
+
+- `JuzuBracelet`: unknown rooms now blacklist `Monster` outcomes when resolving `?` rooms.
+- `SneckoSkull`: the relic now participates in the power-amount-given pipeline, so owner-applied Poison correctly gains `+1`.
+- `Girya`: after 3 lifts, the rest site no longer keeps surfacing `Lift`.
+- `EmotionChip`: now tracks previous-round unblocked HP loss and re-triggers all orb passives on the next player turn.
+- `GamblingChip`: round-1 discard-and-draw now uses a real pending hand-choice flow.
+- `PaperKrane`: Weak damage reduction now matches the original multiplier path without float-floor drift.
+
+The latest local pass also added direct coverage for:
+
+- Relics: `CLOAK_CLASP`, `GHOST_SEED`, `INTIMIDATING_HELMET`, `IVORY_TILE`, `MEAT_ON_THE_BONE`, `POWER_CELL`, `RAINBOW_RING`, `RAZOR_TOOTH`
+
+This pass also exposed and fixed the following logic mismatches:
+
+- `GhostSeed`: starter `Strike` / `Defend` cards now actually gain `Ethereal` when combat starts.
+- `RainbowRing`: it now only grants its `+1 Strength / +1 Dexterity` payoff once per turn.
+- `RazorTooth`: played Attack / Skill cards now upgrade through the real combat upgrade path instead of calling a nonexistent card method.
 
 This pass added direct coverage for:
 
@@ -69,16 +96,16 @@ These are the current exact remaining surfaces that still lack direct proof.
 
 ### Remaining Cards By Module
 
-#### `sts2_env.cards.ironclad` (82)
+#### `sts2_env.cards.ironclad` (77)
 
 ```text
-AGGRESSION_CARD, ANGER, ASHEN_STRIKE, BARRICADE_CARD, BASH, BATTLE_TRANCE,
-BLOODLETTING, BLOOD_WALL, BLUDGEON, BODY_SLAM, BRAND, BREAK, BREAKTHROUGH,
-BULLY, CASCADE, CINDER, COLOSSUS_CARD, CONFLAGRATION, CORRUPTION_CARD,
+AGGRESSION_CARD, ANGER, ASHEN_STRIKE, BASH, BATTLE_TRANCE,
+BLOODLETTING, BLOOD_WALL, BODY_SLAM, BRAND, BREAK, BREAKTHROUGH,
+BULLY, CASCADE, CINDER, COLOSSUS_CARD, CONFLAGRATION,
 CRIMSON_MANTLE, CRUELTY_CARD, DARK_EMBRACE_CARD, DEFEND_IRONCLAD,
-DEMONIC_SHIELD, DEMON_FORM_CARD, DISMANTLE, DOMINATE, DRUM_OF_BATTLE_CARD,
+DEMONIC_SHIELD, DISMANTLE, DOMINATE, DRUM_OF_BATTLE_CARD,
 EVIL_EYE, EXPECT_A_FIGHT, FEED, FEEL_NO_PAIN_CARD, FIEND_FIRE, FIGHT_ME,
-FLAME_BARRIER_CARD, FORGOTTEN_RITUAL, GRAPPLE, HAVOC, HELLRAISER_CARD,
+FORGOTTEN_RITUAL, GRAPPLE, HAVOC, HELLRAISER_CARD,
 HEMOKINESIS, HOWL_FROM_BEYOND, IMPERVIOUS, INFERNAL_BLADE, INFERNO_CARD,
 INFLAME, IRON_WAVE, JUGGERNAUT_CARD, JUGGLING_CARD, MANGLE, MOLTEN_FIST,
 OFFERING, ONE_TWO_PUNCH_CARD, PACTS_END, PERFECTED_STRIKE, PILLAGE,
@@ -127,13 +154,13 @@ SYNCHRONIZE, SYNTHESIS, TEMPEST, TESLA_COIL, THUNDER_CARD, TRASH_TO_TREASURE,
 TURBO, UPROAR, VOLTAIC, ZAP
 ```
 
-#### `sts2_env.cards.colorless` (51)
+#### `sts2_env.cards.colorless` (50)
 
 ```text
 ANOINTED, AUTOMATION, BEACON_OF_HOPE, BELIEVE_IN_YOU, BOLAS, CALAMITY_CARD,
 CATASTROPHE, COORDINATE_CARD, DARK_SHACKLES, DRAMATIC_ENTRANCE, ENTROPY,
 EQUILIBRIUM, ETERNAL_ARMOR, FASTEN, FINESSE, FISTICUFFS, FLASH_OF_STEEL,
-GANG_UP, GOLD_AXE, HIDDEN_GEM, HUDDLE_UP, IMPATIENCE, INTERCEPT_CARD,
+GANG_UP, HIDDEN_GEM, HUDDLE_UP, IMPATIENCE, INTERCEPT_CARD,
 JACKPOT, JACK_OF_ALL_TRADES, KNOCKDOWN, LIFT, MAYHEM_CARD, NOSTALGIA_CARD,
 OMNISLICE, PANIC_BUTTON, PREP_TIME, PRODUCTION, PROLONG, PROWESS, RALLY,
 REND, RESTLESSNESS, ROLLING_BOULDER, SALVO, SCRAWL, SEEKER_STRIKE, SHOCKWAVE,
@@ -286,7 +313,7 @@ WHISPERING_EARRING, WONGO_CUSTOMER_APPRECIATION_BADGE, YUMMY_COOKIE
 
 | Surface | Total | Directly Covered | Gap | Coverage |
 | --- | ---: | ---: | ---: | ---: |
-| Cards | 578 | 80 | 498 | 13.8% |
+| Cards | 578 | 81 | 497 | 14.0% |
 | Relics | 289 | 73 | 216 | 25.3% |
 | Events | 68 | 12 | 56 | 17.6% |
 
@@ -318,7 +345,7 @@ BODYGUARD, BONE_SHARDS, BORROWED_TIME, BULWARK, CAPTURE_SPIRIT, CHARGE, CLASH,
 CLEANSE, COMPACT, CONQUEROR, CONVERGENCE, COUNTDOWN_CARD, CRASH_LANDING,
 DAGGER_THROW, DANSE_MACABRE, DEATH_MARCH, DECISIONS_DECISIONS, DIRGE,
 DISCOVERY, DREDGE, EIDOLON, ENTHRALLED, FLAK_CANNON, FURNACE, GLIMMER,
-GRAND_FINALE, GRAVE_WARDEN, GUARDS, HAND_OF_GREED, HAND_TRICK, HEIRLOOM_HAMMER,
+GOLD_AXE, GRAND_FINALE, GRAVE_WARDEN, GUARDS, HAND_OF_GREED, HAND_TRICK, HEIRLOOM_HAMMER,
 HIDDEN_CACHE, HIDDEN_DAGGERS, HIGH_FIVE, HOLOGRAM, KNOCKOUT_BLOW, LARGESSE,
 LEGION_OF_BONE, MANIFEST_AUTHORITY, NECRO_MASTERY_CARD, NIGHTMARE, ORBIT,
 PALE_BLUE_DOT, PHOTON_CUT, PREPARED, PROTECTOR, PULL_AGGRO, PURITY, QUASAR,
@@ -408,14 +435,14 @@ TESLA_COIL, THUNDER_CARD, TRASH_TO_TREASURE, TURBO, UPROAR, VOLTAIC, ZAP
 
 ### `sts2_env.cards.colorless`
 
-- Covered: `8 / 64`
-- Missing direct parity proof: `56 / 64`
+- Covered: `9 / 64`
+- Missing direct parity proof: `55 / 64`
 
 ```text
 ANOINTED, AUTOMATION, BEACON_OF_HOPE, BELIEVE_IN_YOU, BOLAS, CALAMITY_CARD,
 CATASTROPHE, COORDINATE_CARD, DARK_SHACKLES, DRAMATIC_ENTRANCE, ENTROPY,
 EQUILIBRIUM, ETERNAL_ARMOR, FASTEN, FINESSE, FISTICUFFS, FLASH_OF_STEEL,
-GANG_UP, GOLD_AXE, HIDDEN_GEM, HUDDLE_UP, IMPATIENCE, INTERCEPT_CARD,
+GANG_UP, HIDDEN_GEM, HUDDLE_UP, IMPATIENCE, INTERCEPT_CARD,
 JACKPOT, JACK_OF_ALL_TRADES, KNOCKDOWN, LIFT, MASTER_OF_STRATEGY,
 MAYHEM_CARD, MIMIC, MIND_BLAST, NOSTALGIA_CARD, OMNISLICE, PANACHE_CARD,
 PANIC_BUTTON, PREP_TIME, PRODUCTION, PROLONG, PROWESS, RALLY, REND,

@@ -94,7 +94,7 @@ class WeightedBranch:
         state_id: str,
         repeat_type: MoveRepeatType = MoveRepeatType.CAN_REPEAT_FOREVER,
         max_times: int = 1,
-        weight: float = 1.0,
+        weight: float | Callable[[], float] = 1.0,
         cooldown: int = 0,
     ):
         self.state_id = state_id
@@ -127,6 +127,8 @@ class WeightedBranch:
             if self.state_id in move_entries:
                 return 0.0
 
+        if callable(self.base_weight):
+            return float(self.base_weight())
         return self.base_weight
 
 
@@ -143,7 +145,7 @@ class RandomBranchState(MonsterState):
         state_id: str,
         repeat_type: MoveRepeatType = MoveRepeatType.CAN_REPEAT_FOREVER,
         max_times: int = 1,
-        weight: float = 1.0,
+        weight: float | Callable[[], float] = 1.0,
         cooldown: int = 0,
     ) -> RandomBranchState:
         self.branches.append(WeightedBranch(state_id, repeat_type, max_times, weight, cooldown))
@@ -196,14 +198,14 @@ class ConditionalBranchState(MonsterState):
 class MonsterAI:
     """Container for a monster's state machine."""
 
-    def __init__(self, states: dict[str, MonsterState], initial_state_id: str):
+    def __init__(self, states: dict[str, MonsterState], initial_state_id: str, rng: Rng | None = None):
         self.states = states
         self.state_log: list[str] = []
         self._current_state_id = initial_state_id
         self._performed_first_move: bool = False
 
         # Resolve initial state to a MoveState (walk through branches)
-        self._resolve_to_move(None)
+        self._resolve_to_move(rng)
 
     @property
     def current_move(self) -> MoveState:

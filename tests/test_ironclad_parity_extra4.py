@@ -1,0 +1,609 @@
+"""Additional focused parity tests for remaining Ironclad cards."""
+
+import sts2_env.powers  # noqa: F401
+
+from sts2_env.cards.ironclad import (
+    create_ironclad_starter_deck,
+    make_aggression,
+    make_anger,
+    make_barricade,
+    make_bloodletting,
+    make_blood_wall,
+    make_body_slam,
+    make_brand,
+    make_break,
+    make_breakthrough,
+    make_bludgeon,
+    make_cinder,
+    make_colossus,
+    make_conflagration,
+    make_corruption,
+    make_crimson_mantle,
+    make_demon_form,
+    make_demonic_shield,
+    make_dismantle,
+    make_dominate,
+    make_drum_of_battle,
+    make_evil_eye,
+    make_expect_a_fight,
+    make_fiend_fire,
+    make_fight_me,
+    make_flame_barrier,
+    make_forgotten_ritual,
+    make_grapple,
+    make_hemokinesis,
+    make_howl_from_beyond,
+    make_impervious,
+    make_infernal_blade,
+    make_inferno,
+    make_iron_wave,
+    make_molten_fist,
+    make_pacts_end,
+    make_pillage,
+    make_spite,
+    make_stomp,
+    make_sword_boomerang,
+    make_thunderclap,
+    make_thrash,
+    make_uppercut,
+    make_whirlwind,
+)
+from sts2_env.cards.ironclad_basic import make_defend_ironclad, make_strike_ironclad
+from sts2_env.core.combat import CombatState
+from sts2_env.core.enums import CardId, CombatSide, PowerId, ValueProp
+from sts2_env.core.rng import Rng
+from sts2_env.monsters.act1_weak import create_shrinker_beetle
+from sts2_env.powers.base import PowerInstance
+from sts2_env.run.run_state import PlayerState
+
+
+class _StrengthOnExhaustPower(PowerInstance):
+    def __init__(self):
+        super().__init__(PowerId.FEEL_NO_PAIN, 1)
+
+    def after_card_exhausted(self, owner, card, combat):
+        owner.apply_power(PowerId.STRENGTH, 1)
+
+
+class _CannotHitPower(PowerInstance):
+    def __init__(self):
+        super().__init__(PowerId.COVERED, 1)
+
+    def should_allow_hitting(self, owner, combat):
+        return False
+
+
+def _make_combat(*, extra_enemies: int = 0, seed: int = 1234) -> CombatState:
+    combat = CombatState(
+        player_hp=80,
+        player_max_hp=80,
+        deck=create_ironclad_starter_deck(),
+        rng_seed=seed,
+        character_id="Ironclad",
+    )
+    creature, ai = create_shrinker_beetle(Rng(seed))
+    combat.add_enemy(creature, ai)
+    for i in range(extra_enemies):
+        extra_creature, extra_ai = create_shrinker_beetle(Rng(seed + 100 + i))
+        combat.add_enemy(extra_creature, extra_ai)
+    combat.start_combat()
+    return combat
+
+
+class TestIroncladParityExtra4:
+    def test_anger_adds_a_matching_copy_to_discard(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        combat.hand = [make_anger(upgraded=True)]
+        combat.energy = 0
+
+        assert combat.play_card(0, 0)
+        copies = [card for card in combat.discard_pile if card.card_id == CardId.ANGER]
+        assert len(copies) == 2
+        assert all(card.upgraded is True for card in copies)
+        assert all(card.cost == 0 for card in copies)
+
+    def test_breakthrough_loses_hp_before_hitting_all_enemies(self):
+        combat = _make_combat(extra_enemies=1)
+        for enemy in combat.enemies:
+            enemy.max_hp = 100
+            enemy.current_hp = 100
+        start_hp = combat.player.current_hp
+        combat.hand = [make_breakthrough()]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.player.current_hp == start_hp - 1
+        assert [enemy.current_hp for enemy in combat.enemies] == [91, 91]
+        assert [event[1] for event in combat._damage_events_combat[-3:]] == [combat.player, *combat.enemies]  # noqa: SLF001
+
+    def test_breakthrough_hits_only_hittable_enemies(self):
+        combat = _make_combat(extra_enemies=1)
+        blocked, hittable = combat.enemies
+        blocked.max_hp = blocked.current_hp = 100
+        hittable.max_hp = hittable.current_hp = 100
+        blocked.powers[PowerId.COVERED] = _CannotHitPower()
+        combat.hand = [make_breakthrough()]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert blocked.current_hp == 100
+        assert hittable.current_hp == 91
+
+    def test_cinder_exhausts_top_draw_card_after_shuffle_if_needed(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.max_hp = 100
+        enemy.current_hp = 100
+        kept = make_strike_ironclad()
+        to_exhaust = make_defend_ironclad()
+        combat.hand = [make_cinder(), kept]
+        combat.draw_pile = []
+        combat.discard_pile = [to_exhaust]
+        combat.energy = 2
+
+        assert combat.play_card(0, 0)
+        assert enemy.current_hp == 83
+        assert combat.hand == [kept]
+        assert to_exhaust in combat.exhaust_pile
+
+    def test_thunderclap_applies_vulnerable_after_all_damage_to_survivors(self):
+        combat = _make_combat(extra_enemies=1)
+        first, second = combat.enemies
+        first.max_hp = 4
+        first.current_hp = 4
+        second.max_hp = 100
+        second.current_hp = 100
+        combat.hand = [make_thunderclap()]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert first.is_dead
+        assert first.get_power_amount(PowerId.VULNERABLE) == 0
+        assert second.current_hp == 96
+        assert second.get_power_amount(PowerId.VULNERABLE) == 1
+
+    def test_evil_eye_gains_block_twice_after_owner_exhausted_card_this_turn(self):
+        combat = _make_combat()
+        combat.hand = [make_evil_eye()]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.player.block == 8
+
+        exhausted_combat = _make_combat()
+        fodder = make_defend_ironclad()
+        exhausted_combat.hand = [fodder]
+        exhausted_combat.exhaust_card(fodder)
+        exhausted_combat.hand = [make_evil_eye(upgraded=True)]
+        exhausted_combat.energy = 1
+
+        assert exhausted_combat.play_card(0)
+        assert exhausted_combat.player.block == 22
+
+    def test_drum_of_battle_draws_then_applies_power(self):
+        combat = _make_combat()
+        drawn = [make_strike_ironclad(), make_defend_ironclad(), make_strike_ironclad()]
+        combat.hand = [make_drum_of_battle(upgraded=True)]
+        combat.draw_pile = list(drawn)
+        combat.energy = 0
+
+        assert combat.play_card(0)
+        assert combat.hand == drawn
+        assert combat.player.get_power_amount(PowerId.DRUM_OF_BATTLE) == 1
+
+    def test_conflagration_scales_with_attacks_played_this_turn(self):
+        combat = _make_combat(extra_enemies=1)
+        for enemy in combat.enemies:
+            enemy.max_hp = 100
+            enemy.current_hp = 100
+        combat.hand = [make_strike_ironclad(), make_strike_ironclad(), make_conflagration()]
+        combat.energy = 3
+
+        assert combat.play_card(0, 0)
+        assert combat.play_card(0, 0)
+        assert combat.play_card(0)
+        assert [enemy.current_hp for enemy in combat.enemies] == [76, 88]
+
+    def test_conflagration_hits_only_hittable_enemies(self):
+        combat = _make_combat(extra_enemies=1)
+        blocked, hittable = combat.enemies
+        blocked.max_hp = blocked.current_hp = 100
+        hittable.max_hp = hittable.current_hp = 100
+        blocked.powers[PowerId.COVERED] = _CannotHitPower()
+        combat.hand = [make_strike_ironclad(), make_conflagration()]
+        combat.energy = 2
+
+        assert combat.play_card(0, 1)
+        assert combat.play_card(0)
+
+        assert blocked.current_hp == 100
+        assert hittable.current_hp == 84
+
+    def test_fiend_fire_exhausts_all_hand_cards_before_damage_hits(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.max_hp = 100
+        enemy.current_hp = 100
+        combat.player.powers[PowerId.FEEL_NO_PAIN] = _StrengthOnExhaustPower()
+        combat.hand = [make_fiend_fire(), make_defend_ironclad(), make_defend_ironclad()]
+        combat.energy = 2
+
+        assert combat.play_card(0, 0)
+        assert enemy.current_hp == 82
+        assert combat.player.get_power_amount(PowerId.STRENGTH) == 3
+
+    def test_crimson_mantle_increments_self_damage_when_played(self):
+        combat = _make_combat()
+        start_hp = combat.player.current_hp
+        combat.hand = [make_crimson_mantle()]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        combat.player.block = 0
+        combat._start_player_turn()  # noqa: SLF001
+        assert combat.player.current_hp == start_hp - 1
+        assert combat.player.block == 8
+
+    def test_thrash_exhausts_random_attack_and_adds_its_damage(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.max_hp = 100
+        enemy.current_hp = 100
+        thrash = make_thrash()
+        defend = make_defend_ironclad()
+        strike = make_strike_ironclad()
+        combat.hand = [thrash, defend, strike]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+        assert enemy.current_hp == 92
+        assert combat.hand == [defend]
+        assert strike in combat.exhaust_pile
+        assert thrash.base_damage == 10
+
+    def test_body_slam_uses_current_block_as_damage(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.max_hp = 100
+        enemy.current_hp = 100
+        combat.player.gain_block(17)
+        combat.hand = [make_body_slam()]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+        assert enemy.current_hp == 83
+
+    def test_bludgeon_uses_original_damage_values(self):
+        assert make_bludgeon().base_damage == 32
+        assert make_bludgeon(upgraded=True).base_damage == 42
+
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.max_hp = 100
+        enemy.current_hp = 100
+        combat.hand = [make_bludgeon(upgraded=True)]
+        combat.energy = 3
+
+        assert combat.play_card(0, 0)
+        assert enemy.current_hp == 58
+
+    def test_flame_barrier_gains_block_and_retaliation_power(self):
+        combat = _make_combat()
+        combat.hand = [make_flame_barrier(upgraded=True)]
+        combat.energy = 2
+
+        assert combat.play_card(0)
+        assert combat.player.block == 16
+        assert combat.player.get_power_amount(PowerId.FLAME_BARRIER) == 6
+
+    def test_barricade_applies_single_block_retention_power(self):
+        combat = _make_combat()
+        combat.player.block = 12
+        combat.hand = [make_barricade(upgraded=True)]
+        combat.energy = 2
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.BARRICADE) == 1
+        combat.player.clear_block(combat)
+        assert combat.player.block == 12
+
+    def test_demon_form_applies_original_strength_gain_power(self):
+        combat = _make_combat()
+        combat.hand = [make_demon_form(upgraded=True)]
+        combat.energy = 3
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.DEMON_FORM) == 3
+        combat.player.powers[PowerId.DEMON_FORM].after_side_turn_start(
+            combat.player,
+            CombatSide.PLAYER,
+            combat,
+        )
+        assert combat.player.get_power_amount(PowerId.STRENGTH) == 3
+
+    def test_corruption_applies_skill_cost_and_exhaust_rules(self):
+        combat = _make_combat()
+        combat.hand = [make_corruption(upgraded=True)]
+        combat.energy = 2
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.CORRUPTION) == 1
+
+        skill = make_defend_ironclad()
+        combat.hand = [skill]
+        combat.energy = 0
+
+        assert combat.modified_card_cost(combat.player, skill) == 0
+        assert combat.play_card(0)
+        assert skill in combat.exhaust_pile
+
+    def test_infernal_blade_adds_random_ironclad_attack_and_makes_it_free_this_turn(self):
+        combat = _make_combat()
+        combat.hand = [make_infernal_blade()]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert len(combat.hand) == 1
+        generated = combat.hand[0]
+        assert generated.card_type.name == "ATTACK"
+        assert generated.card_id != CardId.INFERNAL_BLADE
+        assert generated.cost == 0
+
+    def test_iron_wave_gains_block_then_deals_damage(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.max_hp = 100
+        enemy.current_hp = 100
+        combat.hand = [make_iron_wave(upgraded=True)]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+        assert combat.player.block == 7
+        assert enemy.current_hp == 93
+
+    def test_sword_boomerang_hits_random_enemies_expected_number_of_times(self):
+        combat = _make_combat(extra_enemies=1)
+        card = make_sword_boomerang(upgraded=True)
+        assert card.effect_vars["repeat"] == 4
+        combat.hand = [card]
+        combat.energy = 1
+        starting = [enemy.current_hp for enemy in combat.enemies]
+
+        assert combat.play_card(0)
+        total_damage = sum(before - enemy.current_hp for before, enemy in zip(starting, combat.enemies, strict=True))
+        assert total_damage == 12
+
+    def test_sword_boomerang_random_hits_use_only_hittable_enemies(self):
+        combat = _make_combat(extra_enemies=1)
+        blocked, hittable = combat.enemies
+        blocked.max_hp = blocked.current_hp = 100
+        hittable.max_hp = hittable.current_hp = 100
+        blocked.powers[PowerId.COVERED] = _CannotHitPower()
+        combat.hand = [make_sword_boomerang()]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+
+        assert blocked.current_hp == 100
+        assert hittable.current_hp == 91
+
+    def test_whirlwind_hits_only_hittable_enemies(self):
+        combat = _make_combat(extra_enemies=1)
+        blocked, hittable = combat.enemies
+        blocked.max_hp = blocked.current_hp = 100
+        hittable.max_hp = hittable.current_hp = 100
+        blocked.powers[PowerId.COVERED] = _CannotHitPower()
+        combat.hand = [make_whirlwind()]
+        combat.energy = 2
+
+        assert combat.play_card(0)
+
+        assert blocked.current_hp == 100
+        assert hittable.current_hp == 90
+
+    def test_uppercut_deals_damage_and_applies_both_debuffs(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.max_hp = 100
+        enemy.current_hp = 100
+        combat.hand = [make_uppercut(upgraded=True)]
+        combat.energy = 2
+
+        assert combat.play_card(0, 0)
+        assert enemy.current_hp == 87
+        assert enemy.get_power_amount(PowerId.WEAK) == 2
+        assert enemy.get_power_amount(PowerId.VULNERABLE) == 2
+
+    def test_hemokinesis_self_damage_and_attack_values_match_reference(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.max_hp = 100
+        enemy.current_hp = 100
+        hp_before = combat.player.current_hp
+        combat.hand = [make_hemokinesis()]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+        assert combat.player.current_hp == hp_before - 2
+        assert enemy.current_hp == 86
+
+    def test_inferno_increments_start_turn_self_damage_when_played(self):
+        combat = _make_combat()
+        start_hp = combat.player.current_hp
+        combat.hand = [make_inferno()]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        power = combat.player.powers[PowerId.INFERNO]
+        assert power.amount == 6
+        assert power.self_damage == 1
+
+        combat.player.block = 0
+        combat._start_player_turn()  # noqa: SLF001
+        assert combat.player.current_hp == start_hp - 1
+
+    def test_inferno_damage_hits_only_hittable_enemies(self):
+        combat = _make_combat(extra_enemies=1)
+        blocked, hittable = combat.enemies
+        blocked.current_hp = blocked.max_hp = 100
+        hittable.current_hp = hittable.max_hp = 100
+        blocked.powers[PowerId.COVERED] = _CannotHitPower()
+        combat.apply_power_to(combat.player, PowerId.INFERNO, 6)
+        combat.player.block = 0
+
+        combat.deal_damage(
+            dealer=blocked,
+            target=combat.player,
+            amount=1,
+            props=ValueProp.UNBLOCKABLE | ValueProp.UNPOWERED,
+        )
+
+        assert blocked.current_hp == 100
+        assert hittable.current_hp == 94
+
+    def test_molten_fist_duplicates_existing_vulnerable_only(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.max_hp = 100
+        enemy.current_hp = 100
+        combat.hand = [make_molten_fist()]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+        assert enemy.get_power_amount(PowerId.VULNERABLE) == 0
+
+        doubled_combat = _make_combat()
+        enemy = doubled_combat.enemies[0]
+        enemy.max_hp = 100
+        enemy.current_hp = 100
+        enemy.apply_power(PowerId.VULNERABLE, 2)
+        doubled_combat.hand = [make_molten_fist()]
+        doubled_combat.energy = 1
+
+        assert doubled_combat.play_card(0, 0)
+        assert enemy.get_power_amount(PowerId.VULNERABLE) == 4
+
+    def test_impervious_grants_thirty_block_and_exhausts(self):
+        combat = _make_combat()
+        combat.hand = [make_impervious()]
+        combat.energy = 2
+
+        assert combat.play_card(0)
+        assert combat.player.block == 30
+        assert any(card.card_id == CardId.IMPERVIOUS for card in combat.exhaust_pile)
+
+    def test_howl_from_beyond_autoplays_from_exhaust_before_hand_draw(self):
+        combat = _make_combat(extra_enemies=1)
+        for enemy in combat.enemies:
+            enemy.max_hp = 100
+            enemy.current_hp = 100
+        card = make_howl_from_beyond()
+        card.owner = combat.player
+        combat.hand = []
+        combat.draw_pile = []
+        combat.exhaust_pile = [card]
+
+        combat._apply_card_before_hand_draw(combat.player)  # noqa: SLF001
+
+        assert [enemy.current_hp for enemy in combat.enemies] == [84, 84]
+        assert card in combat.discard_pile
+
+    def test_stomp_cost_drops_for_owner_attacks_played_this_turn(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.max_hp = 100
+        enemy.current_hp = 100
+        stomp = make_stomp()
+        combat.hand = [make_strike_ironclad(), make_strike_ironclad()]
+        combat.energy = 2
+
+        assert combat.play_card(0, 0)
+        combat.move_card_to_creature_hand(combat.player, stomp)
+        assert stomp.cost == 2
+
+        assert combat.play_card(0, 0)
+        assert stomp.cost == 1
+
+    def test_pillage_draws_until_non_attack(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.max_hp = 100
+        enemy.current_hp = 100
+        first = make_strike_ironclad()
+        second = make_strike_ironclad()
+        stop = make_defend_ironclad()
+        remaining = make_strike_ironclad()
+        combat.hand = [make_pillage()]
+        combat.draw_pile = [first, second, stop, remaining]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+        assert enemy.current_hp == 94
+        assert combat.hand == [first, second, stop]
+        assert combat.draw_pile == [remaining]
+
+    def test_spite_draws_only_after_owner_took_unblocked_damage_this_turn(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        missed_draw = make_defend_ironclad()
+        combat.hand = [make_spite()]
+        combat.draw_pile = [missed_draw]
+        combat.energy = 0
+
+        assert combat.play_card(0, 0)
+        assert combat.hand == []
+        assert combat.draw_pile == [missed_draw]
+
+        damaged_combat = _make_combat()
+        enemy = damaged_combat.enemies[0]
+        drawn = make_defend_ironclad()
+        damaged_combat.hand = [make_bloodletting(), make_spite()]
+        damaged_combat.draw_pile = [drawn]
+        damaged_combat.energy = 1
+
+        assert damaged_combat.play_card(0)
+        assert damaged_combat.play_card(0, 0)
+        assert damaged_combat.hand == [drawn]
+
+    def test_expect_a_fight_gains_energy_for_attacks_in_hand_not_skills(self):
+        combat = _make_combat()
+        combat.hand = [
+            make_expect_a_fight(),
+            make_strike_ironclad(),
+            make_strike_ironclad(),
+            make_defend_ironclad(),
+        ]
+        combat.energy = 2
+
+        assert combat.play_card(0)
+        assert combat.energy == 2
+
+    def test_pacts_end_requires_three_exhausted_cards(self):
+        combat = _make_combat()
+        card = make_pacts_end()
+        combat.hand = [card]
+        combat.energy = 0
+        combat.exhaust_pile = [make_strike_ironclad(), make_defend_ironclad()]
+
+        assert combat.can_play_card(card) is False
+        combat.exhaust_pile.append(make_anger())
+        assert combat.can_play_card(card) is True
+
+    def test_forgotten_ritual_only_gains_energy_after_owner_exhausted_card_this_turn(self):
+        combat = _make_combat()
+        combat.hand = [make_forgotten_ritual()]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.energy == 0
+
+        exhausted_combat = _make_combat()
+        fodder = make_defend_ironclad()
+        exhausted_combat.hand = [fodder]
+        exhausted_combat.exhaust_card(fodder)
+        exhausted_combat.hand = [make_forgotten_ritual()]
+        exhausted_combat.energy = 1
+
+        assert exhausted_combat.play_card(0)
+        assert exhausted_combat.energy == 3

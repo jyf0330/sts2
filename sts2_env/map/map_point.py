@@ -43,6 +43,7 @@ class MapPoint:
     point_type: MapPointType = MapPointType.UNASSIGNED
     children: list[MapPoint] = field(default_factory=list)
     parents: list[MapPoint] = field(default_factory=list)
+    quests: list[object] = field(default_factory=list)
     x_offset: float = 0.0  # visual offset for spreading
 
     @property
@@ -58,6 +59,20 @@ class MapPoint:
             self.children.append(child)
         if self not in child.parents:
             child.parents.append(self)
+
+    def remove_child(self, child: MapPoint) -> None:
+        if child in self.children:
+            self.children.remove(child)
+        if self in child.parents:
+            child.parents.remove(self)
+
+    def add_quest(self, quest: object) -> None:
+        if quest not in self.quests:
+            self.quests.append(quest)
+
+    def remove_quest(self, quest: object) -> None:
+        if quest in self.quests:
+            self.quests.remove(quest)
 
     def has_child_at(self, col: int, row: int) -> bool:
         return any(c.col == col and c.row == row for c in self.children)

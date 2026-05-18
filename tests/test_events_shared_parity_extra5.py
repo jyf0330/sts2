@@ -25,6 +25,24 @@ from sts2_env.run.reward_objects import AddCardsReward
 from sts2_env.run.run_state import RunState
 
 
+class _ChoiceLastRng:
+    def choice(self, seq):
+        return seq[-1]
+
+
+class _ReverseShuffleRng:
+    def shuffle(self, seq) -> None:
+        seq.reverse()
+
+
+class _DustyTomeRng(_ChoiceLastRng):
+    def shuffle(self, seq) -> None:
+        pass
+
+    def next_int(self, low: int, high: int) -> int:
+        return 1
+
+
 def _make_run_state(seed: int = 601, character_id: str = "Ironclad") -> RunState:
     run_state = RunState(seed=seed, character_id=character_id)
     run_state.initialize_run()
@@ -70,11 +88,9 @@ def test_colossal_flower_progression_scales_gold_damage_and_final_relic():
 def test_darv_includes_dusty_tome_branch_and_awards_selected_boss_relic():
     run_state = _make_run_state(604)
     run_state.current_act_index = 1
-    run_state.rng.up_front.shuffle = lambda seq: None
-    run_state.rng.up_front.choice = lambda seq: seq[-1]
-    run_state.rng.up_front.next_int = lambda low, high: 1
 
     event = Darv()
+    event.rng = _DustyTomeRng()
     options = event.generate_initial_options(run_state)
     assert len(options) == 3
     assert any(relic_id == RelicId.DUSTY_TOME.name for relic_id, _ in event._choices.values())
@@ -143,8 +159,8 @@ def test_doors_of_light_and_dark_upgrades_two_and_removes_one_card():
 
 def test_nonupeipe_and_tanx_conditional_relics_are_gated_by_enchantable_deck():
     nonu_state = _make_run_state(608)
-    nonu_state.rng.up_front.shuffle = lambda seq: seq.reverse()
     nonu = Nonupeipe()
+    nonu.rng = _ReverseShuffleRng()
     nonu.generate_initial_options(nonu_state)
     assert RelicId.BEAUTIFUL_BRACELET.name in nonu._choices.values()
 
@@ -160,14 +176,14 @@ def test_nonupeipe_and_tanx_conditional_relics_are_gated_by_enchantable_deck():
 
     nonu_excluded_state = _make_run_state(609)
     nonu_excluded_state.player.deck = [make_decay(), make_doubt(), make_greed(), make_decay()]
-    nonu_excluded_state.rng.up_front.shuffle = lambda seq: seq.reverse()
     nonu_excluded = Nonupeipe()
+    nonu_excluded.rng = _ReverseShuffleRng()
     nonu_excluded.generate_initial_options(nonu_excluded_state)
     assert RelicId.BEAUTIFUL_BRACELET.name not in nonu_excluded._choices.values()
 
     tanx_state = _make_run_state(610)
-    tanx_state.rng.up_front.shuffle = lambda seq: seq.reverse()
     tanx = Tanx()
+    tanx.rng = _ReverseShuffleRng()
     tanx.generate_initial_options(tanx_state)
     assert RelicId.TRI_BOOMERANG.name in tanx._choices.values()
 
@@ -183,16 +199,16 @@ def test_nonupeipe_and_tanx_conditional_relics_are_gated_by_enchantable_deck():
 
     tanx_excluded_state = _make_run_state(611)
     tanx_excluded_state.player.deck = [make_decay(), make_doubt(), make_greed(), make_decay()]
-    tanx_excluded_state.rng.up_front.shuffle = lambda seq: seq.reverse()
     tanx_excluded = Tanx()
+    tanx_excluded.rng = _ReverseShuffleRng()
     tanx_excluded.generate_initial_options(tanx_excluded_state)
     assert RelicId.TRI_BOOMERANG.name not in tanx_excluded._choices.values()
 
 
 def test_pael_pool_conditions_and_legion_lockout_follow_deck_and_relic_state():
     run_state = _make_run_state(612)
-    run_state.rng.up_front.choice = lambda seq: seq[-1]
     pael = Pael()
+    pael.rng = _ChoiceLastRng()
     pael.generate_initial_options(run_state)
 
     assert pael._choices["relic_2"] == RelicId.PAELS_TOOTH.name
@@ -205,8 +221,8 @@ def test_pael_pool_conditions_and_legion_lockout_follow_deck_and_relic_state():
     locked_state = _make_run_state(613)
     locked_state.player.relics.append(RelicId.PAELS_LEGION.name)
     locked_state.player.deck = [make_decay(), make_doubt(), make_greed(), make_decay()]
-    locked_state.rng.up_front.choice = lambda seq: seq[-1]
     locked_pael = Pael()
+    locked_pael.rng = _ChoiceLastRng()
     locked_pael.generate_initial_options(locked_state)
 
     assert locked_pael._choices["relic_2"] == RelicId.PAELS_GROWTH.name
@@ -214,8 +230,8 @@ def test_pael_pool_conditions_and_legion_lockout_follow_deck_and_relic_state():
 
     byrdpip_state = _make_run_state(6141)
     byrdpip_state.player.obtain_relic(RelicId.BYRDPIP.name)
-    byrdpip_state.rng.up_front.choice = lambda seq: seq[-1]
     byrdpip_pael = Pael()
+    byrdpip_pael.rng = _ChoiceLastRng()
     byrdpip_pael.generate_initial_options(byrdpip_state)
     assert byrdpip_pael._choices["relic_3"] == RelicId.PAELS_BLOOD.name
 
@@ -259,8 +275,8 @@ def test_punch_off_and_spirit_grafter_apply_curses_rewards_and_card_removal_dama
 
 def test_tezcatara_and_vakuu_relic_selection_tracks_pool_rolls():
     tez_state = _make_run_state(616)
-    tez_state.rng.up_front.choice = lambda seq: seq[-1]
     tezcatara = Tezcatara()
+    tezcatara.rng = _ChoiceLastRng()
     tezcatara.generate_initial_options(tez_state)
 
     assert tezcatara._choices["comfort_1"] == RelicId.YUMMY_COOKIE.name
@@ -272,8 +288,8 @@ def test_tezcatara_and_vakuu_relic_selection_tracks_pool_rolls():
     assert tez_state.player.relics[-1] == RelicId.TOASTY_MITTENS.name
 
     vakuu_state = _make_run_state(617)
-    vakuu_state.rng.up_front.shuffle = lambda seq: seq.reverse()
     vakuu = Vakuu()
+    vakuu.rng = _ReverseShuffleRng()
     vakuu.generate_initial_options(vakuu_state)
 
     assert vakuu._choices["relic_1"] == RelicId.FIDDLE.name

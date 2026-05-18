@@ -50,6 +50,12 @@ class CombatPlayerState:
                 self.relics = [create_relic_by_name(relic_id) for relic_id in self.player_state.relics]
         if not self.potions:
             self.potions = list(self.player_state.potions)
+        for potion in self.potions:
+            if potion is not None:
+                try:
+                    potion.owner = self.creature
+                except AttributeError:
+                    pass
         if not self.starting_deck:
             self.starting_deck = list(self.player_state.deck)
         if self.max_potion_slots <= 0:

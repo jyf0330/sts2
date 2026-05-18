@@ -10,8 +10,6 @@ All logic verified against decompiled C# source.
 """
 
 from __future__ import annotations
-
-import random
 from typing import TYPE_CHECKING
 
 from sts2_env.core.enums import (
@@ -53,13 +51,13 @@ class CorruptionPower(PowerInstance):
 
     def modify_card_cost(self, owner: Creature, card: object) -> int | None:
         """Return 0 for skills owned by this creature, None otherwise."""
-        if getattr(card, "card_type", None) == CardType.SKILL:
+        if getattr(card, "owner", None) is owner and getattr(card, "card_type", None) == CardType.SKILL:
             return 0
         return None
 
     def should_exhaust_card(self, owner: Creature, card: object) -> bool:
         """Return True if the card should be exhausted (skills)."""
-        return getattr(card, "card_type", None) == CardType.SKILL
+        return getattr(card, "owner", None) is owner and getattr(card, "card_type", None) == CardType.SKILL
 
 
 # ---------------------------------------------------------------------------
@@ -81,7 +79,12 @@ class EchoFormPower(PowerInstance):
         self._cards_echoed_this_turn: int = 0
 
     def modify_card_play_count(self, owner: Creature, count: int, card: object) -> int:
-        if self._cards_echoed_this_turn < self.amount:
+        if getattr(card, "owner", None) is not owner:
+            return count
+        combat = getattr(owner, "combat_state", None)
+        cards_played = getattr(combat, "count_cards_played_this_turn", None)
+        played_this_turn = cards_played(owner) if callable(cards_played) else self._cards_echoed_this_turn
+        if played_this_turn < self.amount:
             self._cards_echoed_this_turn += 1
             return count + 1
         return count
@@ -110,11 +113,30 @@ class DarkEmbracePower(PowerInstance):
 
     def __init__(self, amount: int):
         super().__init__(PowerId.DARK_EMBRACE, amount)
+        self._ethereal_exhaust_count: int = 0
 
     def after_card_exhausted(
         self, owner: Creature, card: object, combat: CombatState
     ) -> None:
-        combat._draw_cards(self.amount)
+        card_owner = getattr(card, "owner", None)
+        if card_owner is None:
+            for state in combat.combat_player_states:
+                if any(card in pile for pile in state.all_piles):
+                    card_owner = state.creature
+                    break
+        if card_owner is not owner:
+            return
+        if getattr(card, "combat_vars", {}).get("_exhausted_by_ethereal"):
+            self._ethereal_exhaust_count += 1
+            return
+        combat.draw_cards(owner, self.amount)
+
+    def after_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
+        if side != CombatSide.PLAYER:
+            return
+        if self._ethereal_exhaust_count > 0:
+            combat.draw_cards(owner, self.amount * self._ethereal_exhaust_count)
+            self._ethereal_exhaust_count = 0
 
 
 # ---------------------------------------------------------------------------
@@ -162,7 +184,7 @@ class RagePower(PowerInstance):
     def after_card_played(
         self, owner: Creature, card: object, combat: CombatState
     ) -> None:
-        if getattr(card, "card_type", None) == CardType.ATTACK:
+        if getattr(card, "owner", None) is owner and getattr(card, "card_type", None) == CardType.ATTACK:
             owner.gain_block(self.amount)
 
     def after_turn_end(
@@ -188,11 +210,20 @@ class AfterimagePower(PowerInstance):
 
     def __init__(self, amount: int):
         super().__init__(PowerId.AFTERIMAGE, amount)
+        self._amounts_for_played_cards: dict[int, int] = {}
+
+    def before_card_played(
+        self, owner: Creature, card: object, combat: CombatState
+    ) -> None:
+        if getattr(card, "owner", None) is owner:
+            self._amounts_for_played_cards[id(card)] = self.amount
 
     def after_card_played(
         self, owner: Creature, card: object, combat: CombatState
     ) -> None:
-        owner.gain_block(self.amount)
+        amount = self._amounts_for_played_cards.pop(id(card), 0)
+        if amount > 0:
+            owner.gain_block(amount)
 
 
 # ---------------------------------------------------------------------------
@@ -202,9 +233,10 @@ class RupturePower(PowerInstance):
     """Whenever you lose HP during your turn, gain Amount Strength.
 
     C# ref: RupturePower.cs
-    - AfterDamageReceived: if owner loses HP on own turn, gain Strength.
-      (In C# the Strength gain is deferred until after the card finishes
-       playing; for simulation purposes we apply it immediately.)
+    - BeforeCardPlayed: track owner-played cards.
+    - AfterDamageReceived: owner HP loss during own turn grants Strength.
+      HP loss caused by the card being played is paid out after that card.
+    - AfterCardPlayed: apply tracked Strength for that card.
     StackType.Counter.
     """
 
@@ -213,6 +245,11 @@ class RupturePower(PowerInstance):
 
     def __init__(self, amount: int):
         super().__init__(PowerId.RUPTURE, amount)
+        self._pending_by_card: dict[int, int] = {}
+
+    def before_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
+        if getattr(card, "owner", None) is owner and getattr(combat, "current_side", None) == owner.side:
+            self._pending_by_card[id(card)] = 0
 
     def after_damage_received(
         self,
@@ -223,10 +260,20 @@ class RupturePower(PowerInstance):
         props: ValueProp,
         combat: CombatState,
     ) -> None:
-        if target is owner and damage > 0:
-            # Only triggers on the owner's own turn
-            if getattr(combat, "current_side", None) == owner.side:
-                owner.apply_power(PowerId.STRENGTH, self.amount)
+        if target is not owner or damage <= 0 or getattr(combat, "current_side", None) != owner.side:
+            return
+        card = getattr(combat, "active_card_source", None)
+        if card is not None and id(card) in self._pending_by_card:
+            self._pending_by_card[id(card)] += self.amount
+            return
+        owner.apply_power(PowerId.STRENGTH, self.amount)
+
+    def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
+        if getattr(card, "owner", None) is not owner:
+            return
+        amount = self._pending_by_card.pop(id(card), 0)
+        if amount > 0:
+            owner.apply_power(PowerId.STRENGTH, amount)
 
 
 # ---------------------------------------------------------------------------
@@ -254,9 +301,9 @@ class JuggernautPower(PowerInstance):
         combat: CombatState,
     ) -> None:
         if creature is owner and amount > 0:
-            enemies = combat.alive_enemies
+            enemies = combat.hittable_enemies
             if enemies:
-                target = random.choice(enemies)
+                target = combat.combat_targets_rng.choice(enemies)
                 combat.deal_damage(
                     dealer=owner,
                     target=target,
@@ -292,7 +339,7 @@ class EnvenomPower(PowerInstance):
         combat: CombatState,
     ) -> None:
         if dealer is owner and props.is_powered() and damage > 0:
-            target.apply_power(PowerId.POISON, self.amount)
+            combat.apply_power_to(target, PowerId.POISON, self.amount, applier=owner)
 
 
 # ---------------------------------------------------------------------------
@@ -380,6 +427,26 @@ class PhantomBladesPower(PowerInstance):
         super().__init__(PowerId.PHANTOM_BLADES, amount)
         self._shiv_played_this_turn: bool = False
 
+    def after_power_amount_changed(
+        self,
+        owner: Creature,
+        target: Creature,
+        power_id: PowerId,
+        amount: int,
+        applier: Creature | None,
+        source: object | None,
+        combat: CombatState,
+    ) -> None:
+        if owner is not target or power_id != PowerId.PHANTOM_BLADES or amount <= 0:
+            return
+        state = combat.combat_player_state_for(owner)
+        if state is None:
+            return
+        for pile in state.all_piles:
+            for card in pile:
+                if getattr(card, "is_shiv", False):
+                    card.keywords = frozenset(set(card.keywords) | {"retain"})
+
     def modify_damage_additive(
         self,
         owner: Creature,
@@ -388,6 +455,12 @@ class PhantomBladesPower(PowerInstance):
         props: ValueProp,
     ) -> int:
         if dealer is not owner or not props.is_powered() or self._shiv_played_this_turn:
+            return 0
+        combat = getattr(owner, "combat_state", None)
+        if combat is not None and any(
+            getattr(card, "owner", None) is owner and getattr(card, "is_shiv", False)
+            for card in getattr(combat, "_played_cards_this_turn", ())
+        ):
             return 0
         card = getattr(owner.combat_state, "active_card_source", None)
         tags = getattr(card, "tags", set())
@@ -398,7 +471,7 @@ class PhantomBladesPower(PowerInstance):
     def after_card_played(
         self, owner: Creature, card: object, combat: CombatState
     ) -> None:
-        if getattr(card, "is_shiv", False):
+        if getattr(card, "owner", None) is owner and getattr(card, "is_shiv", False):
             self._shiv_played_this_turn = True
 
     def before_side_turn_start(
@@ -424,17 +497,27 @@ class SerpentFormPower(PowerInstance):
 
     def __init__(self, amount: int):
         super().__init__(PowerId.SERPENT_FORM, amount)
+        self._amounts_for_played_cards: dict[int, int] = {}
+
+    def before_card_played(
+        self, owner: Creature, card: object, combat: CombatState
+    ) -> None:
+        if getattr(card, "owner", None) is owner:
+            self._amounts_for_played_cards[id(card)] = self.amount
 
     def after_card_played(
         self, owner: Creature, card: object, combat: CombatState
     ) -> None:
-        enemies = combat.alive_enemies
-        if enemies:
-            target = random.choice(enemies)
+        amount = self._amounts_for_played_cards.pop(id(card), 0)
+        if amount > 0:
+            enemies = combat.hittable_enemies
+            target = combat.combat_targets_rng.choice(enemies) if enemies else None
+            if target is None:
+                return
             combat.deal_damage(
                 dealer=owner,
                 target=target,
-                amount=self.amount,
+                amount=amount,
                 props=ValueProp.UNPOWERED,
             )
 
@@ -493,12 +576,20 @@ class OneTwoPunchPower(PowerInstance):
         super().__init__(PowerId.ONE_TWO_PUNCH, amount)
 
     def modify_card_play_count(self, owner: Creature, count: int, card: object) -> int:
-        if self.amount > 0 and getattr(card, "card_type", None) == CardType.ATTACK:
+        if (
+            self.amount > 0
+            and getattr(card, "owner", None) is owner
+            and getattr(card, "card_type", None) == CardType.ATTACK
+        ):
             return count + 1
         return count
 
     def after_modifying_card_play_count(self, owner: Creature, card: object, combat: CombatState) -> None:
-        if self.amount > 0 and getattr(card, "card_type", None) == CardType.ATTACK:
+        if (
+            self.amount > 0
+            and getattr(card, "owner", None) is owner
+            and getattr(card, "card_type", None) == CardType.ATTACK
+        ):
             self.amount -= 1
 
     def after_turn_end(
@@ -529,6 +620,7 @@ class FreeAttackPower(PowerInstance):
     def modify_card_cost(self, owner: Creature, card: object) -> int | None:
         if (
             self.amount > 0
+            and getattr(card, "owner", None) is owner
             and getattr(card, "card_type", None) == CardType.ATTACK
         ):
             return 0
@@ -537,7 +629,11 @@ class FreeAttackPower(PowerInstance):
     def before_card_played(
         self, owner: Creature, card: object, combat: CombatState
     ) -> None:
-        if getattr(card, "card_type", None) == CardType.ATTACK and self.amount > 0:
+        if (
+            getattr(card, "owner", None) is owner
+            and getattr(card, "card_type", None) == CardType.ATTACK
+            and self.amount > 0
+        ):
             self.amount -= 1
             if self.amount <= 0:
                 owner.powers.pop(self.power_id, None)
@@ -564,6 +660,7 @@ class FreeSkillPower(PowerInstance):
     def modify_card_cost(self, owner: Creature, card: object) -> int | None:
         if (
             self.amount > 0
+            and getattr(card, "owner", None) is owner
             and getattr(card, "card_type", None) == CardType.SKILL
         ):
             return 0
@@ -572,7 +669,11 @@ class FreeSkillPower(PowerInstance):
     def before_card_played(
         self, owner: Creature, card: object, combat: CombatState
     ) -> None:
-        if getattr(card, "card_type", None) == CardType.SKILL and self.amount > 0:
+        if (
+            getattr(card, "owner", None) is owner
+            and getattr(card, "card_type", None) == CardType.SKILL
+            and self.amount > 0
+        ):
             self.amount -= 1
             if self.amount <= 0:
                 owner.powers.pop(self.power_id, None)
@@ -599,6 +700,7 @@ class FreePowerPower(PowerInstance):
     def modify_card_cost(self, owner: Creature, card: object) -> int | None:
         if (
             self.amount > 0
+            and getattr(card, "owner", None) is owner
             and getattr(card, "card_type", None) == CardType.POWER
         ):
             return 0
@@ -607,7 +709,11 @@ class FreePowerPower(PowerInstance):
     def before_card_played(
         self, owner: Creature, card: object, combat: CombatState
     ) -> None:
-        if getattr(card, "card_type", None) == CardType.POWER and self.amount > 0:
+        if (
+            getattr(card, "owner", None) is owner
+            and getattr(card, "card_type", None) == CardType.POWER
+            and self.amount > 0
+        ):
             self.amount -= 1
             if self.amount <= 0:
                 owner.powers.pop(self.power_id, None)
@@ -653,8 +759,7 @@ class HeistPower(PowerInstance):
     - BeforeDeath: add gold reward to combat room.
     StackType.Counter. Amount = gold stolen.
 
-    In the simulator, HeistPower is a flag. The reward system checks for
-    it upon creature death.
+    The simulator adds the reward from the BeforeDeath hook.
     """
 
     power_type = PowerType.BUFF
@@ -662,6 +767,25 @@ class HeistPower(PowerInstance):
 
     def __init__(self, amount: int):
         super().__init__(PowerId.HEIST, amount)
+        self.gold_by_player: dict[Creature, int] = {}
+
+    def add_stolen_gold(self, player: Creature, amount: int) -> None:
+        if amount <= 0:
+            return
+        self.gold_by_player[player] = self.gold_by_player.get(player, 0) + amount
+
+    def before_death(self, owner: Creature, creature: Creature, combat: CombatState) -> None:
+        if creature is not owner or not hasattr(combat.room, "add_extra_reward"):
+            return
+        from sts2_env.run.reward_objects import GoldReward
+
+        rewards = self.gold_by_player or {combat.primary_player: self.amount}
+        for player, amount in rewards.items():
+            if amount <= 0:
+                continue
+            state = combat.combat_player_state_for(player)
+            player_id = state.player_state.player_id if state is not None else combat.player_id
+            combat.room.add_extra_reward(player_id, GoldReward(player_id, amount, amount))
 
 
 # ---------------------------------------------------------------------------
@@ -686,27 +810,23 @@ class NecroMasteryPower(PowerInstance):
     def __init__(self, amount: int):
         super().__init__(PowerId.NECRO_MASTERY, amount)
 
-    def after_damage_received(
+    def after_current_hp_changed(
         self,
         owner: Creature,
-        target: Creature,
-        dealer: Creature | None,
-        damage: int,
-        props: ValueProp,
+        creature: Creature,
+        delta: int,
         combat: CombatState,
     ) -> None:
-        # Triggers when a pet (Osty) owned by this player takes damage
         if (
-            target is not owner
-            and getattr(target, "is_pet", False)
-            and getattr(target, "pet_owner", None) is owner
-            and damage > 0
+            getattr(creature, "is_osty", False)
+            and getattr(creature, "pet_owner", None) is owner
+            and delta < 0
         ):
-            for enemy in combat.alive_enemies:
+            for enemy in combat.hittable_enemies:
                 combat.deal_damage(
                     dealer=owner,
                     target=enemy,
-                    amount=damage * self.amount,
+                    amount=-delta * self.amount,
                     props=ValueProp.UNBLOCKABLE | ValueProp.UNPOWERED,
                 )
 

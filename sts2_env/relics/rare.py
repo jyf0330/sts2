@@ -7,8 +7,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from sts2_env.core.constants import WEAK_MULTIPLIER
+from sts2_env.core.creature import _power_type_for_amount, get_power_class
 from sts2_env.core.enums import (
-    RelicRarity, CombatSide, CardType, PowerId, ValueProp,
+    RelicRarity, CombatSide, CardType, PowerId, PowerType, ValueProp,
 )
 from sts2_env.relics.base import RelicId, RelicPool, RelicInstance
 from sts2_env.relics.registry import register_relic
@@ -44,7 +46,7 @@ class ArtOfWar(RelicInstance):
         self._attacks_this_turn: bool = False
 
     def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
-        if hasattr(card, "card_type") and card.card_type == CardType.ATTACK:
+        if getattr(card, "owner", None) is owner and hasattr(card, "card_type") and card.card_type == CardType.ATTACK:
             self._attacks_this_turn = True
 
     def after_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
@@ -73,16 +75,26 @@ class BeatingRemnant(RelicInstance):
         super().__init__(relic_id)
         self._damage_this_turn: float = 0
 
-    def modify_hp_lost(
+    def modify_hp_lost_after_osty(
         self, owner: Creature, target: Creature, amount: float,
         dealer: Creature | None, props: ValueProp
     ) -> float:
         if target is owner:
             remaining = max(0, self.MAX_HP_LOSS - self._damage_this_turn)
-            capped = min(amount, remaining)
-            self._damage_this_turn += capped
-            return capped
+            return min(amount, remaining)
         return amount
+
+    def after_damage_received(
+        self,
+        owner: Creature,
+        target: Creature,
+        dealer: Creature | None,
+        damage: int,
+        props: ValueProp,
+        combat: CombatState,
+    ) -> None:
+        if target is owner:
+            self._damage_this_turn += damage
 
     def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         if side == CombatSide.PLAYER:
@@ -149,8 +161,14 @@ class CharonsAshes(RelicInstance):
     DAMAGE = 3
 
     def after_card_exhausted(self, owner: Creature, card: object, combat: CombatState) -> None:
-        for enemy in combat.get_alive_enemies():
-            combat.deal_damage(owner, enemy, self.DAMAGE, ValueProp.UNPOWERED)
+        if getattr(card, "owner", None) is not owner:
+            return
+        combat.deal_damage(
+            dealer=owner,
+            amount=self.DAMAGE,
+            props=ValueProp.UNPOWERED,
+            targets=list(combat.hittable_enemies),
+        )
 
 
 @register_relic
@@ -185,7 +203,38 @@ class EmotionChip(RelicInstance):
     relic_id = RelicId.EMOTION_CHIP
     rarity = RelicRarity.RARE
     pool = RelicPool.DEFECT
-    # AfterPlayerTurnStart: checks combat history for HP loss
+
+    def __init__(self, relic_id: RelicId):
+        super().__init__(relic_id)
+        self._last_hp_loss_round: int | None = None
+
+    def after_damage_received(
+        self,
+        owner: Creature,
+        target: Creature,
+        dealer: Creature | None,
+        damage: int,
+        props: ValueProp,
+        combat: CombatState,
+    ) -> None:
+        result = getattr(combat, "_active_damage_result", None)
+        if target is owner and not getattr(result, "was_fully_blocked", False):
+            self._last_hp_loss_round = combat.round_number
+
+    def after_player_turn_start(self, owner: Creature, combat: CombatState) -> None:
+        if self._last_hp_loss_round != combat.round_number - 1:
+            return
+
+        state = combat.combat_player_state_for(owner)
+        orb_queue = getattr(state, "orb_queue", None) if state is not None else None
+        if orb_queue is None:
+            return
+
+        for orb in list(orb_queue.orbs):
+            orb.on_passive(combat)
+
+    def after_combat_end(self, owner: Creature, combat: CombatState) -> None:
+        self._last_hp_loss_round = None
 
 
 @register_relic
@@ -194,6 +243,9 @@ class FrozenEgg(RelicInstance):
     relic_id = RelicId.FROZEN_EGG
     rarity = RelicRarity.RARE
     pool = RelicPool.SHARED
+
+    def is_allowed(self, run_state: RunState) -> bool:
+        return self.is_before_act3_treasure_chest(run_state)
 
     def modify_card_reward_options_late(
         self,
@@ -229,7 +281,39 @@ class GamblingChip(RelicInstance):
     relic_id = RelicId.GAMBLING_CHIP
     rarity = RelicRarity.RARE
     pool = RelicPool.SHARED
-    # AfterPlayerTurnStart round 1 - interactive discard/draw
+
+    def after_player_turn_start(self, owner: Creature, combat: CombatState) -> None:
+        from sts2_env.core.hooks import fire_after_card_discarded
+
+        if combat.round_number > 1 or combat.pending_choice is not None:
+            return
+
+        state = combat.combat_player_state_for(owner)
+        if state is None or not state.hand:
+            return
+
+        hand_cards = list(state.hand)
+
+        def _resolver(selected_cards: list[CardInstance]) -> None:
+            draw_count = 0
+            for card in selected_cards:
+                if card in state.hand:
+                    state.hand.remove(card)
+                    state.discard.append(card)
+                    fire_after_card_discarded(card, combat)
+                    draw_count += 1
+            if draw_count > 0:
+                combat.draw_cards(owner, draw_count)
+
+        combat.request_multi_card_choice(
+            prompt="Choose cards to discard",
+            cards=hand_cards,
+            source_pile="hand",
+            resolver=_resolver,
+            min_count=0,
+            max_count=len(hand_cards),
+            allow_skip=True,
+        )
 
 
 @register_relic
@@ -241,7 +325,7 @@ class GamePiece(RelicInstance):
     CARDS = 1
 
     def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
-        if hasattr(card, "card_type") and card.card_type == CardType.POWER:
+        if getattr(card, "owner", None) is owner and hasattr(card, "card_type") and card.card_type == CardType.POWER:
             combat.draw_cards(owner, self.CARDS)
 
 
@@ -252,6 +336,9 @@ class Girya(RelicInstance):
     rarity = RelicRarity.RARE
     pool = RelicPool.SHARED
     MAX_LIFTS = 3
+
+    def is_allowed(self, run_state: RunState) -> bool:
+        return self.is_before_act3_treasure_chest(run_state)
 
     def __init__(self, relic_id: RelicId):
         super().__init__(relic_id)
@@ -270,6 +357,8 @@ class Girya(RelicInstance):
     def modify_rest_site_options(self, owner: Creature, options: list[object], run_state: RunState) -> list[object]:
         from sts2_env.run.rest_site import LiftOption
 
+        if self._times_lifted >= self.MAX_LIFTS:
+            return options
         if not any(getattr(option, "option_id", "") == "LIFT" for option in options):
             options = [*options, LiftOption(self._times_lifted)]
         return options
@@ -284,7 +373,7 @@ class HelicalDart(RelicInstance):
     DEXTERITY = 1
 
     def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
-        if hasattr(card, "is_shiv") and card.is_shiv:
+        if getattr(card, "owner", None) is owner and hasattr(card, "is_shiv") and card.is_shiv:
             owner.apply_power(PowerId.DEXTERITY, self.DEXTERITY)
 
 
@@ -296,7 +385,7 @@ class IceCream(RelicInstance):
     pool = RelicPool.SHARED
 
     def should_reset_energy(self, owner: Creature, combat: CombatState) -> bool | None:
-        if combat.round_number > 1:
+        if combat.round_number > 1 and combat.player is owner:
             return False
         return None
 
@@ -311,7 +400,7 @@ class IntimidatingHelmet(RelicInstance):
     ENERGY_THRESHOLD = 2
 
     def before_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
-        if hasattr(card, "energy_cost") and card.energy_cost >= self.ENERGY_THRESHOLD:
+        if getattr(card, "owner", None) is owner and getattr(card, "energy_spent", 0) >= self.ENERGY_THRESHOLD:
             owner.gain_block(self.BLOCK, unpowered=True)
 
 
@@ -325,7 +414,7 @@ class IvoryTile(RelicInstance):
     THRESHOLD = 3
 
     def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
-        if hasattr(card, "energy_spent") and card.energy_spent >= self.THRESHOLD:
+        if getattr(card, "owner", None) is owner and hasattr(card, "energy_spent") and card.energy_spent >= self.THRESHOLD:
             combat.gain_energy(owner, self.ENERGY)
 
 
@@ -347,7 +436,7 @@ class Kunai(RelicInstance):
             self._attacks_this_turn = 0
 
     def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
-        if hasattr(card, "card_type") and card.card_type == CardType.ATTACK:
+        if getattr(card, "owner", None) is owner and hasattr(card, "card_type") and card.card_type == CardType.ATTACK:
             self._attacks_this_turn += 1
             if self._attacks_this_turn % self.ATTACK_THRESHOLD == 0:
                 owner.apply_power(PowerId.DEXTERITY, self.DEXTERITY)
@@ -363,6 +452,9 @@ class LastingCandy(RelicInstance):
     rarity = RelicRarity.RARE
     pool = RelicPool.SHARED
 
+    def is_allowed(self, run_state: RunState) -> bool:
+        return self.is_before_act3_treasure_chest(run_state)
+
     def __init__(self, relic_id: RelicId):
         super().__init__(relic_id)
         self._combats_seen: int = 0
@@ -375,18 +467,28 @@ class LastingCandy(RelicInstance):
         room: Room | None,
         run_state: RunState,
     ) -> list[CardInstance]:
-        from sts2_env.cards.factory import create_character_cards
+        from sts2_env.cards.factory import create_cards_from_ids, eligible_character_cards
 
         if self._combats_seen <= 0 or self._combats_seen % 2 != 0:
             return cards
+        if getattr(reward, "card_creation_source", "encounter") != "encounter":
+            return cards
         if getattr(reward, "_lasting_candy_added", False):
             return cards
-        generated = create_character_cards(
-            owner.character_id,
+        existing_ids = {card.card_id for card in cards}
+        eligible = [
+            card_id
+            for card_id in eligible_character_cards(
+                owner.character_id,
+                card_type=CardType.POWER,
+                generation_context="modifier",
+            )
+            if card_id not in existing_ids
+        ]
+        generated = create_cards_from_ids(
+            eligible,
             run_state.rng.rewards,
             1,
-            card_type=CardType.POWER,
-            generation_context="modifier",
             distinct=True,
         )
         if generated:
@@ -414,7 +516,10 @@ class LizardTail(RelicInstance):
         if not self._was_used:
             self._was_used = True
             heal_amount = owner.max_hp * self.HEAL_PCT // 100
-            owner.heal(heal_amount)
+            if owner.is_dead:
+                owner.current_hp = min(owner.max_hp, heal_amount)
+            else:
+                owner.heal(heal_amount)
             return False
         return None
 
@@ -453,7 +558,7 @@ class MeatOnTheBone(RelicInstance):
     HP_THRESHOLD_PCT = 50
     HEAL = 12
 
-    def after_combat_victory(self, owner: Creature, combat: CombatState) -> None:
+    def after_combat_victory_early(self, owner: Creature, combat: CombatState) -> None:
         if owner.current_hp <= (owner.max_hp * self.HP_THRESHOLD_PCT // 100):
             owner.heal(self.HEAL)
 
@@ -473,10 +578,13 @@ class Metronome(RelicInstance):
 
     def on_orb_channeled(self, owner: Creature, combat: CombatState) -> None:
         self._orbs_channeled += 1
-        if self._orbs_channeled >= self.ORB_THRESHOLD:
-            self._orbs_channeled = 0
-            for enemy in combat.get_alive_enemies():
-                combat.deal_damage(owner, enemy, self.DAMAGE, ValueProp.UNPOWERED)
+        if self._orbs_channeled == self.ORB_THRESHOLD:
+            combat.deal_damage(
+                dealer=owner,
+                amount=self.DAMAGE,
+                props=ValueProp.UNPOWERED,
+                targets=list(combat.hittable_enemies),
+            )
 
     def after_combat_end(self, owner: Creature, combat: CombatState) -> None:
         self._orbs_channeled = 0
@@ -514,6 +622,9 @@ class MoltenEgg(RelicInstance):
     rarity = RelicRarity.RARE
     pool = RelicPool.SHARED
 
+    def is_allowed(self, run_state: RunState) -> bool:
+        return self.is_before_act3_treasure_chest(run_state)
+
     def modify_card_reward_options_late(
         self,
         owner: Creature,
@@ -550,17 +661,24 @@ class MummifiedHand(RelicInstance):
     pool = RelicPool.SHARED
 
     def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
-        if hasattr(card, "card_type") and card.card_type == CardType.POWER:
+        if getattr(card, "owner", None) is owner and hasattr(card, "card_type") and card.card_type == CardType.POWER:
+            state = combat.combat_player_state_for(owner)
+            if state is None:
+                return
             candidates = [
                 hand_card
-                for hand_card in combat.hand
-                if getattr(hand_card, "cost", 0) > 0 and not getattr(hand_card, "has_energy_cost_x", False)
+                for hand_card in state.hand
+                if not getattr(hand_card, "has_energy_cost_x", False)
+                and (
+                    getattr(hand_card, "cost", 0) > 0
+                    or int(getattr(hand_card, "combat_vars", {}).get("_turn_star_cost_override", getattr(hand_card, "star_cost", 0))) > 0
+                )
             ]
             if not candidates:
                 return
-            chosen = combat.rng.choice(candidates)
+            chosen = combat.combat_card_selection_rng.choice(candidates)
             if hasattr(chosen, "set_temporary_cost_for_turn"):
-                chosen.set_temporary_cost_for_turn(0)
+                chosen.set_temporary_free_this_turn()
             else:
                 chosen.cost = 0
 
@@ -572,6 +690,9 @@ class OldCoin(RelicInstance):
     rarity = RelicRarity.RARE
     pool = RelicPool.SHARED
     GOLD = 300
+
+    def is_allowed(self, run_state: RunState) -> bool:
+        return self.is_before_act3_treasure_chest(run_state)
 
     def after_obtained(self, owner: Creature) -> None:
         owner.gain_gold(self.GOLD)
@@ -605,7 +726,8 @@ class Pocketwatch(RelicInstance):
         self._cards_last_turn: int = 0
 
     def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
-        self._cards_this_turn += 1
+        if getattr(card, "owner", None) is owner:
+            self._cards_this_turn += 1
 
     def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         if side == CombatSide.PLAYER:
@@ -681,7 +803,7 @@ class RainbowRing(RelicInstance):
             self._activated_this_turn = 0
 
     def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
-        if not hasattr(card, "card_type"):
+        if getattr(card, "owner", None) is not owner or not hasattr(card, "card_type"):
             return
         if card.card_type == CardType.ATTACK:
             self._attacks += 1
@@ -690,9 +812,10 @@ class RainbowRing(RelicInstance):
         elif card.card_type == CardType.POWER:
             self._powers += 1
 
-        if (self._attacks > self._activated_this_turn
-                and self._skills > self._activated_this_turn
-                and self._powers > self._activated_this_turn):
+        if (self._activated_this_turn < 1
+                and self._attacks > 0
+                and self._skills > 0
+                and self._powers > 0):
             self._activated_this_turn += 1
             owner.apply_power(PowerId.STRENGTH, self.STRENGTH)
             owner.apply_power(PowerId.DEXTERITY, self.DEXTERITY)
@@ -712,11 +835,11 @@ class RazorTooth(RelicInstance):
     pool = RelicPool.SHARED
 
     def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
-        if (hasattr(card, "card_type")
+        if (getattr(card, "owner", None) is owner
+                and hasattr(card, "card_type")
                 and card.card_type in (CardType.ATTACK, CardType.SKILL)
-                and hasattr(card, "can_upgrade") and card.can_upgrade()
-                and hasattr(card, "upgrade")):
-            card.upgrade()
+                and getattr(card, "upgraded", False) is False):
+            combat.upgrade_card(card)
 
 
 @register_relic
@@ -725,6 +848,9 @@ class Shovel(RelicInstance):
     relic_id = RelicId.SHOVEL
     rarity = RelicRarity.RARE
     pool = RelicPool.SHARED
+
+    def is_allowed(self, run_state: RunState) -> bool:
+        return self.is_before_act3_treasure_chest(run_state)
 
     def modify_rest_site_options(self, owner: Creature, options: list[object], run_state: RunState) -> list[object]:
         from sts2_env.run.rest_site import DigOption
@@ -752,7 +878,7 @@ class Shuriken(RelicInstance):
             self._attacks_this_turn = 0
 
     def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
-        if hasattr(card, "card_type") and card.card_type == CardType.ATTACK:
+        if getattr(card, "owner", None) is owner and hasattr(card, "card_type") and card.card_type == CardType.ATTACK:
             self._attacks_this_turn += 1
             if self._attacks_this_turn % self.ATTACK_THRESHOLD == 0:
                 owner.apply_power(PowerId.STRENGTH, self.STRENGTH)
@@ -772,8 +898,12 @@ class StoneCalendar(RelicInstance):
 
     def before_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         if side == CombatSide.PLAYER and combat.round_number == self.DAMAGE_TURN:
-            for enemy in combat.get_alive_enemies():
-                combat.deal_damage(owner, enemy, self.DAMAGE, ValueProp.UNPOWERED)
+            combat.deal_damage(
+                dealer=owner,
+                amount=self.DAMAGE,
+                props=ValueProp.UNPOWERED,
+                targets=list(combat.hittable_enemies),
+            )
 
 
 @register_relic
@@ -790,7 +920,7 @@ class SturdyClamp(RelicInstance):
             return False
         return None
 
-    def after_block_cleared(self, owner: Creature, creature: Creature, combat: CombatState) -> None:
+    def after_preventing_block_clear(self, owner: Creature, creature: Creature, combat: CombatState) -> None:
         if creature is owner and owner.block > self.MAX_RETAINED_BLOCK:
             owner.block = self.MAX_RETAINED_BLOCK
 
@@ -834,7 +964,7 @@ class ToughBandages(RelicInstance):
     BLOCK = 3
 
     def after_card_discarded(self, owner: Creature, card: object, combat: CombatState) -> None:
-        if combat.current_side == CombatSide.PLAYER:
+        if getattr(card, "owner", None) is owner and combat.current_side == CombatSide.PLAYER:
             owner.gain_block(self.BLOCK, unpowered=True)
 
 
@@ -844,6 +974,9 @@ class ToxicEgg(RelicInstance):
     relic_id = RelicId.TOXIC_EGG
     rarity = RelicRarity.RARE
     pool = RelicPool.SHARED
+
+    def is_allowed(self, run_state: RunState) -> bool:
+        return self.is_before_act3_treasure_chest(run_state)
 
     def modify_card_reward_options_late(
         self,
@@ -881,7 +1014,7 @@ class TungstenRod(RelicInstance):
     pool = RelicPool.SHARED
     REDUCTION = 1
 
-    def modify_hp_lost(
+    def modify_hp_lost_after_osty(
         self, owner: Creature, target: Creature, amount: float,
         dealer: Creature | None, props: ValueProp
     ) -> float:
@@ -912,13 +1045,64 @@ class UnsettlingLamp(RelicInstance):
 
     def __init__(self, relic_id: RelicId):
         super().__init__(relic_id)
-        self._triggered: bool = False
+        self._triggering_card: object | None = None
+        self._is_finished_triggering: bool = False
+        self._doubled_temporary_internal_power_ids: set[PowerId] = set()
 
     def before_combat_start(self, owner: Creature, combat: CombatState) -> None:
-        self._triggered = False
+        self._triggering_card = None
+        self._is_finished_triggering = False
+        self._doubled_temporary_internal_power_ids = set()
+
+    def modify_power_amount_given(
+        self,
+        owner: Creature,
+        power_id: PowerId,
+        amount: int,
+        giver: Creature,
+        target: Creature | None,
+        source: object | None,
+        combat: CombatState,
+    ) -> int:
+        if amount == 0 or self._is_finished_triggering:
+            return amount
+        card_source = source if source is not None else getattr(combat, "active_card_source", None)
+        if card_source is None:
+            return amount
+        if target is None or target.side == owner.side:
+            return amount
+        power_cls = get_power_class(power_id)
+        if power_cls is None or not getattr(power_cls, "is_visible", True):
+            return amount
+        if _power_type_for_amount(power_cls, amount) != PowerType.DEBUFF:
+            return amount
+        if self._triggering_card is None:
+            self._triggering_card = card_source
+        if card_source is not self._triggering_card:
+            return amount
+        if power_id in self._doubled_temporary_internal_power_ids:
+            return amount
+        temporary_internal_power_ids = {
+            PowerId.FLEX_POTION: PowerId.STRENGTH,
+            PowerId.SHACKLING_POTION: PowerId.STRENGTH,
+            PowerId.SPEED_POTION: PowerId.DEXTERITY,
+            PowerId.TEMPORARY_DEXTERITY: PowerId.DEXTERITY,
+            PowerId.TEMPORARY_FOCUS: PowerId.FOCUS,
+            PowerId.TEMPORARY_STRENGTH: PowerId.STRENGTH,
+        }
+        internal_power_id = temporary_internal_power_ids.get(power_id)
+        if internal_power_id is not None:
+            self._doubled_temporary_internal_power_ids.add(internal_power_id)
+        return amount * 2
+
+    def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
+        if card is self._triggering_card:
+            self._is_finished_triggering = True
 
     def after_combat_end(self, owner: Creature, combat: CombatState) -> None:
-        self._triggered = False
+        self._triggering_card = None
+        self._is_finished_triggering = False
+        self._doubled_temporary_internal_power_ids = set()
 
 
 @register_relic
@@ -935,6 +1119,34 @@ class RuinedHelmet(RelicInstance):
     def before_combat_start(self, owner: Creature, combat: CombatState) -> None:
         self._used_this_combat = False
 
+    def modify_power_amount_received(
+        self,
+        owner: Creature,
+        power_id: PowerId,
+        amount: int,
+        target: Creature,
+        applier: Creature | None,
+        source: object | None,
+        combat: CombatState,
+    ) -> int:
+        if target is owner and power_id == PowerId.STRENGTH and amount > 0 and not self._used_this_combat:
+            return amount * 2
+        return amount
+
+    def after_modifying_power_amount_received(
+        self,
+        owner: Creature,
+        power_id: PowerId,
+        original_amount: int,
+        modified_amount: int,
+        target: Creature,
+        applier: Creature | None,
+        source: object | None,
+        combat: CombatState,
+    ) -> None:
+        if target is owner and power_id == PowerId.STRENGTH and modified_amount != original_amount:
+            self._used_this_combat = True
+
     def after_combat_end(self, owner: Creature, combat: CombatState) -> None:
         self._used_this_combat = False
 
@@ -946,8 +1158,8 @@ class VexingPuzzlebox(RelicInstance):
     rarity = RelicRarity.RARE
     pool = RelicPool.SHARED
 
-    def after_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side == CombatSide.PLAYER and combat.round_number == 1:
+    def after_player_turn_start(self, owner: Creature, combat: CombatState) -> None:
+        if combat.round_number == 1:
             combat.generate_free_card_in_hand(owner)
 
 
@@ -957,6 +1169,9 @@ class WhiteBeastStatue(RelicInstance):
     relic_id = RelicId.WHITE_BEAST_STATUE
     rarity = RelicRarity.RARE
     pool = RelicPool.SHARED
+
+    def is_allowed(self, run_state: RunState) -> bool:
+        return self.is_before_act3_treasure_chest(run_state)
 
     def should_force_potion_reward(self, owner: Creature) -> bool | None:
         return True
@@ -968,6 +1183,9 @@ class WhiteStar(RelicInstance):
     relic_id = RelicId.WHITE_STAR
     rarity = RelicRarity.RARE
     pool = RelicPool.SHARED
+
+    def is_allowed(self, run_state: RunState) -> bool:
+        return self.is_before_act3_treasure_chest(run_state)
 
     def modify_rewards(
         self,
@@ -990,7 +1208,26 @@ class PaperKrane(RelicInstance):
     relic_id = RelicId.PAPER_KRANE
     rarity = RelicRarity.RARE
     pool = RelicPool.SILENT
-    # ModifyWeakMultiplier hook - handled in damage pipeline
+    EXTRA_WEAK = 0.15
+
+    def modify_damage_multiplicative(
+        self,
+        owner: Creature,
+        dealer: Creature | None,
+        target: Creature,
+        props: ValueProp,
+        card: object | None = None,
+    ) -> float:
+        if target is not owner or dealer is None or not props.is_powered():
+            return 1.0
+        if dealer.get_power_amount(PowerId.WEAK) <= 0:
+            return 1.0
+
+        weak_multiplier = WEAK_MULTIPLIER
+        if dealer.has_power(PowerId.DEBILITATE):
+            weak_multiplier -= 1.0 - weak_multiplier
+
+        return max(0.0, round((weak_multiplier - self.EXTRA_WEAK) / weak_multiplier, 10))
 
 
 @register_relic
@@ -1002,6 +1239,7 @@ class CloakClasp(RelicInstance):
 
     def before_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         if side == CombatSide.PLAYER:
-            hand_size = len(combat.hand)
+            state = combat.combat_player_state_for(owner)
+            hand_size = len(state.hand) if state is not None else 0
             if hand_size > 0:
                 owner.gain_block(hand_size, unpowered=True)

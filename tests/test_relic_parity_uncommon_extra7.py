@@ -6,14 +6,21 @@ import sts2_env.powers  # noqa: F401
 
 from sts2_env.cards.factory import create_card
 from sts2_env.cards.ironclad import create_ironclad_starter_deck
+from sts2_env.cards.ironclad_basic import make_strike_ironclad
 from sts2_env.core.combat import CombatState
 from sts2_env.core.enums import CardId, CombatSide, MapPointType, PowerId, RoomType
-from sts2_env.core.hooks import fire_after_turn_end
+from sts2_env.core.hooks import (
+    fire_after_card_exhausted,
+    fire_after_card_played,
+    fire_after_turn_end,
+    fire_before_card_played,
+    fire_before_turn_end,
+)
 from sts2_env.core.rng import Rng
 from sts2_env.map.generator import ActMap
 from sts2_env.monsters.act1_weak import create_shrinker_beetle, create_twig_slime_s
-from sts2_env.run.rooms import RoomVisitContext
-from sts2_env.run.run_state import RunState
+from sts2_env.run.rooms import CombatRoom, RoomVisitContext
+from sts2_env.run.run_state import PlayerState, RunState
 
 
 def _make_ironclad_combat(
@@ -107,23 +114,19 @@ class TestRelicParityUncommonExtra7:
     def test_regalite_gains_block_only_for_owner_colorless_card_entering_combat(self):
         """Matches Regalite.cs: owner gains 2 block when a colorless card enters combat."""
         combat = _make_ironclad_combat(["Regalite"], seed=1204)
-        relic = _combat_relic(combat, "REGALITE")
         player = combat.player
         player.block = 0
 
         colorless = create_card(CardId.VOLLEY)
-        colorless.owner = player
-        relic.after_card_entered_combat(player, colorless, combat)
+        combat.move_card_to_creature_hand(player, colorless)
         assert player.block == 2
 
         non_colorless = create_card(CardId.STRIKE_IRONCLAD)
-        non_colorless.owner = player
-        relic.after_card_entered_combat(player, non_colorless, combat)
+        combat.move_card_to_creature_hand(player, non_colorless)
         assert player.block == 2
 
         other_owner_card = create_card(CardId.VOLLEY)
-        other_owner_card.owner = combat.enemies[0]
-        relic.after_card_entered_combat(player, other_owner_card, combat)
+        combat._apply_card_after_card_entered_combat(other_owner_card, combat.enemies[0])  # noqa: SLF001
         assert player.block == 2
 
     def test_reptile_trinket_applies_temporary_strength_on_owned_potion_use(self):
@@ -145,9 +148,8 @@ class TestRelicParityUncommonExtra7:
         assert player.get_power_amount(PowerId.STRENGTH) == 0
 
     def test_stone_cracker_upgrades_three_cards_only_on_boss_room_entry(self):
-        """Matches StoneCracker.cs: on boss room entry, upgrade up to 3 random upgradable deck cards."""
-        run_state = RunState(seed=1206, character_id="Ironclad")
-        run_state.player.deck = [
+        """Matches StoneCracker.cs: boss combat start upgrades up to 3 random draw-pile cards."""
+        deck = [
             create_card(CardId.STRIKE_IRONCLAD),
             create_card(CardId.DEFEND_IRONCLAD),
             create_card(CardId.BASH),
@@ -155,12 +157,120 @@ class TestRelicParityUncommonExtra7:
             create_card(CardId.DEFEND_IRONCLAD),
             create_card(CardId.STRIKE_IRONCLAD, upgraded=True),
         ]
-        assert run_state.player.obtain_relic("STONE_CRACKER")
-        relic = _run_relic(run_state, "STONE_CRACKER")
-        upgraded_before = sum(1 for card in run_state.player.deck if card.upgraded)
+        non_boss = CombatState(
+            player_hp=80,
+            player_max_hp=80,
+            deck=[create_card(card.card_id, upgraded=card.upgraded) for card in deck],
+            rng_seed=1206,
+            character_id="Ironclad",
+            relics=["STONE_CRACKER"],
+            room=CombatRoom(room_type=RoomType.MONSTER),
+        )
+        creature, ai = create_shrinker_beetle(Rng(1206))
+        non_boss.add_enemy(creature, ai)
+        non_boss.start_combat()
+        assert sum(1 for card in non_boss.combat_player_states[0].starting_deck if card.upgraded) == 1
 
-        relic.after_room_entered(run_state.player, RoomVisitContext(RoomType.MONSTER))
-        assert sum(1 for card in run_state.player.deck if card.upgraded) == upgraded_before
+        boss = CombatState(
+            player_hp=80,
+            player_max_hp=80,
+            deck=deck,
+            rng_seed=1206,
+            character_id="Ironclad",
+            relics=["STONE_CRACKER"],
+            room=CombatRoom(room_type=RoomType.BOSS, is_boss=True),
+        )
+        creature, ai = create_shrinker_beetle(Rng(1207))
+        boss.add_enemy(creature, ai)
+        boss.start_combat()
+        assert sum(1 for card in boss.combat_player_states[0].starting_deck if card.upgraded) == 4
 
-        relic.after_room_entered(run_state.player, RoomVisitContext(RoomType.BOSS))
-        assert sum(1 for card in run_state.player.deck if card.upgraded) == upgraded_before + 3
+    def test_owner_scoped_card_play_relics_ignore_other_players_cards(self):
+        """Matches owner checks on common and uncommon card-play relic hooks."""
+        combat = _make_ironclad_combat(
+            [
+                "Permafrost",
+                "Kusarigama",
+                "LetterOpener",
+                "Nunchaku",
+                "OrnamentalFan",
+                "RippleBasin",
+                "TuningFork",
+            ],
+            seed=1207,
+            enemies=2,
+        )
+        ally = combat.add_ally_player(
+            PlayerState(player_id=2, character_id="Ironclad", max_hp=60, current_hp=60)
+        )
+        for enemy in combat.enemies:
+            enemy.max_hp = 300
+            enemy.current_hp = 300
+        combat.player.block = 0
+
+        ally_attack = create_card(CardId.STRIKE_IRONCLAD)
+        ally_attack.owner = ally
+        ally_skill = create_card(CardId.DEFEND_IRONCLAD)
+        ally_skill.owner = ally
+        ally_power = create_card(CardId.INFLAME)
+        ally_power.owner = ally
+
+        for _ in range(10):
+            fire_after_card_played(ally_attack, combat)
+        for _ in range(10):
+            fire_after_card_played(ally_skill, combat)
+        fire_after_card_played(ally_power, combat)
+
+        assert combat.player.block == 0
+        assert combat.energy == 3
+        assert [enemy.current_hp for enemy in combat.enemies] == [300, 300]
+
+        fire_before_turn_end(CombatSide.PLAYER, combat)
+        assert combat.player.block == 4
+
+    def test_pen_nib_ignores_other_players_attacks_for_counter(self):
+        """Matches PenNib.cs: only the owner's attacks advance the counter."""
+        combat = _make_ironclad_combat(["PenNib"], seed=1208)
+        ally = combat.add_ally_player(
+            PlayerState(player_id=2, character_id="Ironclad", max_hp=60, current_hp=60)
+        )
+        enemy = combat.enemies[0]
+        enemy.max_hp = 300
+        enemy.current_hp = 300
+
+        ally_attack = create_card(CardId.STRIKE_IRONCLAD)
+        ally_attack.owner = ally
+        for _ in range(9):
+            fire_before_card_played(ally_attack, combat)
+            fire_after_card_played(ally_attack, combat)
+
+        strike = make_strike_ironclad()
+        strike.owner = combat.player
+        combat.hand = [strike]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+        assert enemy.current_hp == 294
+
+    def test_owner_scoped_exhaust_relics_ignore_other_players_cards(self):
+        """Matches JossPaper.cs: only owner-card exhausts advance the draw counter."""
+        combat = _make_ironclad_combat(["JossPaper"], seed=1209)
+        ally = combat.add_ally_player(
+            PlayerState(player_id=2, character_id="Ironclad", max_hp=60, current_hp=60)
+        )
+        marker = create_card(CardId.BASH)
+        marker.owner = combat.player
+        combat.draw_pile = [marker]
+
+        ally_card = create_card(CardId.STRIKE_IRONCLAD)
+        ally_card.owner = ally
+        owner_card = create_card(CardId.STRIKE_IRONCLAD)
+        owner_card.owner = combat.player
+
+        for _ in range(5):
+            fire_after_card_exhausted(ally_card, combat)
+        assert marker not in combat.hand
+
+        for _ in range(5):
+            fire_after_card_exhausted(owner_card, combat)
+        assert marker in combat.hand

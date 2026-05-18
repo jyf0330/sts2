@@ -34,6 +34,7 @@ class RewardType(Enum):
     TRANSFORM_CARD = auto()
     DUPLICATE_CARD = auto()
     ENCHANT_CARD = auto()
+    CARD_BUNDLE = auto()
 
 
 @dataclass
@@ -170,10 +171,18 @@ class RelicReward(Reward):
 class CardReward(Reward):
     context: str = "regular"
     option_count: int = 3
+    cards_to_pick: int = 1
+    cards_picked: int = 0
+    generation_context: str | None = "combat"
+    roll_upgrade: bool = True
     character_ids: tuple[str, ...] = field(default_factory=tuple)
     forced_rarities: tuple[CardRarity, ...] = field(default_factory=tuple)
     include_colorless: bool = False
     use_default_character_pool: bool = True
+    card_creation_source: str = "encounter"
+    allow_card_pool_modifications: bool = True
+    has_custom_card_pool: bool = False
+    custom_card_ids: tuple[CardId, ...] = field(default_factory=tuple)
     cards: list[CardInstance] = field(default_factory=list)
     max_rerolls: int = 0
     rerolls_used: int = 0
@@ -184,21 +193,38 @@ class CardReward(Reward):
         player_id: int,
         context: str = "regular",
         option_count: int | None = None,
+        cards_to_pick: int = 1,
+        *,
+        skippable: bool = True,
+        generation_context: str | None = "combat",
+        roll_upgrade: bool = True,
         character_ids: tuple[str, ...] | None = None,
         forced_rarities: tuple[CardRarity, ...] | None = None,
         include_colorless: bool = False,
         use_default_character_pool: bool = True,
+        card_creation_source: str | None = None,
+        allow_card_pool_modifications: bool = True,
+        has_custom_card_pool: bool = False,
+        custom_card_ids: tuple[CardId, ...] | None = None,
         cards: list[CardInstance] | None = None,
     ):
-        super().__init__(player_id=player_id, reward_type=RewardType.CARD, rewards_set_index=5)
+        super().__init__(player_id=player_id, reward_type=RewardType.CARD, rewards_set_index=5, skippable=skippable)
         resolved_cards = list(cards or [])
         resolved_rarities = tuple(forced_rarities or ())
         self.context = context
         self.option_count = option_count or len(resolved_rarities) or len(resolved_cards) or 3
+        self.cards_to_pick = max(1, cards_to_pick)
+        self.cards_picked = 0
+        self.generation_context = generation_context
+        self.roll_upgrade = roll_upgrade
         self.character_ids = tuple(character_ids or ())
         self.forced_rarities = resolved_rarities
         self.include_colorless = include_colorless
         self.use_default_character_pool = use_default_character_pool
+        self.card_creation_source = card_creation_source or ("other" if generation_context is None else "encounter")
+        self.allow_card_pool_modifications = allow_card_pool_modifications
+        self.has_custom_card_pool = has_custom_card_pool
+        self.custom_card_ids = tuple(custom_card_ids or ())
         self.cards = resolved_cards
         self.max_rerolls = 0
         self.rerolls_used = 0
@@ -213,9 +239,23 @@ class CardReward(Reward):
             forced_rarities=self.forced_rarities,
             include_colorless=self.include_colorless,
             use_default_character_pool=self.use_default_character_pool,
+            generation_context=self.generation_context,
+            roll_upgrade=self.roll_upgrade,
+            card_creation_source=self.card_creation_source,
+            allow_card_pool_modifications=self.allow_card_pool_modifications,
+            has_custom_card_pool=self.has_custom_card_pool,
+            custom_card_ids=self.custom_card_ids,
         )
         for relic in player.get_relic_objects():
             options = relic.modify_card_reward_creation_options(
+                player,
+                options,
+                self,
+                room,
+                run_state,
+            )
+        for modifier in run_state.modifiers:
+            options = modifier.modify_card_reward_creation_options(
                 player,
                 options,
                 self,
@@ -230,9 +270,18 @@ class CardReward(Reward):
                 character_ids=None if options.use_default_character_pool and not options.character_ids else options.character_ids,
                 forced_rarities=options.forced_rarities,
                 include_colorless=options.include_colorless,
+                generation_context=options.generation_context,
+                roll_upgrade=options.roll_upgrade,
+                custom_card_ids=options.custom_card_ids,
             )
         self.include_colorless = options.include_colorless
         self.use_default_character_pool = options.use_default_character_pool
+        self.generation_context = options.generation_context
+        self.roll_upgrade = options.roll_upgrade
+        self.card_creation_source = options.card_creation_source
+        self.allow_card_pool_modifications = options.allow_card_pool_modifications
+        self.has_custom_card_pool = options.has_custom_card_pool
+        self.custom_card_ids = options.custom_card_ids
         for relic in player.get_relic_objects():
             self.cards = relic.modify_card_reward_options_late(
                 player,
@@ -257,12 +306,18 @@ class CardReward(Reward):
         if 0 <= index < len(self.cards):
             card = self.cards[index]
             run_manager.run_state.get_player(self.player_id).add_card_instance_to_deck(card)
-            return {
+            self.cards.pop(index)
+            self.cards_picked += 1
+            info = {
                 "description": f"Picked {card.card_id.name}.",
                 "card_id": card.card_id.name,
                 "rarity": card.rarity.name,
                 "upgraded": card.upgraded,
             }
+            if self.cards_picked < self.cards_to_pick and self.cards:
+                info["pending_more_picks"] = True
+                info["remaining_picks"] = self.cards_to_pick - self.cards_picked
+            return info
         return {"description": "Invalid card index."}
 
     def reroll(self, run_manager: RunManager) -> dict:
@@ -294,6 +349,51 @@ class AddCardsReward(Reward):
         return {
             "description": f"Added {len(self.cards)} card(s) to deck.",
             "added": len(self.cards),
+        }
+
+
+@dataclass
+class RecoveredCardReward(Reward):
+    card: CardInstance | None = None
+    encounter_source: str = ""
+
+    def __init__(self, player_id: int, card: CardInstance, encounter_source: str = ""):
+        super().__init__(player_id=player_id, reward_type=RewardType.ADD_CARD, rewards_set_index=4, skippable=False)
+        self.card = card
+        self.encounter_source = encounter_source
+
+    def select(self, run_manager: RunManager, **_: object) -> dict:
+        return {
+            "description": f"Recovered {self.card.card_id.name if self.card is not None else 'card'}.",
+            "card_id": self.card.card_id.name if self.card is not None else None,
+            "encounter_source": self.encounter_source,
+        }
+
+
+@dataclass
+class CardBundlesReward(Reward):
+    bundles: list[list[CardInstance]] = field(default_factory=list)
+
+    def __init__(self, player_id: int, bundles: list[list[CardInstance]]):
+        super().__init__(player_id=player_id, reward_type=RewardType.CARD_BUNDLE, rewards_set_index=5, skippable=False)
+        self.bundles = [list(bundle) for bundle in bundles]
+
+    def populate(self, run_state: RunState, room: Room | None) -> None:
+        self.is_populated = True
+
+    def select(self, run_manager: RunManager, **kwargs: object) -> dict:
+        index = int(kwargs.get("index", 0))
+        if index < 0 or index >= len(self.bundles):
+            return {"description": "Invalid card bundle index.", "success": False}
+        player = run_manager.run_state.get_player(self.player_id)
+        bundle = self.bundles[index]
+        for card in bundle:
+            player.add_card_instance_to_deck(card)
+        return {
+            "description": f"Picked card bundle with {len(bundle)} card(s).",
+            "added": len(bundle),
+            "card_ids": [card.card_id.name for card in bundle],
+            "success": True,
         }
 
 
@@ -428,6 +528,7 @@ class TransformCardsReward(Reward):
     upgrade: bool = False
     cards: list[CardInstance] | None = None
     mapping: dict[CardId, CardId] | None = None
+    rng_stream: str = "niche"
 
     def __init__(
         self,
@@ -437,15 +538,18 @@ class TransformCardsReward(Reward):
         upgrade: bool = False,
         cards: list[CardInstance] | None = None,
         mapping: dict[CardId, CardId] | None = None,
+        rng_stream: str = "niche",
     ):
         super().__init__(player_id=player_id, reward_type=RewardType.TRANSFORM_CARD, rewards_set_index=4, skippable=False)
         self.count = count
         self.upgrade = upgrade
         self.cards = cards
         self.mapping = mapping
+        self.rng_stream = rng_stream
 
     def select(self, run_manager: RunManager, **_: object) -> dict:
         player = run_manager.run_state.get_player(self.player_id)
+        transform_rng = getattr(run_manager.run_state.rng, self.rng_stream, run_manager.run_state.rng.niche)
         if self.mapping is not None:
             candidates = list(self.cards or [])
             required = min(self.count, len(candidates))
@@ -464,9 +568,9 @@ class TransformCardsReward(Reward):
             transformed = player.transform_specific_cards_with_mapping(candidates[:required], self.mapping)
         else:
             transformed = (
-                player.transform_and_upgrade_cards(self.count, cards=self.cards)
+                player.transform_and_upgrade_cards(self.count, cards=self.cards, rng=transform_rng)
                 if self.upgrade
-                else player.transform_cards(self.count, cards=self.cards)
+                else player.transform_cards(self.count, cards=self.cards, rng=transform_rng)
             )
         if run_manager.run_state.pending_choice is not None:
             verb = "transform and upgrade" if self.upgrade else "transform"
@@ -602,9 +706,14 @@ class RewardsSet:
     def generate_without_offering(self, run_state: RunState) -> list[Reward]:
         if not self._reward_modifiers_applied:
             player = run_state.get_player(self.player_id)
+            for reward in self.rewards:
+                if not reward.is_populated:
+                    reward.populate(run_state, self.room)
             rewards = list(self.rewards)
             for relic in player.get_relic_objects():
                 rewards = list(relic.modify_rewards(player, rewards, self.room, run_state))
+            for modifier in run_state.modifiers:
+                rewards = list(modifier.modify_rewards_late(player, rewards, self.room, run_state))
             self.rewards = rewards
             self._reward_modifiers_applied = True
         for reward in self.rewards:

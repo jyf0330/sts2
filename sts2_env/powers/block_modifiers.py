@@ -89,10 +89,11 @@ class NoBlockPower(PowerInstance):
             return 1.0
         return 0.0
 
+    def after_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
+        if side == CombatSide.ENEMY:
+            self.amount -= 1
+
     def on_turn_end_enemy_side(self, owner: Creature) -> None:
-        if self.skip_next_tick:
-            self.skip_next_tick = False
-            return
         self.amount -= 1
 
 
@@ -201,11 +202,8 @@ class BufferPower(PowerInstance):
     C#: ModifyHpLostAfterOstyLate returns 0 when target is owner.
     AfterModifyingHpLostAfterOsty decrements by 1.
 
-    The "Late" modifier runs after IntangiblePower's modifier.  In our
-    pipeline, modify_hp_lost is called in power-iteration order; Buffer
-    should be registered after Intangible or the pipeline should call it
-    in a second pass.  For simplicity, we apply it in the standard
-    modify_hp_lost hook.
+    The "Late" modifier runs after Intangible, BeatingRemnant, TungstenRod,
+    and other regular after-Osty HP-loss modifiers.
     """
 
     power_type = PowerType.BUFF
@@ -214,16 +212,18 @@ class BufferPower(PowerInstance):
     def __init__(self, amount: int):
         super().__init__(PowerId.BUFFER, amount)
 
-    def modify_hp_lost(
+    def modify_hp_lost_late(
         self, owner: Creature, target: Creature, amount: float,
         dealer: Creature | None, props: ValueProp
     ) -> float:
         if target is not owner:
             return amount
-        if amount <= 0:
+        if amount <= 0 or self.amount <= 0:
             return amount
         # Absorb ALL HP loss, then decrement self.
         self.amount -= 1
+        if self.amount <= 0:
+            owner.powers.pop(self.power_id, None)
         return 0.0
 
 
