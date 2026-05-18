@@ -163,12 +163,17 @@ class IntangiblePower(PowerInstance):
 
     def _get_damage_cap(self, dealer: Creature | None) -> int:
         """Return damage cap, accounting for The Boot relic on dealer."""
-        # In the full engine, The Boot relic on the attacker's player
-        # raises the cap from 1 to 5.  We check for a relic flag.
         if dealer is not None:
-            has_boot = getattr(dealer, "_has_the_boot", False)
-            if has_boot:
+            if getattr(dealer, "_has_the_boot", False):
                 return 5
+            relic_owner = getattr(dealer, "pet_owner", None) or dealer
+            combat = getattr(relic_owner, "combat_state", None) or getattr(dealer, "combat_state", None)
+            if combat is not None:
+                from sts2_env.relics.base import RelicId
+
+                for relic in combat.relics_for_creature(relic_owner):
+                    if relic.relic_id == RelicId.THE_BOOT:
+                        return 5
         return self._DEFAULT_CAP
 
     def modify_hp_lost(

@@ -210,6 +210,20 @@ def test_the_boot_raises_only_powered_attack_damage_below_five():
     assert enemy.current_hp == next_hp - 1
 
 
+def test_the_boot_raises_intangible_damage_cap_to_five():
+    combat = _make_combat(character_id="Ironclad", relics=["TheBoot"], seed=1130)
+    player = combat.player
+    enemy = combat.enemies[0]
+    enemy.max_hp = 200
+    enemy.current_hp = 200
+    enemy.block = 0
+    enemy.apply_power(PowerId.INTANGIBLE, 1)
+
+    combat.deal_damage(player, enemy, 10, ValueProp.MOVE)
+
+    assert enemy.current_hp == 195
+
+
 def test_the_boot_runs_before_tungsten_rod_regardless_of_relic_order():
     from sts2_env.core.hooks import modify_hp_lost
 
