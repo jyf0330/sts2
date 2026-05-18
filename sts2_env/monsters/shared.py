@@ -46,6 +46,9 @@ def _deal_damage_to_player(combat: CombatState, creature: Creature, base_dmg: in
             break
         dmg = calculate_damage(base_dmg, creature, combat.primary_player, ValueProp.MOVE, combat)
         apply_damage(combat.primary_player, dmg, ValueProp.MOVE, combat, creature)
+        combat._check_combat_end()  # noqa: SLF001
+        if combat.is_over:
+            break
 
 
 def _gain_block(creature: Creature, amount: int) -> None:
@@ -302,7 +305,7 @@ def create_the_adversary_mk_one(rng: Rng) -> tuple[Creature, MonsterAI]:
 
     def barrage(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, barrage_dmg, hits=barrage_hits)
-        creature.apply_power(PowerId.STRENGTH, 2)
+        combat.apply_power_to(creature, PowerId.STRENGTH, 2, applier=creature)
 
     states: dict[str, MonsterState] = {
         "SMASH": MoveState("SMASH", smash, [attack_intent(smash_dmg)], follow_up_id="BEAM"),
@@ -334,7 +337,7 @@ def create_the_adversary_mk_two(rng: Rng) -> tuple[Creature, MonsterAI]:
 
     def barrage(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, barrage_dmg, hits=barrage_hits)
-        creature.apply_power(PowerId.STRENGTH, 3)
+        combat.apply_power_to(creature, PowerId.STRENGTH, 3, applier=creature)
 
     states: dict[str, MonsterState] = {
         "BASH": MoveState("BASH", bash, [attack_intent(bash_dmg)], follow_up_id="FLAME_BEAM"),
@@ -366,7 +369,7 @@ def create_the_adversary_mk_three(rng: Rng) -> tuple[Creature, MonsterAI]:
 
     def barrage(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, barrage_dmg, hits=barrage_hits)
-        creature.apply_power(PowerId.STRENGTH, 4)
+        combat.apply_power_to(creature, PowerId.STRENGTH, 4, applier=creature)
 
     states: dict[str, MonsterState] = {
         "CRASH": MoveState("CRASH", crash, [attack_intent(crash_dmg)], follow_up_id="FLAME_BEAM"),

@@ -104,7 +104,12 @@ from sts2_env.monsters.act2 import (
     create_tunneler,
     create_wriggler,
 )
-from sts2_env.monsters.shared import create_dense_vegetation_wriggler
+from sts2_env.monsters.shared import (
+    create_dense_vegetation_wriggler,
+    create_the_adversary_mk_one,
+    create_the_adversary_mk_two,
+    create_the_adversary_mk_three,
+)
 from sts2_env.monsters.act3 import (
     create_axebot,
     create_devoted_sculptor,
@@ -237,6 +242,24 @@ class TestFixedRotation:
         ai = MonsterAI(states, "A")
         moves = _run_ai(ai, rng, 5)
         assert moves == ["A", "A", "A", "A", "A"]
+
+    def test_adversary_barrage_does_not_gain_strength_after_killing_player(self):
+        cases = [
+            (create_the_adversary_mk_one, "BARRAGE"),
+            (create_the_adversary_mk_two, "BARRAGE"),
+            (create_the_adversary_mk_three, "BARRAGE"),
+        ]
+        for idx, (factory, move_id) in enumerate(cases, start=1):
+            combat = _make_combat(200 + idx)
+            creature, ai = factory(Rng(200 + idx))
+            combat.add_enemy(creature, ai)
+            combat.player.current_hp = 8
+
+            ai.states[move_id].perform(combat)
+
+            assert combat.is_over
+            assert combat.player_won is False
+            assert creature.get_power_amount(PowerId.STRENGTH) == 0
 
     def test_the_insatiable_follows_liquify_to_fixed_cycle(self):
         rng = Rng(7)
