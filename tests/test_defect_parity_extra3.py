@@ -202,6 +202,27 @@ class TestDefectParityExtra3:
         assert zero_status in combat.discard_pile
         assert costly_attack in combat.discard_pile
 
+    def test_all_for_one_does_not_return_discard_cards_after_damage_ends_combat(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = 10
+        zero_attack = make_strike_defect()
+        zero_attack.cost = 0
+        zero_skill = make_defend_defect()
+        zero_skill.cost = 0
+        for discarded in [zero_attack, zero_skill]:
+            discarded.owner = combat.player
+        combat.hand = [make_all_for_one()]
+        combat.discard_pile = [zero_attack, zero_skill]
+        combat.energy = 2
+
+        assert combat.play_card(0, 0)
+        assert combat.is_over
+        assert zero_attack in combat.discard_pile
+        assert zero_skill in combat.discard_pile
+        assert zero_attack not in combat.hand
+        assert zero_skill not in combat.hand
+
     def test_boost_away_adds_owned_generated_dazed_to_discard(self):
         """Matches BoostAway.cs: generated Dazed is added to the owner's discard pile."""
         combat = _make_combat()

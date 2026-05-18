@@ -275,6 +275,20 @@ class TestRegentParityExtra4:
         assert combat.stars == 2
         assert combat.draw_pile[0] is card
 
+    def test_shining_strike_does_not_return_to_draw_pile_after_damage_ends_combat(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = 8
+        card = make_shining_strike()
+        existing_top = combat.draw_pile[0]
+        combat.hand = [card]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+        assert combat.is_over
+        assert combat.draw_pile[0] is existing_top
+        assert card not in combat.draw_pile
+
     def test_bombardment_autoplays_from_exhaust_before_hand_draw_and_stays_exhausted(self):
         combat = _make_combat()
         enemy = combat.enemies[0]

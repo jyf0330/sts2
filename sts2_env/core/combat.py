@@ -2325,7 +2325,7 @@ class CombatState:
         self.move_card_to_creature_hand(self.player, card)
 
     def move_card_to_creature_hand(self, creature: Creature, card: CardInstance | None) -> None:
-        if card is None:
+        if card is None or (self._combat_started and self.is_over):
             return
         was_in_combat = self._is_card_in_combat(card)
         self._remove_card_from_piles(card)
@@ -2402,7 +2402,7 @@ class CombatState:
         *,
         random_position: bool = False,
     ) -> None:
-        if card is None:
+        if card is None or (self._combat_started and self.is_over):
             return
         was_in_combat = self._is_card_in_combat(card)
         self._remove_card_from_piles(card)
