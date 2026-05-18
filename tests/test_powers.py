@@ -5,17 +5,22 @@ import pytest
 from sts2_env.core.creature import Creature
 from sts2_env.core.enums import CardId, CombatSide, PowerId, RoomType, ValueProp
 from sts2_env.core.damage import apply_damage, calculate_block, calculate_damage
+from sts2_env.core.combat import CombatState
 from sts2_env.core.hooks import (
     fire_after_block_cleared,
+    fire_after_player_turn_start,
+    fire_after_side_turn_start,
     fire_after_turn_end,
     fire_before_combat_start,
     fire_before_turn_end,
 )
-from sts2_env.cards.defect import make_beam_cell, make_feral, make_subroutine
+from sts2_env.cards.defect import create_defect_starter_deck, make_beam_cell, make_feral, make_subroutine
 from sts2_env.cards.ironclad import make_inflame, make_juggling, make_sword_boomerang
 from sts2_env.cards.ironclad_basic import make_bash, make_defend_ironclad, make_strike_ironclad
 from sts2_env.cards.silent import _make_shiv, make_afterimage, make_serpent_form
 from sts2_env.cards.status import make_rebound
+from sts2_env.core.rng import Rng
+from sts2_env.monsters.act1_weak import create_shrinker_beetle
 from sts2_env.powers.base import PowerInstance
 from sts2_env.powers.monster import BurrowedPower, SkittishPower, SmoggyPower
 from sts2_env.powers.remaining_c import SandpitPower, ToricToughnessPower
@@ -27,6 +32,16 @@ from sts2_env.run.run_state import PlayerState
 class _FirstChoiceRng:
     def choice(self, values):
         return list(values)[0]
+
+
+class _BlockHookCounterPower(PowerInstance):
+    def __init__(self):
+        super().__init__(PowerId.JUGGERNAUT, 0)
+        self.calls: list[int] = []
+
+    def after_block_gained(self, owner, creature, amount, combat):
+        if creature is owner:
+            self.calls.append(amount)
 
 
 class TestPowerApplication:
@@ -706,6 +721,76 @@ class TestPowerAmountChangedHooks:
 
         assert player.block == 4
         assert enemy.current_hp == start_hp - 5
+
+    def test_beacon_of_hope_shared_block_triggers_after_block_gained_hooks(self, simple_combat):
+        ally = simple_combat.add_ally_player(PlayerState(player_id=2, character_id="Ironclad", max_hp=70, current_hp=70))
+        counter = _BlockHookCounterPower()
+        ally.powers[PowerId.JUGGERNAUT] = counter
+        simple_combat.player.apply_power(PowerId.BEACON_OF_HOPE, 1)
+        simple_combat.hand = [make_defend_ironclad()]
+        simple_combat.energy = 1
+
+        assert simple_combat.play_card(0)
+
+        assert simple_combat.player.block == 5
+        assert ally.block == 2
+        assert counter.calls == [2]
+
+    def test_child_of_the_stars_block_triggers_after_block_gained_hooks(self, simple_combat):
+        counter = _BlockHookCounterPower()
+        simple_combat.player.powers[PowerId.JUGGERNAUT] = counter
+        simple_combat.player.apply_power(PowerId.CHILD_OF_THE_STARS, 2)
+        simple_combat.gain_stars(simple_combat.player, 3)
+
+        simple_combat.spend_stars(simple_combat.player, 2)
+
+        assert simple_combat.player.block == 4
+        assert counter.calls == [4]
+
+    def test_coolant_counts_orb_types_and_triggers_after_block_gained_hooks(self):
+        combat = CombatState(
+            player_hp=75,
+            player_max_hp=75,
+            deck=create_defect_starter_deck(),
+            rng_seed=42,
+            character_id="Defect",
+        )
+        creature, ai = create_shrinker_beetle(Rng(42))
+        combat.add_enemy(creature, ai)
+        combat.start_combat()
+        combat.channel_orb(combat.player, "LIGHTNING")
+        combat.channel_orb(combat.player, "FROST")
+        combat.channel_orb(combat.player, "FROST")
+        counter = _BlockHookCounterPower()
+        combat.player.powers[PowerId.JUGGERNAUT] = counter
+        combat.player.apply_power(PowerId.COOLANT, 2)
+
+        fire_after_side_turn_start(CombatSide.PLAYER, combat)
+
+        assert combat.player.block == 4
+        assert counter.calls == [4]
+
+    def test_crimson_mantle_block_triggers_after_block_gained_hooks(self, simple_combat):
+        counter = _BlockHookCounterPower()
+        simple_combat.player.powers[PowerId.JUGGERNAUT] = counter
+        simple_combat.player.apply_power(PowerId.CRIMSON_MANTLE, 6)
+
+        fire_after_player_turn_start(simple_combat.player, simple_combat)
+
+        assert simple_combat.player.block == 6
+        assert counter.calls == [6]
+
+    def test_danse_macabre_block_triggers_after_block_gained_hooks(self, simple_combat):
+        counter = _BlockHookCounterPower()
+        simple_combat.player.powers[PowerId.JUGGERNAUT] = counter
+        simple_combat.player.apply_power(PowerId.DANSE_MACABRE, 3)
+        simple_combat.hand = [make_bash()]
+        simple_combat.energy = 2
+
+        assert simple_combat.play_card(0, 0)
+
+        assert simple_combat.player.block == 3
+        assert counter.calls == [3]
 
     def test_juggling_counts_attacks_played_before_it_was_applied(self, simple_combat):
         simple_combat.hand = [

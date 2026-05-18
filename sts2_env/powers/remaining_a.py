@@ -26,6 +26,17 @@ if TYPE_CHECKING:
     from sts2_env.core.combat import CombatState
 
 
+def _gain_unpowered_block(owner: Creature, amount: int, combat: CombatState) -> int:
+    before = owner.block
+    owner.gain_block(amount, unpowered=True)
+    gained = owner.block - before
+    if gained > 0:
+        from sts2_env.core.hooks import fire_after_block_gained
+
+        fire_after_block_gained(owner, gained, combat)
+    return gained
+
+
 # =====================================================================
 #  1. AccelerantPower
 # =====================================================================
@@ -284,7 +295,7 @@ class BeaconOfHopePower(PowerInstance):
         if teammates is not None:
             for ally in teammates(owner):
                 if ally is not owner and getattr(ally, "is_alive", True):
-                    ally.gain_block(share)
+                    _gain_unpowered_block(ally, share, combat)
 
 
 # =====================================================================
@@ -519,7 +530,7 @@ class ChildOfTheStarsPower(PowerInstance):
     def on_stars_spent(self, owner: Creature, stars: int, combat: CombatState) -> None:
         """Called by the combat system when stars are spent."""
         if stars > 0:
-            owner.gain_block(self.amount * stars)
+            _gain_unpowered_block(owner, self.amount * stars, combat)
 
 
 # =====================================================================
@@ -673,7 +684,7 @@ class CoolantPower(PowerInstance):
         if distinct_orbs is not None:
             count = distinct_orbs(owner)
             if count > 0:
-                owner.gain_block(count * self.amount)
+                _gain_unpowered_block(owner, count * self.amount, combat)
 
 
 # =====================================================================
@@ -739,7 +750,7 @@ class CrimsonMantlePower(PowerInstance):
                 amount=self.self_damage,
                 props=ValueProp.UNBLOCKABLE | ValueProp.UNPOWERED,
             )
-        owner.gain_block(self.amount)
+        _gain_unpowered_block(owner, self.amount, combat)
 
     def increment_self_damage(self) -> None:
         """Called by the card system when Crimson Mantle card is played."""
@@ -934,7 +945,7 @@ class DanseMacabrePower(PowerInstance):
             return
         cost = getattr(card, "energy_cost", 0) or 0
         if cost >= self._ENERGY_THRESHOLD:
-            owner.gain_block(self.amount)
+            _gain_unpowered_block(owner, self.amount, combat)
 
 
 # =====================================================================

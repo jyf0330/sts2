@@ -2526,6 +2526,13 @@ class CombatState:
 
         self.channel_orb(owner, self.combat_orbs_rng.choice(list(OrbType)))
 
+    def count_distinct_orb_types(self, owner: Creature) -> int:
+        state = self.combat_player_state_for(owner)
+        orb_queue = getattr(state, "orb_queue", None)
+        if orb_queue is None:
+            return 0
+        return len({orb.orb_type for orb in getattr(orb_queue, "orbs", [])})
+
     def trigger_first_orb_passive(self, owner: Creature) -> None:
         state = self.combat_player_state_for(owner)
         orb_queue = getattr(state, "orb_queue", None)
