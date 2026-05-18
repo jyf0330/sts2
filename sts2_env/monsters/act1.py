@@ -200,7 +200,7 @@ def create_fogmog(rng: Rng) -> tuple[Creature, MonsterAI]:
 
     def swipe(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, swipe_dmg)
-        creature.apply_power(PowerId.STRENGTH, 1)
+        combat.apply_power_to(creature, PowerId.STRENGTH, 1, applier=creature)
 
     def headbutt(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, headbutt_dmg)

@@ -461,6 +461,15 @@ class TestFixedRotation:
         assert fogmog_ai.current_move.state_id == "ILLUSION_MOVE"
         assert {"SWIPE_MOVE", "SWIPE_RANDOM_MOVE", "HEADBUTT_MOVE"}.issubset(fogmog_ai.states)
 
+        lethal_fogmog, lethal_fogmog_ai = create_fogmog(Rng(114))
+        lethal_fogmog_combat = _make_combat(114)
+        lethal_fogmog_combat.add_enemy(lethal_fogmog, lethal_fogmog_ai)
+        lethal_fogmog_combat.player.current_hp = 8
+        lethal_fogmog_ai.states["SWIPE_MOVE"].perform(lethal_fogmog_combat)
+        assert lethal_fogmog_combat.is_over
+        assert lethal_fogmog_combat.player_won is False
+        assert lethal_fogmog.get_power_amount(PowerId.STRENGTH) == 0
+
         _, mawler_ai = create_mawler(Rng(15))
         assert mawler_ai.current_move.state_id == "CLAW_MOVE"
         assert {"RIP_AND_TEAR_MOVE", "ROAR_MOVE", "CLAW_MOVE"}.issubset(mawler_ai.states)
