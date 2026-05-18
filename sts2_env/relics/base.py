@@ -596,6 +596,9 @@ class RelicInstance:
     def after_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         pass
 
+    def after_turn_end_late(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
+        pass
+
     # ─── Card Hooks ─────────────────────────────────────────────────────
 
     def before_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:

@@ -734,6 +734,10 @@ def fire_after_turn_end(side: CombatSide, combat: CombatState) -> None:
             combat._remove_power(owner, power.power_id)
     for owner, relic in _iter_relic_listeners(combat):
         relic.after_turn_end(owner, side, combat)
+    for owner, power in _iter_power_listeners(combat):
+        power.after_turn_end_late(owner, side, combat)
+    for owner, relic in _iter_relic_listeners(combat):
+        relic.after_turn_end_late(owner, side, combat)
 
 
 def fire_before_side_turn_start(side: CombatSide, combat: CombatState) -> None:

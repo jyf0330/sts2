@@ -1171,7 +1171,7 @@ class DisintegrationPower(PowerInstance):
     def __init__(self, amount: int):
         super().__init__(PowerId.DISINTEGRATION, amount)
 
-    def after_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
+    def after_turn_end_late(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         if side == owner.side:
             combat.deal_damage(
                 dealer=owner,

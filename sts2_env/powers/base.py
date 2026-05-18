@@ -232,6 +232,9 @@ class PowerInstance:
     def after_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         pass
 
+    def after_turn_end_late(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
+        pass
+
     # ─── Legacy turn hooks (for backward compat with existing powers) ───
 
     def on_turn_end_enemy_side(self, owner: Creature) -> None:

@@ -47,6 +47,16 @@ class _BlockHookCounterPower(PowerInstance):
             self.calls.append(amount)
 
 
+class _TurnEndHpProbePower(PowerInstance):
+    def __init__(self):
+        super().__init__(PowerId.ACCURACY, 1)
+        self.hp_seen: int | None = None
+
+    def after_turn_end(self, owner, side, combat):
+        if side == owner.side:
+            self.hp_seen = owner.current_hp
+
+
 class TestPowerApplication:
     """Stacking, negative amounts, Artifact blocking."""
 
@@ -397,6 +407,17 @@ class TestDamageModifierInteractions:
         fire_after_turn_end(CombatSide.PLAYER, simple_combat)
 
         assert player.get_power_amount(PowerId.DEBILITATE) == 1
+
+    def test_disintegration_deals_damage_after_normal_turn_end_hooks(self, simple_combat):
+        player = simple_combat.player
+        probe = _TurnEndHpProbePower()
+        player.powers[PowerId.ACCURACY] = probe
+        simple_combat.apply_power_to(player, PowerId.DISINTEGRATION, 7)
+
+        fire_after_turn_end(CombatSide.PLAYER, simple_combat)
+
+        assert probe.hp_seen == 80
+        assert player.current_hp == 73
 
     def test_shrink_reduces_owner_powered_attack_damage_by_thirty_percent_and_ticks(self, simple_combat):
         player = simple_combat.player
