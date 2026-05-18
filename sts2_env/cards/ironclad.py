@@ -1928,7 +1928,7 @@ def mangle(card: CardInstance, combat: CombatState, target: Creature | None) -> 
     assert target is not None
     _deal_damage_to_target(card, combat, target)
     str_loss = card.effect_vars.get("strength_loss", 10)
-    combat.apply_power_to(target, PowerId.MANGLE_POWER, str_loss)
+    combat.apply_power_to(target, PowerId.MANGLE, str_loss)
 
 
 def make_mangle(upgraded: bool = False) -> CardInstance:

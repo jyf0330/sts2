@@ -37,6 +37,7 @@ from sts2_env.cards.ironclad import (
     make_infernal_blade,
     make_inferno,
     make_iron_wave,
+    make_mangle,
     make_molten_fist,
     make_pacts_end,
     make_pillage,
@@ -52,6 +53,7 @@ from sts2_env.cards.ironclad import (
 from sts2_env.cards.ironclad_basic import make_defend_ironclad, make_strike_ironclad
 from sts2_env.core.combat import CombatState
 from sts2_env.core.enums import CardId, CombatSide, PowerId, ValueProp
+from sts2_env.core.hooks import fire_after_turn_end
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle
 from sts2_env.powers.base import PowerInstance
@@ -613,6 +615,25 @@ class TestIroncladParityExtra4:
 
         assert doubled_combat.play_card(0, 0)
         assert enemy.get_power_amount(PowerId.VULNERABLE) == 4
+
+    def test_mangle_applies_temporary_strength_loss_then_restores(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.max_hp = 100
+        enemy.current_hp = 100
+        enemy.apply_power(PowerId.STRENGTH, 4)
+        combat.hand = [make_mangle(upgraded=True)]
+        combat.energy = 3
+
+        assert combat.play_card(0, 0)
+        assert enemy.current_hp == 80
+        assert enemy.get_power_amount(PowerId.MANGLE) == 15
+        assert enemy.get_power_amount(PowerId.STRENGTH) == -11
+
+        fire_after_turn_end(CombatSide.ENEMY, combat)
+
+        assert enemy.get_power_amount(PowerId.MANGLE) == 0
+        assert enemy.get_power_amount(PowerId.STRENGTH) == 4
 
     def test_impervious_grants_thirty_block_and_exhausts(self):
         combat = _make_combat()
