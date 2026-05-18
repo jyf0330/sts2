@@ -195,7 +195,6 @@ def create_zapbot(rng: Rng) -> tuple[Creature, MonsterAI]:
         "ZAP": MoveState("ZAP", zap, [attack_intent(zap_dmg)], follow_up_id="ZAP"),
     }
     creature.apply_power(PowerId.HIGH_VOLTAGE, 2)
-    creature.apply_power(PowerId.MINION, 1)
     return creature, MonsterAI(states, "ZAP")
 
 
@@ -211,7 +210,6 @@ def create_stabbot(rng: Rng) -> tuple[Creature, MonsterAI]:
     states: dict[str, MonsterState] = {
         "STAB_MOVE": MoveState("STAB_MOVE", stab, [attack_intent(stab_dmg), debuff_intent()], follow_up_id="STAB_MOVE"),
     }
-    creature.apply_power(PowerId.MINION, 1)
     return creature, MonsterAI(states, "STAB_MOVE")
 
 
@@ -228,7 +226,6 @@ def create_guardbot(rng: Rng) -> tuple[Creature, MonsterAI]:
     states: dict[str, MonsterState] = {
         "GUARD_MOVE": MoveState("GUARD_MOVE", guard, [defend_intent()], follow_up_id="GUARD_MOVE"),
     }
-    creature.apply_power(PowerId.MINION, 1)
     return creature, MonsterAI(states, "GUARD_MOVE")
 
 
@@ -243,7 +240,6 @@ def create_noisebot(rng: Rng) -> tuple[Creature, MonsterAI]:
     states: dict[str, MonsterState] = {
         "NOISE_MOVE": MoveState("NOISE_MOVE", noise, [status_intent()], follow_up_id="NOISE_MOVE"),
     }
-    creature.apply_power(PowerId.MINION, 1)
     return creature, MonsterAI(states, "NOISE_MOVE")
 
 
@@ -263,12 +259,14 @@ def create_fabricator(rng: Rng) -> tuple[Creature, MonsterAI]:
         _state["last_aggro"] = idx
         bot, bot_ai = aggro_creators[idx](rng)
         combat.add_enemy(bot, bot_ai)
+        combat.apply_power_to(bot, PowerId.MINION, 1, applier=creature)
 
     def _spawn_defense(combat: CombatState) -> None:
         idx = 0 if _state["last_defense"] == 1 else (1 if _state["last_defense"] == 0 else rng.next_int(0, 1))
         _state["last_defense"] = idx
         bot, bot_ai = defense_creators[idx](rng)
         combat.add_enemy(bot, bot_ai)
+        combat.apply_power_to(bot, PowerId.MINION, 1, applier=creature)
 
     def fabricate(combat: CombatState) -> None:
         _spawn_defense(combat)

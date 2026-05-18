@@ -1676,10 +1676,12 @@ class TestFixedRotation:
         zapbot, zapbot_ai = create_zapbot(Rng(36))
         combat.add_enemy(zapbot, zapbot_ai)
         assert zapbot.get_power_amount(PowerId.HIGH_VOLTAGE) == 2
+        assert zapbot.get_power_amount(PowerId.MINION) == 0
         assert zapbot_ai.current_move.state_id == "ZAP"
 
         stabbot, stabbot_ai = create_stabbot(Rng(36))
         combat.add_enemy(stabbot, stabbot_ai)
+        assert stabbot.get_power_amount(PowerId.MINION) == 0
         assert stabbot_ai.current_move.state_id == "STAB_MOVE"
         stabbot_ai.current_move.perform(combat)
         assert combat.player.current_hp == 69
@@ -1687,16 +1689,33 @@ class TestFixedRotation:
 
         guardbot, guardbot_ai = create_guardbot(Rng(36))
         combat.add_enemy(guardbot, guardbot_ai)
+        assert guardbot.get_power_amount(PowerId.MINION) == 0
         assert guardbot_ai.current_move.state_id == "GUARD_MOVE"
         guardbot_ai.current_move.perform(combat)
         assert fabricator.block == 15
 
         noisebot, noisebot_ai = create_noisebot(Rng(36))
         combat.add_enemy(noisebot, noisebot_ai)
+        assert noisebot.get_power_amount(PowerId.MINION) == 0
         assert noisebot_ai.current_move.state_id == "NOISE_MOVE"
         noisebot_ai.current_move.perform(combat)
         assert [card.card_id for card in combat.discard_pile] == [CardId.DAZED]
         assert [card.card_id for card in combat.draw_pile] == [CardId.DAZED]
+
+        fabricator_ai.states["FABRICATE_MOVE"].perform(combat)
+        assert len(combat.enemies) == 7
+        assert combat.enemies[-2].get_power_amount(PowerId.MINION) == 1
+        assert combat.enemies[-1].get_power_amount(PowerId.MINION) == 1
+
+        lethal_combat = _make_combat(136)
+        lethal_fabricator, lethal_fabricator_ai = create_fabricator(Rng(136))
+        lethal_combat.add_enemy(lethal_fabricator, lethal_fabricator_ai)
+        lethal_combat.player.current_hp = 18
+        lethal_fabricator_ai.states["FABRICATING_STRIKE_MOVE"].perform(lethal_combat)
+        assert lethal_combat.is_over
+        assert lethal_combat.player_won is False
+        assert len(lethal_combat.enemies) == 2
+        assert lethal_combat.enemies[-1].get_power_amount(PowerId.MINION) == 0
 
     def test_fabricator_disintegrates_when_four_teammates_are_alive(self):
         combat = _make_combat(37)
