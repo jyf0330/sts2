@@ -1707,14 +1707,15 @@ class TestFixedRotation:
         assert combat.enemies[-2].get_power_amount(PowerId.MINION) == 1
         assert combat.enemies[-1].get_power_amount(PowerId.MINION) == 1
 
-        lethal_combat = _make_combat(136)
-        lethal_fabricator, lethal_fabricator_ai = create_fabricator(Rng(136))
+        lethal_combat = _make_combat(101)
+        lethal_fabricator, lethal_fabricator_ai = create_fabricator(Rng(101))
         lethal_combat.add_enemy(lethal_fabricator, lethal_fabricator_ai)
         lethal_combat.player.current_hp = 18
         lethal_fabricator_ai.states["FABRICATING_STRIKE_MOVE"].perform(lethal_combat)
         assert lethal_combat.is_over
         assert lethal_combat.player_won is False
         assert len(lethal_combat.enemies) == 2
+        assert lethal_combat.enemies[-1].get_power_amount(PowerId.HIGH_VOLTAGE) == 0
         assert lethal_combat.enemies[-1].get_power_amount(PowerId.MINION) == 0
 
     def test_fabricator_disintegrates_when_four_teammates_are_alive(self):

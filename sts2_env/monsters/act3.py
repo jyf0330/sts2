@@ -194,7 +194,6 @@ def create_zapbot(rng: Rng) -> tuple[Creature, MonsterAI]:
     states: dict[str, MonsterState] = {
         "ZAP": MoveState("ZAP", zap, [attack_intent(zap_dmg)], follow_up_id="ZAP"),
     }
-    creature.apply_power(PowerId.HIGH_VOLTAGE, 2)
     return creature, MonsterAI(states, "ZAP")
 
 
