@@ -149,7 +149,7 @@ def create_sludge_spinner(rng: Rng) -> tuple[Creature, MonsterAI]:
 
     def rage(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, rage_dmg)
-        creature.apply_power(PowerId.STRENGTH, 3, applier=creature)
+        combat.apply_power_to(creature, PowerId.STRENGTH, 3, applier=creature)
 
     rand = RandomBranchState("RAND")
     rand.add_branch("OIL_SPRAY_MOVE", MoveRepeatType.CANNOT_REPEAT)

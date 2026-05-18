@@ -1721,6 +1721,15 @@ class TestFixedRotation:
         assert sludge_combat.player.current_hp == 66
         assert sludge.get_power_amount(PowerId.STRENGTH) == 3
 
+        lethal_sludge, lethal_sludge_ai = create_sludge_spinner(Rng(153))
+        lethal_sludge_combat = _make_combat(153)
+        lethal_sludge_combat.add_enemy(lethal_sludge, lethal_sludge_ai)
+        lethal_sludge_combat.player.current_hp = 6
+        lethal_sludge_ai.states["RAGE_MOVE"].perform(lethal_sludge_combat)
+        assert lethal_sludge_combat.is_over
+        assert lethal_sludge_combat.player_won is False
+        assert lethal_sludge.get_power_amount(PowerId.STRENGTH) == 0
+
         toad_front, toad_front_ai = create_toadpole(Rng(54), slot="front")
         toad_combat = _make_combat(54)
         toad_combat.add_enemy(toad_front, toad_front_ai)
