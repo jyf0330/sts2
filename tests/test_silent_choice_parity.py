@@ -128,8 +128,30 @@ class TestSilentDiscardChoiceParity:
         shivs = [card for card in combat.hand if card.card_id.name == "SHIV"]
         assert len(shivs) == 2
 
-    def test_the_hunt_adds_extra_card_reward_and_power_on_fatal_kill(self):
+    def test_the_hunt_adds_extra_card_reward_and_power_on_fatal_kill_before_combat_ends(self):
         """Matches TheHunt.cs: fatal kill adds extra card reward and applies TheHuntPower."""
+        combat = _make_combat()
+        extra_enemy, extra_ai = create_shrinker_beetle(Rng(43))
+        combat.add_enemy(extra_enemy, extra_ai)
+        combat.start_combat()
+        combat.room = create_room(RoomType.ELITE)
+        enemy = combat.enemies[0]
+        enemy.current_hp = 8
+        enemy.max_hp = 8
+        combat.hand = [make_the_hunt()]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+        assert enemy.is_dead
+        assert not combat.is_over
+        assert combat.player.get_power_amount(PowerId.THE_HUNT) == 1
+
+        rewards = combat.room.extra_rewards[combat.player_id]
+        assert len(rewards) == 1
+        assert isinstance(rewards[0], CardReward)
+        assert rewards[0].context == "elite"
+
+    def test_the_hunt_keeps_extra_reward_but_skips_power_after_combat_ends(self):
         combat = _make_combat()
         combat.start_combat()
         combat.room = create_room(RoomType.ELITE)
@@ -141,7 +163,8 @@ class TestSilentDiscardChoiceParity:
 
         assert combat.play_card(0, 0)
         assert enemy.is_dead
-        assert combat.player.get_power_amount(PowerId.THE_HUNT) == 1
+        assert combat.is_over
+        assert combat.player.get_power_amount(PowerId.THE_HUNT) == 0
 
         rewards = combat.room.extra_rewards[combat.player_id]
         assert len(rewards) == 1
@@ -161,5 +184,6 @@ class TestSilentDiscardChoiceParity:
 
         assert combat.play_card(0, 0)
         assert enemy.is_dead
+        assert combat.is_over
         assert combat.extra_card_rewards == 1
-        assert combat.player.get_power_amount(PowerId.THE_HUNT) == 1
+        assert combat.player.get_power_amount(PowerId.THE_HUNT) == 0

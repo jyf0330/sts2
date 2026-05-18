@@ -1649,6 +1649,8 @@ class CombatState:
         """Draw cards one at a time, reshuffling if needed."""
         from sts2_env.core.hooks import fire_after_card_drawn, should_draw
 
+        if self.is_over:
+            return
         state = self.combat_player_state_for(owner)
         if state is None:
             return
@@ -1897,6 +1899,15 @@ class CombatState:
         source: object | None = None,
     ) -> None:
         """Apply a power to a creature. Player-side debuffs skip first tick."""
+        if self.is_over:
+            return
+        if target.combat_state is not self or target.escaped:
+            return
+        if not all(
+            getattr(power, "should_allow_hitting", lambda owner, combat: True)(target, self)
+            for power in target.powers.values()
+        ):
+            return
         if source is None:
             source = self.active_card_source
         if applier is None:
@@ -1964,7 +1975,7 @@ class CombatState:
 
     def gain_energy(self, owner: Creature, amount: int) -> None:
         state = self.combat_player_state_for(owner)
-        if state is not None and amount > 0:
+        if not self.is_over and state is not None and amount > 0:
             state.energy += amount
 
     def lose_energy(self, owner: Creature, amount: int) -> None:

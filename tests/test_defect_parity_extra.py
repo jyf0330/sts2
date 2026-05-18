@@ -20,7 +20,7 @@ from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle
 
 
-def _make_combat() -> CombatState:
+def _make_combat(*, extra_enemies: int = 0) -> CombatState:
     combat = CombatState(
         player_hp=75,
         player_max_hp=75,
@@ -30,6 +30,9 @@ def _make_combat() -> CombatState:
     )
     creature, ai = create_shrinker_beetle(Rng(42))
     combat.add_enemy(creature, ai)
+    for i in range(extra_enemies):
+        extra_creature, extra_ai = create_shrinker_beetle(Rng(43 + i))
+        combat.add_enemy(extra_creature, extra_ai)
     combat.start_combat()
     return combat
 
@@ -130,7 +133,7 @@ class TestDefectParityExtra:
 
     def test_sunder_refunds_energy_only_when_target_is_killed(self):
         """Matches Sunder.cs: gain 3 energy only if damage result includes a kill."""
-        kill_combat = _make_combat()
+        kill_combat = _make_combat(extra_enemies=1)
         kill_enemy = kill_combat.enemies[0]
         kill_enemy.current_hp = 20
         kill_enemy.max_hp = 20
@@ -151,3 +154,16 @@ class TestDefectParityExtra:
         assert no_kill_combat.play_card(0, 0)
         assert not no_kill_enemy.is_dead
         assert no_kill_combat.energy == 0
+
+    def test_sunder_does_not_refund_after_ending_combat(self):
+        kill_combat = _make_combat()
+        kill_enemy = kill_combat.enemies[0]
+        kill_enemy.current_hp = 20
+        kill_enemy.max_hp = 20
+        kill_combat.hand = [make_sunder()]
+        kill_combat.energy = 3
+
+        assert kill_combat.play_card(0, 0)
+
+        assert kill_combat.is_over
+        assert kill_combat.energy == 0

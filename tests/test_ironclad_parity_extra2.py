@@ -6,6 +6,7 @@ from sts2_env.cards.ironclad import (
     make_ashen_strike,
     create_ironclad_starter_deck,
     make_battle_trance,
+    make_bash,
     make_bloodletting,
     make_bully,
     make_feel_no_pain,
@@ -104,6 +105,54 @@ class TestIroncladParityExtra2:
         assert enemy.current_hp == start_hp - 9
         assert len(combat.hand) == 1
         assert combat.hand[0] is drawn
+
+    def test_pommel_strike_does_not_draw_after_ending_combat(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = 9
+        enemy.max_hp = 9
+        drawn = make_inflame()
+        combat.hand = [make_pommel_strike()]
+        combat.draw_pile = [drawn]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+
+        assert combat.is_over
+        assert combat.hand == []
+        assert combat.draw_pile == [drawn]
+
+    def test_bash_does_not_apply_vulnerable_after_ending_combat(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = 8
+        enemy.max_hp = 8
+        combat.hand = [make_bash()]
+        combat.energy = 2
+
+        assert combat.play_card(0, 0)
+
+        assert combat.is_over
+        assert enemy.get_power_amount(PowerId.VULNERABLE) == 0
+
+    def test_bash_does_not_apply_vulnerable_to_removed_target_while_combat_continues(self):
+        combat = _make_combat()
+        first = combat.enemies[0]
+        second, second_ai = create_shrinker_beetle(Rng(85))
+        combat.add_enemy(second, second_ai)
+        first.current_hp = 8
+        first.max_hp = 8
+        second.current_hp = 30
+        second.max_hp = 30
+        combat.hand = [make_bash()]
+        combat.energy = 2
+
+        assert combat.play_card(0, 0)
+
+        assert not combat.is_over
+        assert first.escaped
+        assert first.get_power_amount(PowerId.VULNERABLE) == 0
+        assert second.get_power_amount(PowerId.VULNERABLE) == 0
 
     def test_inflame_applies_strength_power_amount(self):
         """Matches Inflame.cs: apply StrengthPower using the configured amount."""

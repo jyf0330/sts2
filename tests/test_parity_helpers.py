@@ -2197,13 +2197,28 @@ class TestPendingChoiceFlow:
 
     def test_the_hunt_grants_power_and_extra_reward_on_kill(self):
         combat = _make_combat(create_ironclad_starter_deck(), "Silent")
+        extra_enemy, extra_ai = create_shrinker_beetle(Rng(43))
+        combat.add_enemy(extra_enemy, extra_ai)
         card = make_the_hunt()
         combat.hand = [card]
         combat.energy = 1
         combat.enemies[0].current_hp = 5
 
         assert combat.play_card(0, 0)
+        assert not combat.is_over
         assert combat.player.has_power(PowerId.THE_HUNT)
+        assert combat.extra_card_rewards == 1
+
+    def test_the_hunt_skips_power_after_ending_combat_but_keeps_extra_reward(self):
+        combat = _make_combat(create_ironclad_starter_deck(), "Silent")
+        card = make_the_hunt()
+        combat.hand = [card]
+        combat.energy = 1
+        combat.enemies[0].current_hp = 5
+
+        assert combat.play_card(0, 0)
+        assert combat.is_over
+        assert not combat.player.has_power(PowerId.THE_HUNT)
         assert combat.extra_card_rewards == 1
 
     def test_the_hunt_does_not_trigger_fatal_reward_on_minion_kill(self):

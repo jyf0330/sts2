@@ -605,7 +605,7 @@ def sunder(card: CardInstance, combat: CombatState, target: Creature | None) -> 
     result = apply_damage(target, dmg, ValueProp.MOVE, combat, _owner(card, combat))
     # Gain energy if enemy was killed
     if result.was_killed:
-        combat.energy += card.effect_vars.get("energy", 3)
+        combat.gain_energy(_owner(card, combat), card.effect_vars.get("energy", 3))
 
 
 @register_effect(CardId.SYNCHRONIZE)
