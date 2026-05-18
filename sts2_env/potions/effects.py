@@ -584,8 +584,10 @@ def _pot_of_ghouls(combat: CombatState, user: Creature, target: Creature | None)
 
     Necrobinder mechanic; calls create_cards_in_hand if available.
     """
-    if hasattr(combat, "create_cards_in_hand"):
-        combat.create_cards_in_hand(user, "Soul", 2)
+    from sts2_env.cards.status import make_soul
+
+    for _ in range(2):
+        combat.add_generated_card_to_creature_hand(user, make_soul())
 
 
 def _shackling_potion(combat: CombatState, user: Creature, target: Creature | None) -> None:

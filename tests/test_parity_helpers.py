@@ -2978,6 +2978,17 @@ class TestStatusParity:
         assert all(card.cost == 0 for card in combat.hand)
         assert combat.count_generated_cards_this_combat(combat.player) == 3
 
+    def test_pot_of_ghouls_adds_generated_souls_to_hand(self):
+        combat = _make_combat(create_necrobinder_starter_deck(), "Necrobinder")
+        combat.hand.clear()
+        potion = create_potion("PotOfGhouls")
+
+        potion.use(combat, combat.player)
+
+        souls = [card for card in combat.hand if card.card_id == CardId.SOUL]
+        assert len(souls) == 2
+        assert combat.count_generated_cards_this_combat(combat.player) == 2
+
     def test_capture_spirit_deals_unblockable_damage_and_adds_souls(self):
         combat = _make_combat(create_necrobinder_starter_deck(), "Necrobinder")
         enemy = combat.enemies[0]
