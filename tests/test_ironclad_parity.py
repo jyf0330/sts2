@@ -85,6 +85,28 @@ class TestIroncladParity:
         assert draw_a in combat.hand
         assert draw_b in combat.hand
 
+    def test_burning_pact_still_draws_when_selection_returns_none(self):
+        """Matches BurningPact.cs: draw continues even when no selected card is returned."""
+        combat = _make_combat()
+        strike = make_strike_ironclad()
+        draw_a = make_bash()
+        draw_b = make_strike_ironclad()
+        combat.hand = [make_burning_pact(), strike]
+        combat.draw_pile = [draw_a, draw_b]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.pending_choice is not None
+
+        resolver = combat.pending_choice.resolver
+        combat.pending_choice = None
+        resolver([])
+        combat._resume_pending_play()  # noqa: SLF001
+
+        assert strike in combat.hand
+        assert draw_a in combat.hand
+        assert draw_b in combat.hand
+
     def test_headbutt_puts_selected_discard_card_on_top_of_draw(self):
         """Matches Headbutt.cs: attack, then choose one discard card and place it on top of draw pile."""
         combat = _make_combat()

@@ -788,9 +788,8 @@ def burning_pact(card: CardInstance, combat: CombatState, target: Creature | Non
         return
 
     def _resolver(selected: CardInstance | None) -> None:
-        if selected is None:
-            return
-        combat.exhaust_card(selected)
+        if selected is not None:
+            combat.exhaust_card(selected)
         _draw_cards(combat, card.effect_vars.get("cards", 2), owner)
 
     combat.request_card_choice(
