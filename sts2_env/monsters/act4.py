@@ -917,33 +917,33 @@ def create_waterfall_giant(rng: Rng) -> tuple[Creature, MonsterAI]:
         "steam_eruption_damage": 0,
     }
 
-    def _gain_pressure(amount: int) -> None:
-        creature.apply_power(PowerId.STEAM_ERUPTION, amount)
+    def _gain_pressure(combat: CombatState, amount: int) -> None:
+        combat.apply_power_to(creature, PowerId.STEAM_ERUPTION, amount, applier=creature)
 
     def pressurize(combat: CombatState) -> None:
-        _gain_pressure(pressurize_amount)
+        _gain_pressure(combat, pressurize_amount)
 
     def stomp(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, stomp_dmg)
         combat.apply_power_to(combat.primary_player, PowerId.WEAK, 1)
-        _gain_pressure(3)
+        _gain_pressure(combat, 3)
 
     def ram(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, ram_dmg)
-        _gain_pressure(3)
+        _gain_pressure(combat, 3)
 
     def siphon(combat: CombatState) -> None:
         creature.heal(siphon_heal * len(combat.combat_player_states))
-        _gain_pressure(3)
+        _gain_pressure(combat, 3)
 
     def pressure_gun(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, _state["current_pressure_gun_damage"])
         _state["current_pressure_gun_damage"] += pressure_gun_increase
-        _gain_pressure(3)
+        _gain_pressure(combat, 3)
 
     def pressure_up(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, pressure_up_dmg)
-        _gain_pressure(3)
+        _gain_pressure(combat, 3)
 
     def about_to_blow(combat: CombatState) -> None:
         _state["steam_eruption_damage"] = creature.get_power_amount(PowerId.STEAM_ERUPTION)

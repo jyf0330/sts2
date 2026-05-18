@@ -2339,6 +2339,18 @@ class TestFixedRotation:
         assert giant_effect_combat.player.current_hp == 65
         assert giant_effect_combat.player.get_power_amount(PowerId.WEAK) == 1
         assert giant_effect.get_power_amount(PowerId.STEAM_ERUPTION) == 18
+
+        lethal_giant, lethal_giant_ai = create_waterfall_giant(Rng(184))
+        lethal_giant_combat = _make_combat(184)
+        lethal_giant_combat.add_enemy(lethal_giant, lethal_giant_ai)
+        lethal_giant.apply_power(PowerId.STEAM_ERUPTION, 15)
+        lethal_giant_combat.player.current_hp = 15
+        lethal_giant_ai.states["STOMP_MOVE"].perform(lethal_giant_combat)
+        assert lethal_giant_combat.is_over
+        assert lethal_giant_combat.player_won is False
+        assert lethal_giant_combat.player.get_power_amount(PowerId.WEAK) == 0
+        assert lethal_giant.get_power_amount(PowerId.STEAM_ERUPTION) == 15
+
         giant_effect.current_hp = 20
         giant_effect_ai.states["PRESSURE_GUN_MOVE"].perform(giant_effect_combat)
         assert giant_effect_combat.player.current_hp == 45
