@@ -57,15 +57,17 @@ class LightningOrb(OrbInstance):
             target = combat.combat_targets_rng.choice(alive)
             apply_damage(target, value, ValueProp.UNPOWERED, combat, combat.player)
 
-    def on_evoke(self, combat: CombatState) -> None:
+    def on_evoke(self, combat: CombatState) -> list[Creature]:
         from sts2_env.core.damage import apply_damage
         value = self.get_evoke_value(combat)
         if value <= 0:
-            return
+            return []
         alive = combat.hittable_enemies
         if alive:
             target = combat.combat_targets_rng.choice(alive)
             apply_damage(target, value, ValueProp.UNPOWERED, combat, combat.player)
+            return [target]
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -94,10 +96,11 @@ class FrostOrb(OrbInstance):
         if value > 0:
             _gain_unpowered_block(combat.player, value, combat)
 
-    def on_evoke(self, combat: CombatState) -> None:
+    def on_evoke(self, combat: CombatState) -> list[Creature]:
         value = self.get_evoke_value(combat)
         if value > 0:
             _gain_unpowered_block(combat.player, value, combat)
+        return [combat.player]
 
 
 # ---------------------------------------------------------------------------
@@ -137,16 +140,17 @@ class DarkOrb(OrbInstance):
         gain = max(0, gain)
         self._accumulated_evoke += gain
 
-    def on_evoke(self, combat: CombatState) -> None:
+    def on_evoke(self, combat: CombatState) -> list[Creature]:
         from sts2_env.core.damage import apply_damage
         value = self.get_evoke_value(combat)
         if value <= 0:
-            return
+            return []
         hittable = combat.hittable_enemies
         if not hittable:
-            return
+            return []
         target = min(hittable, key=lambda e: e.current_hp)
         apply_damage(target, value, ValueProp.UNPOWERED, combat, combat.player)
+        return [target]
 
 
 # ---------------------------------------------------------------------------
@@ -181,8 +185,9 @@ class PlasmaOrb(OrbInstance):
     def on_passive(self, combat: CombatState) -> None:
         combat.energy += self.get_passive_value(combat)
 
-    def on_evoke(self, combat: CombatState) -> None:
+    def on_evoke(self, combat: CombatState) -> list[Creature]:
         combat.energy += self.get_evoke_value(combat)
+        return [combat.player]
 
 
 # ---------------------------------------------------------------------------
@@ -220,12 +225,15 @@ class GlassOrb(OrbInstance):
         # Decay: reduce by 1 each trigger
         self._current_passive = max(0, self._current_passive - 1)
 
-    def on_evoke(self, combat: CombatState) -> None:
+    def on_evoke(self, combat: CombatState) -> list[Creature]:
         from sts2_env.core.damage import apply_damage
         value = self.get_evoke_value(combat)
+        targets = []
         if value > 0:
             for enemy in combat.hittable_enemies:
                 apply_damage(enemy, value, ValueProp.UNPOWERED, combat, combat.player)
+                targets.append(enemy)
+        return targets
 
 
 # ---------------------------------------------------------------------------

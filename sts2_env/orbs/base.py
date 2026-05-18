@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from sts2_env.core.enums import OrbType, PowerId
 
 if TYPE_CHECKING:
+    from sts2_env.core.creature import Creature
     from sts2_env.core.combat import CombatState
 
 
@@ -58,8 +59,8 @@ class OrbInstance(ABC):
         """Trigger the orb's passive effect (once per turn per trigger count)."""
 
     @abstractmethod
-    def on_evoke(self, combat: CombatState) -> None:
-        """Trigger the orb's evoke effect (when pushed out or manually evoked)."""
+    def on_evoke(self, combat: CombatState) -> list[Creature]:
+        """Trigger the orb's evoke effect and return affected creatures."""
 
     def __repr__(self) -> str:
         return f"{self.orb_type.name}Orb"
@@ -94,15 +95,22 @@ class OrbQueue:
         orb = create_orb(orb_type)
         self.orbs.append(orb)
 
-    def evoke_front(self, combat: CombatState | None = None) -> None:
+    def evoke_front(self, combat: CombatState | None = None) -> list[Creature]:
         """Evoke the front (first) orb and remove it."""
         if combat is not None and getattr(combat, "is_over", False):
-            return
+            return []
         if not self.orbs:
-            return
+            return []
         orb = self.orbs.pop(0)
-        if combat is not None:
-            orb.on_evoke(combat)
+        if combat is None:
+            return []
+        targets = orb.on_evoke(combat)
+        for owner in combat.all_creatures:
+            for power in list(owner.powers.values()):
+                on_orb_evoked = getattr(power, "on_orb_evoked", None)
+                if callable(on_orb_evoked):
+                    on_orb_evoked(owner, orb.orb_type.name, targets, combat)
+        return targets
 
     def evoke_all(self, combat: CombatState | None = None) -> None:
         """Evoke all orbs (used by some effects)."""

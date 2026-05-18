@@ -420,6 +420,29 @@ class TestDefectParityExtra3:
         assert combat.play_card(0)
         assert combat.player.get_power_amount(PowerId.THUNDER) == 6
 
+    def test_thunder_adds_damage_to_lightning_orb_evoke_targets(self):
+        """Matches ThunderPower.cs: after Lightning evoke, damage the living evoke targets."""
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = enemy.max_hp = 100
+        combat.player.apply_power(PowerId.THUNDER, 6)
+        combat.channel_orb(combat.player, "LIGHTNING")
+
+        combat.orb_queue.evoke_front(combat)
+
+        assert enemy.current_hp == 86
+
+    def test_thunder_does_not_damage_dark_orb_evoke_targets(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = enemy.max_hp = 100
+        combat.player.apply_power(PowerId.THUNDER, 6)
+        combat.channel_orb(combat.player, "DARK")
+
+        combat.orb_queue.evoke_front(combat)
+
+        assert enemy.current_hp == 94
+
     def test_lightning_rod_grants_block_and_channels_lightning_each_turn_while_decrementing(self):
         """Matches LightningRod.cs + LightningRodPower: block now, channel Lightning at turn start."""
         combat = _make_combat()
