@@ -819,6 +819,8 @@ def demonic_shield(card: CardInstance, combat: CombatState, target: Creature | N
     assert target is not None
     hp_loss = card.effect_vars.get("hp_loss", 1)
     _self_hp_loss(card, combat, hp_loss)
+    if combat.is_over:
+        return
     block = calculate_block(_owner(card, combat).block, target, ValueProp.MOVE, combat, card_source=card)
     before = target.block
     target.gain_block(block)

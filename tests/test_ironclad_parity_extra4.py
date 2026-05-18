@@ -131,6 +131,20 @@ class TestIroncladParityExtra4:
         assert blocked.current_hp == 100
         assert hittable.current_hp == 91
 
+    def test_demonic_shield_does_not_gain_block_after_self_damage_ends_combat(self):
+        combat = _make_combat()
+        ally = combat.add_ally_player(
+            PlayerState(player_id=2, character_id="Ironclad", max_hp=60, current_hp=60)
+        )
+        ally.apply_power(PowerId.DEXTERITY, 3)
+        combat.player.current_hp = 1
+        combat.hand = [make_demonic_shield()]
+        combat.energy = 0
+
+        assert combat.play_card(0, 0)
+        assert combat.is_over
+        assert ally.block == 0
+
     def test_cinder_exhausts_top_draw_card_after_shuffle_if_needed(self):
         combat = _make_combat()
         enemy = combat.enemies[0]
