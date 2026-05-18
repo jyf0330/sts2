@@ -392,7 +392,7 @@ def create_gremlin_merc(rng: Rng) -> tuple[Creature, MonsterAI]:
 
     def hehe(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, hehe_dmg)
-        creature.apply_power(PowerId.STRENGTH, 2)
+        combat.apply_power_to(creature, PowerId.STRENGTH, 2, applier=creature)
 
     states: dict[str, MonsterState] = {
         "GIMME_MOVE": MoveState(

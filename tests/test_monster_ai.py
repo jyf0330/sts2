@@ -1903,6 +1903,15 @@ class TestFixedRotation:
         assert merc_combat.player.current_hp == 60
         assert merc.get_power_amount(PowerId.STRENGTH) == 2
 
+        lethal_merc, lethal_merc_ai = create_gremlin_merc(Rng(165))
+        lethal_merc_combat = _make_combat(165)
+        lethal_merc_combat.add_enemy(lethal_merc, lethal_merc_ai)
+        lethal_merc_combat.player.current_hp = 8
+        lethal_merc_ai.states["HEHE_MOVE"].perform(lethal_merc_combat)
+        assert lethal_merc_combat.is_over
+        assert lethal_merc_combat.player_won is False
+        assert lethal_merc.get_power_amount(PowerId.STRENGTH) == 0
+
         sneaky, sneaky_ai = create_sneaky_gremlin(Rng(66))
         sneaky_combat = _make_combat(66)
         sneaky_combat.add_enemy(sneaky, sneaky_ai)
