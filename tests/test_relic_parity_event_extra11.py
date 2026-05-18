@@ -208,6 +208,20 @@ class TestRelicParityEventExtra11:
         fire_after_energy_reset(combat, combat.player)
         assert combat.energy == 4
 
+    def test_paels_flesh_gains_energy_from_round_three_onward(self):
+        """Matches PaelsFlesh.cs: owner gains 1 energy at side start from round 3 onward."""
+        combat = _make_combat(["PaelsFlesh"], seed=989)
+
+        assert combat.energy == 3
+
+        combat.end_player_turn()
+        assert combat.round_number == 2
+        assert combat.energy == 3
+
+        combat.end_player_turn()
+        assert combat.round_number == 3
+        assert combat.energy == 4
+
     def test_stackable_placeholder_relics_can_be_obtained_more_than_once(self):
         run_state = RunState(seed=988, character_id="Ironclad")
 

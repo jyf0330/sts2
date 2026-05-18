@@ -9,7 +9,7 @@ from sts2_env.cards.regent import create_regent_starter_deck
 from sts2_env.cards.status import make_sweeping_gaze
 from sts2_env.core.combat import CombatState
 from sts2_env.core.enums import CardId, CombatSide, PowerId
-from sts2_env.core.hooks import fire_after_turn_end
+from sts2_env.core.hooks import fire_after_turn_end, fire_before_side_turn_start
 from sts2_env.powers.base import PowerInstance
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle
@@ -118,6 +118,22 @@ class TestRelicParityRareShopExtra8:
 
         assert combat.stars == 0
         assert combat.player.stars == 0
+
+    def test_mini_regent_gains_strength_once_per_turn_when_stars_are_spent(self):
+        """Matches MiniRegent.cs: first owner star spend each turn grants 1 Strength."""
+        combat = _make_regent_combat(["MiniRegent"], seed=613)
+        combat.gain_stars(combat.player, 3)
+
+        assert combat.spend_stars(combat.player, 1) == 1
+        assert combat.player.get_power_amount(PowerId.STRENGTH) == 1
+
+        assert combat.spend_stars(combat.player, 1) == 1
+        assert combat.player.get_power_amount(PowerId.STRENGTH) == 1
+
+        fire_before_side_turn_start(CombatSide.PLAYER, combat)
+
+        assert combat.spend_stars(combat.player, 1) == 1
+        assert combat.player.get_power_amount(PowerId.STRENGTH) == 2
 
     def test_history_course_replays_last_attack_or_skill_on_next_turn_only_once(self):
         combat = _make_ironclad_combat(["HistoryCourse"])
