@@ -568,12 +568,12 @@ def parse(card: CardInstance, combat: CombatState, target: Creature | None) -> N
 
 @register_effect(CardId.PULL_FROM_BELOW)
 def pull_from_below(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    """Deal damage multiple times — scales with ethereal cards played this turn."""
+    """Deal damage multiple times — scales with ethereal cards played this combat."""
     assert target is not None
     owner = _owner(card, combat)
     hits = sum(
         1
-        for played in combat._played_cards_this_turn
+        for played in combat._played_cards_combat
         if getattr(played, "owner", None) is owner and played.is_ethereal
     )
     for _ in range(hits):

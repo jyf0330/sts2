@@ -25,6 +25,7 @@ from sts2_env.cards.necrobinder import (
     make_neurosurge,
     make_pagestorm,
     make_poke,
+    make_pull_from_below,
     make_sculpting_strike,
     make_sentry_mode,
     make_sic_em,
@@ -364,6 +365,23 @@ class TestNecrobinderParityExtra4:
         combat.draw_cards(combat.player, 1)
         assert soul in combat.hand
         assert extra in combat.hand
+
+    def test_pull_from_below_counts_ethereal_cards_played_this_combat(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = enemy.max_hp = 100
+        ethereal = make_defend_necrobinder()
+        ethereal.keywords = frozenset(set(ethereal.keywords) | {"ethereal"})
+        combat.hand = [ethereal]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        combat._played_cards_this_turn = []
+
+        combat.hand = [make_pull_from_below()]
+        combat.energy = 1
+        assert combat.play_card(0, 0)
+        assert enemy.current_hp == 95
 
     def test_sculpting_strike_attacks_then_makes_selected_hand_card_ethereal(self):
         combat = _make_combat()
