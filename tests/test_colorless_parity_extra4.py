@@ -4,9 +4,11 @@ import sts2_env.powers  # noqa: F401
 
 from sts2_env.cards.base import CardInstance
 from sts2_env.cards.colorless import (
+    make_beacon_of_hope,
     make_coordinate_card,
     make_dark_shackles,
     make_equilibrium,
+    make_finesse,
     make_fisticuffs,
     make_gold_axe,
     make_hidden_gem,
@@ -212,6 +214,37 @@ class TestColorlessParityExtra4:
         assert combat.play_card(0, 0)
         assert enemy.current_hp == 93
         assert combat.player.block == 7
+
+    def test_beacon_of_hope_triggers_from_colorless_block_cards(self):
+        combat = _make_combat()
+        ally = combat.add_ally_player(
+            PlayerState(player_id=2, character_id="Ironclad", max_hp=60, current_hp=60)
+        )
+        combat.hand = [make_beacon_of_hope(), make_finesse()]
+        combat.draw_pile = []
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.play_card(0)
+        assert combat.player.block == 4
+        assert ally.block == 2
+
+    def test_beacon_of_hope_triggers_from_fisticuffs_block(self):
+        combat = _make_combat()
+        ally = combat.add_ally_player(
+            PlayerState(player_id=2, character_id="Ironclad", max_hp=60, current_hp=60)
+        )
+        enemy = combat.enemies[0]
+        enemy.max_hp = 100
+        enemy.current_hp = 100
+        combat.hand = [make_beacon_of_hope(), make_fisticuffs()]
+        combat.energy = 2
+
+        assert combat.play_card(0)
+        assert combat.play_card(0, 0)
+        assert enemy.current_hp == 93
+        assert combat.player.block == 7
+        assert ally.block == 3
 
     def test_coordinate_applies_temporary_strength_to_target_ally_then_expires(self):
         combat = _make_combat()

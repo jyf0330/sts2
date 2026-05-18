@@ -15,17 +15,18 @@ The detailed backlog sections below were captured as the pre-pass baseline. Afte
 
 | Surface | Total | Directly Covered | Gap | Coverage |
 | --- | ---: | ---: | ---: | ---: |
-| Cards | 578 | 219 | 359 | 37.9% |
+| Cards | 578 | 220 | 358 | 38.1% |
 | Relics | 289 | 206 | 83 | 71.3% |
 | Events | 68 | 68 | 0 | 100.0% |
 
 Latest local pass also added direct coverage for:
 
-- Cards: `BARRICADE_CARD`, `BLUDGEON`, `CORRUPTION_CARD`, `DEMON_FORM_CARD`, `FISTICUFFS`, `FLAME_BARRIER_CARD`, `GOLD_AXE`
+- Cards: `BARRICADE_CARD`, `BEACON_OF_HOPE`, `BLUDGEON`, `CORRUPTION_CARD`, `DEMON_FORM_CARD`, `FISTICUFFS`, `FLAME_BARRIER_CARD`, `GOLD_AXE`
 
 This pass also exposed and fixed the following logic mismatch:
 
 - `Fisticuffs`: block gained from attack damage now goes through the normal block modifier pipeline, so Dexterity, Frail, and similar block modifiers apply like the original.
+- Colorless block cards now fire the after-block-gained hook, so `BeaconOfHope` shares block from `Finesse` and `Fisticuffs` like the original.
 
 Previous local pass also added direct coverage for:
 
@@ -158,10 +159,10 @@ SYNCHRONIZE, SYNTHESIS, TEMPEST, TESLA_COIL, THUNDER_CARD, TRASH_TO_TREASURE,
 TURBO, UPROAR, VOLTAIC, ZAP
 ```
 
-#### `sts2_env.cards.colorless` (49)
+#### `sts2_env.cards.colorless` (48)
 
 ```text
-ANOINTED, AUTOMATION, BEACON_OF_HOPE, BELIEVE_IN_YOU, BOLAS, CALAMITY_CARD,
+ANOINTED, AUTOMATION, BELIEVE_IN_YOU, BOLAS, CALAMITY_CARD,
 CATASTROPHE, COORDINATE_CARD, DARK_SHACKLES, DRAMATIC_ENTRANCE, ENTROPY,
 EQUILIBRIUM, ETERNAL_ARMOR, FASTEN, FINESSE, FLASH_OF_STEEL,
 GANG_UP, HIDDEN_GEM, HUDDLE_UP, IMPATIENCE, INTERCEPT_CARD,
@@ -317,7 +318,7 @@ WHISPERING_EARRING, WONGO_CUSTOMER_APPRECIATION_BADGE, YUMMY_COOKIE
 
 | Surface | Total | Directly Covered | Gap | Coverage |
 | --- | ---: | ---: | ---: | ---: |
-| Cards | 578 | 82 | 496 | 14.2% |
+| Cards | 578 | 83 | 495 | 14.4% |
 | Relics | 289 | 73 | 216 | 25.3% |
 | Events | 68 | 12 | 56 | 17.6% |
 
@@ -344,7 +345,7 @@ But the proof surface is still sparse relative to the total implementation surfa
 The current directly parity-backed card set is:
 
 ```text
-ACROBATICS, AFTERLIFE, ALCHEMIZE, BEAT_DOWN, BEGONE, BIG_BANG, BLACK_HOLE,
+ACROBATICS, AFTERLIFE, ALCHEMIZE, BEACON_OF_HOPE, BEAT_DOWN, BEGONE, BIG_BANG, BLACK_HOLE,
 BODYGUARD, BONE_SHARDS, BORROWED_TIME, BULWARK, CAPTURE_SPIRIT, CHARGE, CLASH,
 CLEANSE, COMPACT, CONQUEROR, CONVERGENCE, COUNTDOWN_CARD, CRASH_LANDING,
 DAGGER_THROW, DANSE_MACABRE, DEATH_MARCH, DECISIONS_DECISIONS, DIRGE,
@@ -439,11 +440,11 @@ TESLA_COIL, THUNDER_CARD, TRASH_TO_TREASURE, TURBO, UPROAR, VOLTAIC, ZAP
 
 ### `sts2_env.cards.colorless`
 
-- Covered: `10 / 64`
-- Missing direct parity proof: `54 / 64`
+- Covered: `11 / 64`
+- Missing direct parity proof: `53 / 64`
 
 ```text
-ANOINTED, AUTOMATION, BEACON_OF_HOPE, BELIEVE_IN_YOU, BOLAS, CALAMITY_CARD,
+ANOINTED, AUTOMATION, BELIEVE_IN_YOU, BOLAS, CALAMITY_CARD,
 CATASTROPHE, COORDINATE_CARD, DARK_SHACKLES, DRAMATIC_ENTRANCE, ENTROPY,
 EQUILIBRIUM, ETERNAL_ARMOR, FASTEN, FINESSE, FLASH_OF_STEEL,
 GANG_UP, HIDDEN_GEM, HUDDLE_UP, IMPATIENCE, INTERCEPT_CARD,

@@ -54,7 +54,17 @@ def _deal_damage_all(card: CardInstance, combat: CombatState) -> None:
 def _gain_block(card: CardInstance, combat: CombatState) -> None:
     owner = _owner(card, combat)
     block = calculate_block(card.base_block, owner, ValueProp.MOVE, combat, card_source=card)
-    owner.gain_block(block)
+    _gain_resolved_block(owner, block, combat)
+
+
+def _gain_resolved_block(creature: Creature, block: int, combat: CombatState) -> None:
+    before = creature.block
+    creature.gain_block(block)
+    gained = creature.block - before
+    if gained > 0:
+        from sts2_env.core.hooks import fire_after_block_gained
+
+        fire_after_block_gained(creature, gained, combat)
 
 
 # ---------------------------------------------------------------------------
@@ -171,7 +181,7 @@ def fisticuffs(card: CardInstance, combat: CombatState, target: Creature | None)
         combat,
         card_source=card,
     )
-    owner.gain_block(block)
+    _gain_resolved_block(owner, block, combat)
 
 
 @register_effect(CardId.FLASH_OF_STEEL)
@@ -228,7 +238,7 @@ def intercept_card(card: CardInstance, combat: CombatState, target: Creature | N
     owner = _owner(card, combat)
     resolved_target = target if target is not None else owner
     block = calculate_block(card.base_block, owner, ValueProp.MOVE, combat, card_source=card)
-    owner.gain_block(block)
+    _gain_resolved_block(owner, block, combat)
     combat.apply_power_to(resolved_target, PowerId.COVERED, 1, applier=owner, source=card)
 
 
@@ -254,7 +264,7 @@ def lift(card: CardInstance, combat: CombatState, target: Creature | None) -> No
     if target is None:
         return
     block = calculate_block(card.base_block, target, ValueProp.MOVE, combat, card_source=card)
-    target.gain_block(block)
+    _gain_resolved_block(target, block, combat)
 
 
 @register_effect(CardId.MIND_BLAST)
@@ -642,7 +652,7 @@ def mimic(card: CardInstance, combat: CombatState, target: Creature | None) -> N
     owner = _owner(card, combat)
     total_block = card.effect_vars.get("calc_base", 0) + card.effect_vars.get("calc_extra", 1) * target.block
     block = calculate_block(total_block, owner, ValueProp.MOVE, combat, card_source=card)
-    owner.gain_block(block)
+    _gain_resolved_block(owner, block, combat)
 
 
 @register_effect(CardId.NOSTALGIA_CARD)
@@ -658,7 +668,7 @@ def rally(card: CardInstance, combat: CombatState, target: Creature | None) -> N
         if creature is not None and creature.is_alive and getattr(creature, "is_player", False)
     ]:
         block = calculate_block(card.base_block, teammate, ValueProp.MOVE, combat, card_source=card)
-        teammate.gain_block(block)
+        _gain_resolved_block(teammate, block, combat)
 
 
 @register_effect(CardId.REND)
