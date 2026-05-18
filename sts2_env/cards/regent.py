@@ -978,7 +978,7 @@ def make_cloak_of_stars(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.CLOAK_OF_STARS, cost=0, card_type=CardType.SKILL,
         target_type=TargetType.SELF, rarity=CardRarity.COMMON,
-        base_block=10 if upgraded else 7, upgraded=upgraded,
+        base_block=10 if upgraded else 7, star_cost=1, upgraded=upgraded,
         instance_id=_get_next_id(),
     )
 

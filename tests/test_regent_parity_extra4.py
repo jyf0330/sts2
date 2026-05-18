@@ -10,6 +10,7 @@ from sts2_env.cards.regent import (
     create_regent_starter_deck,
     make_bundle_of_joy,
     make_child_of_the_stars,
+    make_cloak_of_stars,
     make_comet,
     make_crush_under,
     make_defend_regent,
@@ -112,6 +113,21 @@ class TestRegentParityExtra4:
         assert combat.player.block == 4
         assert combat.pending_choice is not None
         assert combat.resolve_pending_choice(None)
+
+    def test_cloak_of_stars_requires_and_spends_one_star(self):
+        combat = _make_combat()
+        card = make_cloak_of_stars()
+        combat.hand = [card]
+        combat.energy = 0
+
+        assert card.star_cost == 1
+        assert combat.can_play_card(card) is False
+
+        combat.gain_stars(combat.player, 1)
+
+        assert combat.play_card(0)
+        assert combat.stars == 0
+        assert combat.player.block == 7
 
     def test_pale_blue_dot_draws_extra_after_five_cards_played_last_round(self):
         combat = _make_combat()
