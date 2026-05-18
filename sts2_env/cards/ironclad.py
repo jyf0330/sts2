@@ -231,6 +231,8 @@ def make_armaments(upgraded: bool = False) -> CardInstance:
 def blood_wall(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     hp_loss = card.effect_vars.get("hp_loss", 2)
     _self_hp_loss(card, combat, hp_loss)
+    if combat.is_over:
+        return
     _gain_block(card, combat)
 
 

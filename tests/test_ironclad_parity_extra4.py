@@ -131,6 +131,16 @@ class TestIroncladParityExtra4:
         assert blocked.current_hp == 100
         assert hittable.current_hp == 91
 
+    def test_blood_wall_does_not_gain_block_after_self_damage_ends_combat(self):
+        combat = _make_combat()
+        combat.player.current_hp = 2
+        combat.hand = [make_blood_wall()]
+        combat.energy = 2
+
+        assert combat.play_card(0)
+        assert combat.is_over
+        assert combat.player.block == 0
+
     def test_demonic_shield_does_not_gain_block_after_self_damage_ends_combat(self):
         combat = _make_combat()
         ally = combat.add_ally_player(
