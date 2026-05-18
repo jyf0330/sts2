@@ -18,6 +18,7 @@ from sts2_env.cards.necrobinder import (
     make_high_five,
     make_invoke,
     make_negative_pulse,
+    make_neurosurge,
     make_pagestorm,
     make_poke,
     make_sculpting_strike,
@@ -26,7 +27,7 @@ from sts2_env.cards.necrobinder import (
     make_unleash,
     make_veilpiercer,
 )
-from sts2_env.cards.status import make_soul
+from sts2_env.cards.status import make_soul, make_void
 from sts2_env.core.combat import CombatState
 from sts2_env.core.enums import CardId, CombatSide, PowerId, ValueProp
 from sts2_env.core.hooks import fire_after_side_turn_start
@@ -205,6 +206,18 @@ class TestNecrobinderParityExtra4:
 
         assert player.get_power_amount(PowerId.DOOM) == 3
         assert player.block == 4
+
+    def test_neurosurge_gains_energy_before_drawing_void(self):
+        """Matches Neurosurge.cs: gain energy before Draw, so drawn Void removes one."""
+        combat = _make_combat()
+        combat.hand = [make_neurosurge()]
+        combat.draw_pile = [make_void()]
+        combat.energy = 0
+
+        assert combat.play_card(0)
+
+        assert combat.energy == 2
+        assert combat.player.get_power_amount(PowerId.NEUROSURGE) == 3
 
     def test_reaper_form_doom_uses_owner_applier_for_shroud(self):
         combat = _make_combat()

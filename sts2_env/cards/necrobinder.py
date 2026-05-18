@@ -747,12 +747,13 @@ def necro_mastery_card(card: CardInstance, combat: CombatState, target: Creature
 
 @register_effect(CardId.NEUROSURGE)
 def neurosurge(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    amount = card.effect_vars.get("neurosurge", 3)
-    combat.apply_power_to(_owner(card, combat), PowerId.NEUROSURGE, amount)
+    owner = _owner(card, combat)
+    energy = card.effect_vars.get("energy", 3)
+    combat.gain_energy(owner, energy)
     cards = card.effect_vars.get("cards", 2)
     combat._draw_cards(cards)
-    energy = card.effect_vars.get("energy", 3)
-    combat.energy += energy
+    amount = card.effect_vars.get("neurosurge", 3)
+    combat.apply_power_to(owner, PowerId.NEUROSURGE, amount)
 
 
 @register_effect(CardId.OBLIVION)
