@@ -158,10 +158,7 @@ class TestSilentParityExtra2:
         combat.energy = 1
 
         assert combat.play_card(0)
-        assert combat.pending_choice is not None
-        assert [option.card for option in combat.pending_choice.options] == [target_skill]
-
-        assert combat.resolve_pending_choice(0)
+        assert combat.pending_choice is None
         assert target_skill.is_sly
 
     def test_reflex_draws_two_cards_when_played(self):

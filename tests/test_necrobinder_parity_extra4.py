@@ -325,8 +325,7 @@ class TestNecrobinderParityExtra4:
 
         assert combat.play_card(0, 0)
         assert enemy.current_hp == starting_hp - 8
-        assert combat.pending_choice is not None
-        assert combat.resolve_pending_choice(0)
+        assert combat.pending_choice is None
         assert target_card.is_ethereal
 
     def test_sentry_mode_generates_sweeping_gaze_next_turn(self):

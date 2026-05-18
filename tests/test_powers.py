@@ -176,8 +176,6 @@ class TestPowerApplication:
 
         simple_combat.player.powers[PowerId.ENTROPY].after_player_turn_start(simple_combat.player, simple_combat)
 
-        assert simple_combat.pending_choice is not None
-        assert simple_combat.resolve_pending_choice(0)
         assert simple_combat.pending_choice is None
         assert simple_combat.hand[0] is not card
         assert simple_combat.hand[0].card_id != CardId.STRIKE_IRONCLAD

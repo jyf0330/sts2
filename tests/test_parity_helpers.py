@@ -1635,7 +1635,7 @@ class TestResolvedCardStubs:
 
 
 class TestPendingChoiceFlow:
-    def test_wish_suspends_card_resolution_until_choice(self):
+    def test_wish_auto_selects_single_draw_card(self):
         combat = _make_combat(create_ironclad_starter_deck(), "Ironclad")
         wish = make_wish()
         strike = make_strike_ironclad()
@@ -1644,20 +1644,11 @@ class TestPendingChoiceFlow:
         combat.energy = 1
 
         assert combat.play_card(0)
-        assert combat.pending_choice is not None
-        assert combat.pending_choice.num_options == 1
-        assert wish in combat.play_pile
-
-        mask = get_action_mask(combat)
-        assert mask[0] == 0
-        assert mask[1] == 1
-
-        assert combat.resolve_pending_choice(0)
         assert combat.pending_choice is None
         assert strike in combat.hand
         assert wish in combat.exhaust_pile
 
-    def test_hologram_uses_pending_discard_choice(self):
+    def test_hologram_auto_selects_single_discard_card(self):
         combat = _make_combat(create_defect_starter_deck(), "Defect")
         hologram = make_hologram()
         strike = make_strike_ironclad()
@@ -1666,10 +1657,7 @@ class TestPendingChoiceFlow:
         combat.energy = 1
 
         assert combat.play_card(0)
-        assert combat.pending_choice is not None
-        assert hologram in combat.play_pile
-
-        assert combat.resolve_pending_choice(0)
+        assert combat.pending_choice is None
         assert strike in combat.hand
 
     def test_secret_cards_filter_correct_types(self):
@@ -1694,18 +1682,16 @@ class TestPendingChoiceFlow:
         combat.energy = 1
 
         assert combat.play_card(0)
-        assert combat.pending_choice is not None
-        assert all(option.card.card_type == CardType.SKILL for option in combat.pending_choice.options)
-        assert combat.resolve_pending_choice(0)
+        assert combat.pending_choice is None
         assert skill in combat.hand
 
         combat.hand = [weapon]
         combat.energy = 1
         assert combat.play_card(0)
-        assert combat.pending_choice is not None
-        assert all(option.card.card_type == CardType.ATTACK for option in combat.pending_choice.options)
+        assert combat.pending_choice is None
+        assert attack in combat.hand
 
-    def test_dual_wield_copies_selected_card(self):
+    def test_dual_wield_auto_copies_single_eligible_card(self):
         combat = _make_combat(create_ironclad_starter_deck(), "Ironclad")
         dual_wield = make_dual_wield()
         strike = make_strike_ironclad()
@@ -1713,13 +1699,12 @@ class TestPendingChoiceFlow:
         combat.energy = 1
 
         assert combat.play_card(0)
-        assert combat.pending_choice is not None
-        assert combat.resolve_pending_choice(0)
+        assert combat.pending_choice is None
 
         strikes = [card for card in combat.hand if card.card_id == strike.card_id]
         assert len(strikes) == 2
 
-    def test_graveblast_uses_same_choice_mechanism_on_discard(self):
+    def test_graveblast_auto_selects_single_discard_card(self):
         combat = _make_combat(create_necrobinder_starter_deck(), "Necrobinder")
         graveblast = make_graveblast()
         strike = make_strike_ironclad()
@@ -1728,8 +1713,7 @@ class TestPendingChoiceFlow:
         combat.energy = 1
 
         assert combat.play_card(0, 0)
-        assert combat.pending_choice is not None
-        assert combat.resolve_pending_choice(0)
+        assert combat.pending_choice is None
         assert strike in combat.hand
 
     def test_seeker_strike_reveals_random_draw_subset_for_choice(self):
@@ -1806,7 +1790,7 @@ class TestPendingChoiceFlow:
         assert rare_b in combat.hand
         assert common in combat.draw_pile
 
-    def test_begone_transforms_selected_hand_card(self):
+    def test_begone_auto_transforms_single_hand_card(self):
         combat = _make_combat(create_regent_starter_deck(), "Regent")
         begone = make_begone()
         strike = make_strike_ironclad()
@@ -1814,11 +1798,10 @@ class TestPendingChoiceFlow:
         combat.energy = 1
 
         assert combat.play_card(0, 0)
-        assert combat.pending_choice is not None
-        assert combat.resolve_pending_choice(0)
+        assert combat.pending_choice is None
         assert any(card.card_id == make_minion_dive_bomb().card_id for card in combat.hand)
 
-    def test_seance_requires_confirm_for_multi_select_transform(self):
+    def test_seance_auto_transforms_when_all_draw_cards_are_required(self):
         combat = _make_combat(create_necrobinder_starter_deck(), "Necrobinder")
         seance = make_seance()
         seance.effect_vars["cards"] = 2
@@ -1829,28 +1812,6 @@ class TestPendingChoiceFlow:
         combat.energy = 1
 
         assert combat.play_card(0)
-        assert combat.pending_choice is not None
-        assert combat.pending_choice.is_multi
-
-        mask_before = get_action_mask(combat)
-        assert mask_before[0] == 0
-        assert mask_before[1] == 1
-
-        assert combat.resolve_pending_choice(0)
-        assert combat.pending_choice is not None
-        assert 0 in combat.pending_choice.selected_indices
-
-        mask_mid = get_action_mask(combat)
-        assert mask_mid[0] == 0
-
-        assert combat.resolve_pending_choice(1)
-        assert combat.pending_choice is not None
-        assert combat.pending_choice.selected_indices == {0, 1}
-
-        mask_after = get_action_mask(combat)
-        assert mask_after[0] == 1
-
-        assert combat.resolve_pending_choice(None)
         assert combat.pending_choice is None
         assert any(card.card_id == make_soul().card_id for card in combat.draw_pile)
 
@@ -2196,7 +2157,7 @@ class TestPendingChoiceFlow:
         assert combat.play_card(0)
         assert strike.base_replay_count == 2
 
-    def test_survivor_discards_selected_hand_card(self):
+    def test_survivor_auto_discards_single_hand_card(self):
         combat = _make_combat(create_ironclad_starter_deck(), "Silent")
         card = make_survivor()
         discard_me = make_strike_ironclad()
@@ -2204,11 +2165,10 @@ class TestPendingChoiceFlow:
         combat.energy = 1
 
         assert combat.play_card(0)
-        assert combat.pending_choice is not None
-        assert combat.resolve_pending_choice(0)
+        assert combat.pending_choice is None
         assert discard_me in combat.discard_pile
 
-    def test_hand_trick_marks_selected_skill_as_sly_for_turn(self):
+    def test_hand_trick_auto_marks_single_skill_as_sly_for_turn(self):
         combat = _make_combat(create_ironclad_starter_deck(), "Silent")
         card = make_hand_trick()
         target_skill = make_survivor()
@@ -2216,11 +2176,10 @@ class TestPendingChoiceFlow:
         combat.energy = 1
 
         assert combat.play_card(0)
-        assert combat.pending_choice is not None
-        assert combat.resolve_pending_choice(0)
+        assert combat.pending_choice is None
         assert target_skill.combat_vars.get("sly_this_turn") == 1
 
-    def test_nightmare_sets_selected_card_on_power(self):
+    def test_nightmare_auto_sets_single_hand_card_on_power(self):
         combat = _make_combat(create_ironclad_starter_deck(), "Silent")
         card = make_nightmare()
         target_card = make_strike_ironclad()
@@ -2228,8 +2187,7 @@ class TestPendingChoiceFlow:
         combat.energy = 3
 
         assert combat.play_card(0)
-        assert combat.pending_choice is not None
-        assert combat.resolve_pending_choice(0)
+        assert combat.pending_choice is None
         power = combat.player.powers.get(PowerId.NIGHTMARE)
         assert power is not None
         selected_card = getattr(power, "selected_card", None)
@@ -2610,8 +2568,7 @@ class TestStatusParity:
         combat.energy = 1
 
         assert combat.play_card(0)
-        assert combat.pending_choice is not None
-        assert combat.resolve_pending_choice(0)
+        assert combat.pending_choice is None
         assert target_card.upgraded
 
         upgraded = make_armaments(upgraded=True)
@@ -2631,8 +2588,7 @@ class TestStatusParity:
         combat.energy = 1
 
         assert combat.play_card(0, 0)
-        assert combat.pending_choice is not None
-        assert combat.resolve_pending_choice(0)
+        assert combat.pending_choice is None
         assert combat.draw_pile[0] is chosen
 
     def test_true_grit_exhausts_random_or_selected_card(self):
@@ -2649,8 +2605,7 @@ class TestStatusParity:
         combat.hand = [upgraded, target_card2]
         combat.energy = 1
         assert combat.play_card(0)
-        assert combat.pending_choice is not None
-        assert combat.resolve_pending_choice(0)
+        assert combat.pending_choice is None
         assert target_card2 in combat.exhaust_pile
 
     def test_burning_pact_exhausts_selected_card_and_draws(self):
@@ -2662,8 +2617,7 @@ class TestStatusParity:
         combat.energy = 1
 
         assert combat.play_card(0)
-        assert combat.pending_choice is not None
-        assert combat.resolve_pending_choice(0)
+        assert combat.pending_choice is None
         assert target_card in combat.exhaust_pile
         assert len(combat.hand) >= 2
 
@@ -2675,8 +2629,7 @@ class TestStatusParity:
         combat.energy = 1
 
         assert combat.play_card(0)
-        assert combat.pending_choice is not None
-        assert combat.resolve_pending_choice(0)
+        assert combat.pending_choice is None
         assert target_card in combat.exhaust_pile
         assert combat.player.has_power(PowerId.STRENGTH)
 
@@ -2938,8 +2891,7 @@ class TestStatusParity:
 
         potion.use(combat, combat.player)
 
-        assert combat.pending_choice is not None
-        assert combat.resolve_pending_choice(0)
+        assert combat.pending_choice is None
         assert strike in combat.hand
         assert strike.cost == 0
 
@@ -2985,8 +2937,7 @@ class TestStatusParity:
 
         potion.use(combat, combat.player)
 
-        assert combat.pending_choice is not None
-        assert combat.resolve_pending_choice(0)
+        assert combat.pending_choice is None
         assert target_card.cost == 0
         assert combat.modified_star_cost(combat.player, target_card) == 0
 
@@ -3035,8 +2986,7 @@ class TestStatusParity:
         assert combat.play_card(0)
         assert combat.osty is not None
         assert combat.osty.max_hp == 3
-        assert combat.pending_choice is not None
-        assert combat.resolve_pending_choice(0)
+        assert combat.pending_choice is None
         assert victim in combat.exhaust_pile
 
     def test_dredge_moves_selected_discard_cards_to_hand(self):
@@ -3050,12 +3000,7 @@ class TestStatusParity:
         combat.energy = 1
 
         assert combat.play_card(0)
-        assert combat.pending_choice is not None
-        assert combat.pending_choice.is_multi
-        assert combat.resolve_pending_choice(0)
-        assert combat.resolve_pending_choice(1)
-        assert combat.resolve_pending_choice(2)
-        assert combat.resolve_pending_choice(None)
+        assert combat.pending_choice is None
         assert a in combat.hand and b in combat.hand and c in combat.hand
 
     def test_undeath_clones_itself_to_discard(self):
@@ -3188,8 +3133,7 @@ class TestStatusParity:
         combat.energy = 1
 
         assert combat.play_card(0, 0)
-        assert combat.pending_choice is not None
-        assert combat.resolve_pending_choice(0)
+        assert combat.pending_choice is None
         assert target_card.is_ethereal
 
     def test_eidolon_exhausts_hand_and_grants_intangible_when_threshold_met(self):
@@ -3224,8 +3168,7 @@ class TestStatusParity:
         combat.energy = 1
 
         assert combat.play_card(0)
-        assert combat.pending_choice is not None
-        assert combat.resolve_pending_choice(0)
+        assert combat.pending_choice is None
         assert target_card.base_replay_count == 1
         assert target_card.cost == 2
 
@@ -3268,8 +3211,7 @@ class TestStatusParity:
         combat.energy = 1
 
         assert combat.play_card(0)
-        assert combat.pending_choice is not None
-        assert combat.resolve_pending_choice(0)
+        assert combat.pending_choice is None
         assert combat.draw_pile[0].card_id == target.card_id
 
     def test_glimmer_puts_selected_hand_card_back_on_draw_pile(self):
@@ -3436,8 +3378,7 @@ class TestStatusParity:
         combat.energy = 2
 
         assert combat.play_card(0, 0)
-        assert combat.pending_choice is not None
-        assert combat.resolve_pending_choice(0)
+        assert combat.pending_choice is None
         copies = [c for c in combat.hand if c.card_id == gem.card_id]
         assert len(copies) == 2
 

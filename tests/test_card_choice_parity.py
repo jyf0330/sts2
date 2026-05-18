@@ -139,7 +139,7 @@ class TestSingleChoiceParity:
         assert [option.card for option in combat.pending_choice.options] == [strike, bash]
 
     def test_secret_technique_only_exposes_skills_from_draw_pile(self):
-        """Matches SecretTechnique.cs: filter draw pile by Skill and preserve pile order."""
+        """Matches SecretTechnique.cs: a single matching Skill is auto-selected."""
         combat = _make_combat(create_ironclad_starter_deck(), "Ironclad")
         strike = make_strike_ironclad()
         defend = make_defend_ironclad()
@@ -148,11 +148,12 @@ class TestSingleChoiceParity:
         combat.draw_pile = [strike, defend, bash]
 
         assert combat.play_card(0)
-        assert combat.pending_choice is not None
-        assert [option.card for option in combat.pending_choice.options] == [defend]
+        assert combat.pending_choice is None
+        assert defend in combat.hand
+        assert defend not in combat.draw_pile
 
     def test_hand_trick_only_targets_non_sly_skills_in_hand(self):
-        """Matches HandTrick.cs filtering for Skill cards that are not already Sly."""
+        """Matches HandTrick.cs: a single eligible non-Sly Skill is auto-selected."""
         combat = _make_combat(create_silent_starter_deck(), "Silent")
         defend = make_defend_silent()
         already_sly = make_defend_silent()
@@ -163,10 +164,7 @@ class TestSingleChoiceParity:
 
         assert combat.play_card(0)
         assert combat.player.block == 7
-        assert combat.pending_choice is not None
-        assert [option.card for option in combat.pending_choice.options] == [defend]
-
-        assert combat.resolve_pending_choice(0)
+        assert combat.pending_choice is None
         assert defend.combat_vars["sly_this_turn"] == 1
 
 
@@ -219,8 +217,8 @@ class TestMultiChoiceParity:
         assert bash in combat.exhaust_pile
         assert defend in combat.hand
 
-    def test_dredge_requires_exact_number_of_discard_cards_before_confirm(self):
-        """Matches Dredge.cs: select exactly N discard cards, bounded by current hand space."""
+    def test_dredge_auto_moves_all_when_candidates_do_not_exceed_required_count(self):
+        """Matches Dredge.cs: simple selection auto-selects when choices fit exactly."""
         combat = _make_combat(create_necrobinder_starter_deck(), "Necrobinder")
         strike = make_strike_ironclad()
         defend = make_defend_ironclad()
@@ -230,20 +228,6 @@ class TestMultiChoiceParity:
         combat.energy = 1
 
         assert combat.play_card(0)
-        assert combat.pending_choice is not None
-        assert combat.pending_choice.is_multi is True
-        assert combat.pending_choice.min_choices == 3
-        assert combat.pending_choice.max_choices == 3
-        assert combat.pending_choice.can_confirm() is False
-
-        assert combat.resolve_pending_choice(0)
-        assert combat.pending_choice.can_confirm() is False
-        assert combat.resolve_pending_choice(1)
-        assert combat.pending_choice.can_confirm() is False
-        assert combat.resolve_pending_choice(2)
-        assert combat.pending_choice.can_confirm() is True
-
-        assert combat.resolve_pending_choice(None)
         assert combat.pending_choice is None
         assert combat.hand == [strike, defend, bash]
         assert not combat.discard_pile
@@ -297,7 +281,7 @@ class TestDeferredChoiceParity:
         assert first_draw in combat.hand
 
     def test_nightmare_snapshots_selected_card_at_choice_time(self):
-        """Matches NightmarePower.cs SetSelectedCard: store a clone, not a live reference."""
+        """Matches Nightmare.cs: a single eligible hand card is auto-selected and cloned."""
         combat = _make_combat([], "Silent")
         combat.start_combat()
 
@@ -306,10 +290,7 @@ class TestDeferredChoiceParity:
         combat.energy = 3
 
         assert combat.play_card(0)
-        assert combat.pending_choice is not None
-        assert [option.card for option in combat.pending_choice.options] == [selected]
-
-        assert combat.resolve_pending_choice(0)
+        assert combat.pending_choice is None
         power = combat.player.powers[PowerId.NIGHTMARE]
         assert getattr(power, "selected_card", None) is not None
         assert power.selected_card is not selected

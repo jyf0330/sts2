@@ -89,9 +89,10 @@ class TestIroncladParity:
         """Matches BurningPact.cs: draw continues even when no selected card is returned."""
         combat = _make_combat()
         strike = make_strike_ironclad()
+        defend = make_defend_ironclad()
         draw_a = make_bash()
         draw_b = make_strike_ironclad()
-        combat.hand = [make_burning_pact(), strike]
+        combat.hand = [make_burning_pact(), strike, defend]
         combat.draw_pile = [draw_a, draw_b]
         combat.energy = 1
 
@@ -104,6 +105,7 @@ class TestIroncladParity:
         combat._resume_pending_play()  # noqa: SLF001
 
         assert strike in combat.hand
+        assert defend in combat.hand
         assert draw_a in combat.hand
         assert draw_b in combat.hand
 

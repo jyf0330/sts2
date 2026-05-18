@@ -121,17 +121,13 @@ class TestNecrobinderParity:
         assert combat.player.block == 10
 
     def test_transfigure_requests_choice_then_grants_replay_and_cost(self):
-        """Matches Transfigure.cs: select a hand card, add replay, and increase non-X cost."""
+        """Matches Transfigure.cs: a single hand card is auto-selected."""
         combat = _make_combat()
         target_card = make_strike_ironclad()
         combat.hand = [make_transfigure(), target_card]
         combat.energy = 1
 
         assert combat.play_card(0)
-        assert combat.pending_choice is not None
-        assert [option.card for option in combat.pending_choice.options] == [target_card]
-
-        assert combat.resolve_pending_choice(0)
         assert combat.pending_choice is None
         assert target_card.base_replay_count == 1
         assert target_card.cost == 2

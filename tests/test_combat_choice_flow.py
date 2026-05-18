@@ -14,7 +14,7 @@ from sts2_env.monsters.act1_weak import create_shrinker_beetle
 from sts2_env.run.run_manager import RunManager
 
 
-def test_run_manager_surfaces_choose_actions_for_pending_combat_choice():
+def test_run_manager_auto_selects_single_required_combat_choice():
     mgr = RunManager(seed=1, character_id="Ironclad")
     mgr._phase = RunManager.PHASE_COMBAT
 
@@ -35,16 +35,12 @@ def test_run_manager_surfaces_choose_actions_for_pending_combat_choice():
     assert combat.play_card(0)
     actions = mgr.get_available_actions()
 
-    assert all(action["action"] == "choose" for action in actions)
-    assert actions[0]["card_id"] == "STRIKE_IRONCLAD"
-
-    result = mgr.take_action({"action": "choose", "index": 0})
-    assert result["success"] is True
     assert combat.pending_choice is None
     assert any(card.card_id.name == "STRIKE_IRONCLAD" for card in combat.hand)
+    assert not any(action["action"] == "choose" for action in actions)
 
 
-def test_run_manager_requires_confirm_choice_for_exact_multi_select():
+def test_run_manager_auto_selects_exact_multi_choice_when_all_options_are_required():
     mgr = RunManager(seed=1, character_id="Necrobinder")
     mgr._phase = RunManager.PHASE_COMBAT
 
@@ -66,27 +62,6 @@ def test_run_manager_requires_confirm_choice_for_exact_multi_select():
     mgr._combat = combat
 
     result = mgr.take_action({"action": "play_card", "hand_index": 0})
-    assert result["success"] is True
-    assert combat.pending_choice is not None
-
-    actions = mgr.get_available_actions()
-    assert all(action["action"] == "choose" for action in actions)
-
-    assert mgr.take_action({"action": "choose", "index": 0})["success"] is True
-    assert mgr.take_action({"action": "choose", "index": 1})["success"] is True
-    actions = mgr.get_available_actions()
-    assert all(action["action"] == "choose" for action in actions)
-
-    assert mgr.take_action({"action": "choose", "index": 2})["success"] is True
-    actions = mgr.get_available_actions()
-    confirm_actions = [action for action in actions if action["action"] == "confirm_choice"]
-    choose_actions = [action for action in actions if action["action"] == "choose"]
-
-    assert len(confirm_actions) == 1
-    assert confirm_actions[0]["selected_count"] == 3
-    assert [action["selected"] for action in choose_actions] == [True, True, True]
-
-    result = mgr.take_action({"action": "confirm_choice"})
     assert result["success"] is True
     assert combat.pending_choice is None
     assert combat.hand == [strike, defend, bash]

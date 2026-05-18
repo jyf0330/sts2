@@ -2201,6 +2201,11 @@ class CombatState:
         """Pause combat resolution until a card selection is made."""
         owner = owner or self.player
 
+        if not allow_skip and len(cards) <= 1:
+            with self.acting_player_view(owner):
+                resolver(cards[0] if cards else None)
+            return
+
         def _single_resolver(selected: list[CardInstance]) -> None:
             with self.acting_player_view(owner):
                 resolver(selected[0] if selected else None)
@@ -2228,6 +2233,11 @@ class CombatState:
         if max_count is None:
             max_count = min_count
         owner = owner or self.player
+
+        if not allow_skip and min_count == max_count and len(cards) <= min_count:
+            with self.acting_player_view(owner):
+                resolver(list(cards))
+            return
 
         def _wrapped_resolver(selected_cards: list[CardInstance]) -> None:
             with self.acting_player_view(owner):

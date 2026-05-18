@@ -57,7 +57,7 @@ def _make_combat() -> CombatState:
 
 class TestRegentParity:
     def test_begone_transforms_selected_hand_card_into_upgraded_minion_dive_bomb(self):
-        """Matches Begone.cs: attack, then transform one selected hand card into MinionDiveBomb."""
+        """Matches Begone.cs: a single eligible hand card is auto-transformed."""
         combat = _make_combat()
         enemy = combat.enemies[0]
         starting_hp = enemy.current_hp
@@ -67,10 +67,6 @@ class TestRegentParity:
 
         assert combat.play_card(0, 0)
         assert enemy.current_hp == starting_hp - 5
-        assert combat.pending_choice is not None
-        assert [option.card for option in combat.pending_choice.options] == [target_card]
-
-        assert combat.resolve_pending_choice(0)
         assert combat.pending_choice is None
         assert target_card not in combat.hand
         transformed = combat.hand[0]
@@ -375,7 +371,7 @@ class TestRegentParity:
         assert kept in combat.hand
 
     def test_decisions_decisions_draws_then_auto_plays_selected_skill_three_times(self):
-        """Matches DecisionsDecisions.cs: draw first, then repeatedly auto-play the chosen Skill."""
+        """Matches DecisionsDecisions.cs: a single eligible Skill is auto-played three times."""
         combat = _make_combat()
         repeated_skill = make_hidden_cache()
         combat.hand = [make_decisions_decisions(), repeated_skill]
@@ -388,10 +384,6 @@ class TestRegentParity:
         combat.gain_stars(combat.player, 6)
 
         assert combat.play_card(0)
-        assert combat.pending_choice is not None
-        assert [option.card for option in combat.pending_choice.options] == [repeated_skill]
-
-        assert combat.resolve_pending_choice(0)
         assert combat.pending_choice is None
         assert combat.stars == 3
         assert combat.player.get_power_amount(PowerId.STAR_NEXT_TURN) == 9
@@ -413,7 +405,7 @@ class TestRegentParity:
         assert combat.hand[0].upgraded is True
 
     def test_heirloom_hammer_damages_then_copies_selected_colorless_card(self):
-        """Matches HeirloomHammer.cs: attack, then clone one selected colorless hand card into hand."""
+        """Matches HeirloomHammer.cs: a single eligible colorless hand card is auto-copied."""
         combat = _make_combat()
         enemy = combat.enemies[0]
         starting_hp = enemy.current_hp
@@ -423,10 +415,6 @@ class TestRegentParity:
 
         assert combat.play_card(0, 0)
         assert enemy.current_hp == starting_hp - 17
-        assert combat.pending_choice is not None
-        assert [option.card for option in combat.pending_choice.options] == [gem]
-
-        assert combat.resolve_pending_choice(0)
         assert combat.pending_choice is None
         copies = [card for card in combat.hand if card.card_id == gem.card_id]
         assert len(copies) == 2

@@ -614,7 +614,8 @@ class TestIroncladParityExtra4:
     def test_brand_still_gains_strength_when_selection_returns_none(self):
         combat = _make_combat()
         strike = make_strike_ironclad()
-        combat.hand = [make_brand(), strike]
+        defend = make_defend_ironclad()
+        combat.hand = [make_brand(), strike, defend]
         combat.energy = 1
         starting_hp = combat.player.current_hp
 
@@ -628,6 +629,7 @@ class TestIroncladParityExtra4:
 
         assert combat.player.current_hp == starting_hp - 1
         assert strike in combat.hand
+        assert defend in combat.hand
         assert combat.player.powers[PowerId.STRENGTH].amount == 1
 
     def test_pacts_end_requires_three_exhausted_cards(self):
