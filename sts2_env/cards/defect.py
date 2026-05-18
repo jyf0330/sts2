@@ -701,8 +701,9 @@ def buffer(card: CardInstance, combat: CombatState, target: Creature | None) -> 
 
 @register_effect(CardId.CONSUMING_SHADOW)
 def consuming_shadow(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
+    for _ in range(card.effect_vars.get("repeat", 2)):
+        _channel_orb(combat, OrbType.DARK)
     combat.apply_power_to(_owner(card, combat), PowerId.CONSUMING_SHADOW, card.effect_vars.get("consuming_shadow_power", 1))
-    _channel_orb(combat, OrbType.DARK)
 
 
 @register_effect(CardId.COOLANT)
@@ -1426,11 +1427,13 @@ def make_buffer() -> CardInstance:
     )
 
 
-def make_consuming_shadow() -> CardInstance:
+def make_consuming_shadow(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.CONSUMING_SHADOW, cost=2, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
-        effect_vars={"consuming_shadow_power": 1}, instance_id=_get_next_id(),
+        upgraded=upgraded,
+        effect_vars={"repeat": 3 if upgraded else 2, "consuming_shadow_power": 1},
+        instance_id=_get_next_id(),
     )
 
 

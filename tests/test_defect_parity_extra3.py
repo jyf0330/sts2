@@ -8,6 +8,7 @@ from sts2_env.cards.defect import (
     make_biased_cognition,
     make_boost_away,
     make_cold_snap,
+    make_consuming_shadow,
     make_creative_ai,
     make_darkness,
     make_defend_defect,
@@ -516,6 +517,32 @@ class TestDefectParityExtra3:
         assert combat.play_card(0)
 
         assert combat.player.get_power_amount(PowerId.CREATIVE_AI) == 1
+
+    def test_consuming_shadow_channels_dark_orbs_then_applies_power(self):
+        """Matches ConsumingShadow.cs: channel Repeat Dark orbs, then apply its power."""
+        combat = _make_combat()
+        combat.hand = [make_consuming_shadow()]
+        combat.energy = 2
+
+        assert combat.play_card(0)
+
+        assert [orb.orb_type for orb in combat.orb_queue.orbs] == [OrbType.DARK, OrbType.DARK]
+        assert combat.player.get_power_amount(PowerId.CONSUMING_SHADOW) == 1
+
+    def test_upgraded_consuming_shadow_channels_three_dark_orbs(self):
+        """Matches ConsumingShadow.cs OnUpgrade: Repeat increases from 2 to 3."""
+        combat = _make_combat()
+        combat.hand = [create_card(CardId.CONSUMING_SHADOW, upgraded=True)]
+        combat.energy = 2
+
+        assert combat.play_card(0)
+
+        assert [orb.orb_type for orb in combat.orb_queue.orbs] == [
+            OrbType.DARK,
+            OrbType.DARK,
+            OrbType.DARK,
+        ]
+        assert combat.player.get_power_amount(PowerId.CONSUMING_SHADOW) == 1
 
     def test_defect_power_card_upgrades_match_original(self):
         """Matches BiasedCognition, CreativeAI, and MachineLearning OnUpgrade methods."""
