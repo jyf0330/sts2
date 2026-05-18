@@ -1608,6 +1608,8 @@ def make_barricade(upgraded: bool = False) -> CardInstance:
 def brand(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     hp_loss = card.effect_vars.get("hp_loss", 1)
     _self_hp_loss(card, combat, hp_loss)
+    if combat.is_over:
+        return
     if not combat.hand:
         combat.apply_power_to(_owner(card, combat), PowerId.STRENGTH, card.effect_vars.get("strength", 1))
         return

@@ -131,6 +131,18 @@ class TestIroncladParityExtra4:
         assert blocked.current_hp == 100
         assert hittable.current_hp == 91
 
+    def test_breakthrough_does_not_attack_after_self_damage_ends_combat(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy_hp = enemy.current_hp
+        combat.player.current_hp = 1
+        combat.hand = [make_breakthrough()]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.is_over
+        assert enemy.current_hp == enemy_hp
+
     def test_blood_wall_does_not_gain_block_after_self_damage_ends_combat(self):
         combat = _make_combat()
         combat.player.current_hp = 2
@@ -670,6 +682,20 @@ class TestIroncladParityExtra4:
         assert strike in combat.hand
         assert defend in combat.hand
         assert combat.player.powers[PowerId.STRENGTH].amount == 1
+
+    def test_brand_does_not_open_selection_after_self_damage_ends_combat(self):
+        combat = _make_combat()
+        strike = make_strike_ironclad()
+        combat.player.current_hp = 1
+        combat.hand = [make_brand(), strike]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.is_over
+        assert combat.pending_choice is None
+        assert strike in combat.hand
+        assert strike not in combat.exhaust_pile
+        assert combat.player.get_power_amount(PowerId.STRENGTH) == 0
 
     def test_pacts_end_requires_three_exhausted_cards(self):
         combat = _make_combat()
