@@ -737,7 +737,11 @@ def glimpse_beyond(card: CardInstance, combat: CombatState, target: Creature | N
 def hang(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
     _deal_damage_single(card, combat, target)
-    combat.apply_power_to(target, PowerId.HANG, 1)
+    current_hang = target.get_power_amount(PowerId.HANG)
+    amount = max(2, current_hang)
+    if current_hang + amount > 999:
+        amount = max(0, 999 - current_hang)
+    combat.apply_power_to(target, PowerId.HANG, amount)
 
 
 @register_effect(CardId.MISERY)

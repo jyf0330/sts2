@@ -17,6 +17,7 @@ from sts2_env.cards.necrobinder import (
     make_fetch,
     make_flatten,
     make_friendship,
+    make_hang,
     make_high_five,
     make_invoke,
     make_negative_pulse,
@@ -456,6 +457,40 @@ class TestNecrobinderParityExtra4:
         assert combat.play_card(0)
         assert combat.player.get_power_amount(PowerId.STRENGTH) == -1
         assert combat.player.get_power_amount(PowerId.FRIENDSHIP) == 1
+
+    def test_hang_applies_two_stacks_on_first_play(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = enemy.max_hp = 100
+        combat.hand = [make_hang()]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+        assert enemy.current_hp == 90
+        assert enemy.get_power_amount(PowerId.HANG) == 2
+
+    def test_hang_damage_and_stacks_scale_with_existing_hang(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = enemy.max_hp = 100
+        combat.apply_power_to(enemy, PowerId.HANG, 2, applier=combat.player)
+        combat.hand = [make_hang()]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+        assert enemy.current_hp == 80
+        assert enemy.get_power_amount(PowerId.HANG) == 4
+
+    def test_hang_stack_gain_caps_at_999(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = enemy.max_hp = 10000
+        combat.apply_power_to(enemy, PowerId.HANG, 998, applier=combat.player)
+        combat.hand = [make_hang()]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+        assert enemy.get_power_amount(PowerId.HANG) == 999
 
     def test_sic_em_uses_osty_damage_and_power_values(self):
         combat = _make_combat()
