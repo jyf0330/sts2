@@ -873,7 +873,7 @@ def spinner_card(card: CardInstance, combat: CombatState, target: Creature | Non
 
 @register_effect(CardId.SUPERCRITICAL)
 def supercritical(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    combat.energy += card.effect_vars.get("energy", 4)
+    combat.gain_energy(_owner(card, combat), card.effect_vars.get("energy", 4))
 
 
 @register_effect(CardId.TRASH_TO_TREASURE)

@@ -298,7 +298,7 @@ def sow(card: CardInstance, combat: CombatState, target: Creature | None) -> Non
 @register_effect(CardId.WISP)
 def wisp(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     energy = card.effect_vars.get("energy", 1)
-    combat.energy += energy
+    combat.gain_energy(_owner(card, combat), energy)
 
 
 # ---------------------------------------------------------------------------
@@ -321,7 +321,7 @@ def borrowed_time(card: CardInstance, combat: CombatState, target: Creature | No
     doom = card.effect_vars.get("doom", 3)
     combat.apply_power_to(_owner(card, combat), PowerId.DOOM, doom)
     energy = card.effect_vars.get("energy", 1)
-    combat.energy += energy
+    combat.gain_energy(_owner(card, combat), energy)
 
 
 @register_effect(CardId.BURY)

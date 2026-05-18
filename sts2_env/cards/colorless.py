@@ -328,7 +328,7 @@ def prep_time(card: CardInstance, combat: CombatState, target: Creature | None) 
 @register_effect(CardId.PRODUCTION)
 def production(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     energy = card.effect_vars.get("energy", 2)
-    combat.energy += energy
+    combat.gain_energy(_owner(card, combat), energy)
 
 
 @register_effect(CardId.PROLONG)
@@ -371,7 +371,7 @@ def restlessness(card: CardInstance, combat: CombatState, target: Creature | Non
     cards = card.effect_vars.get("cards", 2)
     energy = card.effect_vars.get("energy", 2)
     combat._draw_cards(cards)
-    combat.energy += energy
+    combat.gain_energy(_owner(card, combat), energy)
 
 
 @register_effect(CardId.SEEKER_STRIKE)

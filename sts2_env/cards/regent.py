@@ -289,7 +289,7 @@ def wrought_in_war(card: CardInstance, combat: CombatState, target: Creature | N
 @register_effect(CardId.ALIGNMENT)
 def alignment(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     energy = card.effect_vars.get("energy", 2)
-    combat.energy += energy
+    combat.gain_energy(_owner(card, combat), energy)
 
 
 @register_effect(CardId.BLACK_HOLE)

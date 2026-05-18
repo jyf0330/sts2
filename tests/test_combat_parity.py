@@ -1,5 +1,7 @@
 """Combat flow parity tests against decompiled turn/relic semantics."""
 
+import pytest
+
 import sts2_env.powers  # noqa: F401
 
 from sts2_env.cards.factory import create_card
@@ -7,12 +9,13 @@ from sts2_env.cards.ironclad_basic import create_ironclad_starter_deck
 from sts2_env.cards.ironclad_basic import make_strike_ironclad
 from sts2_env.cards.silent import make_bullet_time, make_well_laid_plans
 from sts2_env.cards.status import make_burn, make_dazed, make_debt, make_regret, make_void
+from sts2_env.cards.registry import play_card_effect
 from sts2_env.core.combat import CombatState
 from sts2_env.core.enums import CardId, CardType, CombatSide, PowerId
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle
 from sts2_env.powers.base import PowerInstance
-from sts2_env.run.run_state import RunState
+from sts2_env.run.run_state import PlayerState, RunState
 
 
 class _ChoiceLastRng:
@@ -101,6 +104,51 @@ class _CannotHitPower(PowerInstance):
 
     def should_allow_hitting(self, owner, combat):
         return False
+
+
+@pytest.mark.parametrize(
+    "card_id",
+    [
+        CardId.LUMINESCE,
+        CardId.SUPERCRITICAL,
+        CardId.PRODUCTION,
+        CardId.RESTLESSNESS,
+        CardId.ALIGNMENT,
+        CardId.WISP,
+        CardId.BORROWED_TIME,
+        CardId.TACTICIAN,
+    ],
+)
+def test_gain_energy_card_effects_do_not_gain_after_combat_ending(card_id):
+    combat = _make_combat()
+    card = create_card(card_id)
+    card.owner = combat.player
+    combat.hand = []
+    combat.draw_pile = [make_strike_ironclad()]
+    combat.energy = 0
+    combat.is_over = True
+
+    play_card_effect(card, combat, None)
+
+    assert combat.energy == 0
+
+
+def test_gain_energy_card_effect_uses_card_owner_state():
+    combat = _make_combat()
+    ally = combat.add_ally_player(
+        PlayerState(player_id=2, character_id="Silent", max_hp=70, current_hp=70)
+    )
+    ally_state = combat.combat_player_state_for(ally)
+    assert ally_state is not None
+    card = create_card(CardId.TACTICIAN)
+    card.owner = ally
+    combat.energy = 0
+    ally_state.energy = 0
+
+    play_card_effect(card, combat, None)
+
+    assert combat.energy == 0
+    assert ally_state.energy == 1
 
 
 def test_seeker_strike_stable_shuffles_draw_pile_before_choice():

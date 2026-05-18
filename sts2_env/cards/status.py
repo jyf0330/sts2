@@ -985,7 +985,7 @@ def make_giant_rock(upgraded: bool = False) -> CardInstance:
 @register_effect(CardId.LUMINESCE)
 def luminesce_effect(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     energy = card.effect_vars.get("energy", 2)
-    combat.energy += energy
+    combat.gain_energy(_owner(card, combat), energy)
 
 
 def make_luminesce(upgraded: bool = False) -> CardInstance:

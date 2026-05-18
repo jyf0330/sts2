@@ -634,7 +634,7 @@ def strangle(card: CardInstance, combat: CombatState, target: Creature | None) -
 
 @register_effect(CardId.TACTICIAN)
 def tactician(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
-    combat.energy += card.effect_vars.get("energy", 1)
+    combat.gain_energy(_owner(card, combat), card.effect_vars.get("energy", 1))
 
 
 @register_effect(CardId.UP_MY_SLEEVE)
