@@ -5,6 +5,7 @@ from sts2_env.cards.enchantments import can_enchant_card
 from sts2_env.cards.ironclad import create_ironclad_starter_deck
 from sts2_env.cards.ironclad_basic import make_defend_ironclad, make_strike_ironclad
 from sts2_env.core.combat import CombatState
+from sts2_env.core.enums import PowerId
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle
 from sts2_env.run.rest_site import CloneOption
@@ -273,6 +274,22 @@ def test_runtime_enchantments_modify_combat_behavior():
     assert combat.play_card(0)
     assert combat.player.block >= 7
     assert len(combat.hand) == 2
+
+
+def test_adroit_block_triggers_after_block_gained_hooks():
+    combat = _make_combat(create_ironclad_starter_deck())
+    enemy = combat.enemies[0]
+    start_hp = enemy.current_hp
+    defend = make_defend_ironclad()
+    defend.add_enchantment("Adroit", 3)
+    combat.player.apply_power(PowerId.JUGGERNAUT, 5)
+    combat.hand = [defend]
+    combat.energy = 1
+
+    assert combat.play_card(0)
+
+    assert combat.player.block == 8
+    assert enemy.current_hp == start_hp - 10
 
 
 def test_runtime_enchantments_cover_draw_energy_autoplay_and_replay():

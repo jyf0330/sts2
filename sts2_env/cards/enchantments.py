@@ -9,11 +9,23 @@ from sts2_env.core.damage import calculate_block
 
 if TYPE_CHECKING:
     from sts2_env.cards.base import CardInstance
+    from sts2_env.core.creature import Creature
     from sts2_env.core.combat import CombatState
 
 
 def _used_key(name: str) -> str:
     return f"_enchant_used_{name.lower()}"
+
+
+def _gain_block(owner: Creature, amount: int, combat: CombatState) -> int:
+    before = owner.block
+    owner.gain_block(amount)
+    gained = owner.block - before
+    if gained > 0:
+        from sts2_env.core.hooks import fire_after_block_gained
+
+        fire_after_block_gained(owner, gained, combat)
+    return gained
 
 
 def apply_static_enchantment(card: CardInstance, name: str, amount: int = 1) -> None:
@@ -163,7 +175,7 @@ def on_card_played(card: CardInstance, combat: CombatState) -> None:
     )
     if card.has_enchantment("Adroit"):
         block = calculate_block(card.enchantments["Adroit"], owner, ValueProp.MOVE, combat, card_source=card)
-        owner.gain_block(block)
+        _gain_block(owner, block, combat)
     if card.has_enchantment("Swift") and not card.combat_vars.get(_used_key("Swift")):
         combat.draw_cards(owner, card.enchantments["Swift"])
     if card.has_enchantment("Sown") and not card.combat_vars.get(_used_key("Sown")):
