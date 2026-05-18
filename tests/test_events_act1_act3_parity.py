@@ -365,6 +365,36 @@ def test_big_game_hunter_modifier_makes_elite_card_rewards_rare():
     assert all(card.rarity == CardRarity.RARE for card in reward.cards)
 
 
+def test_big_game_hunter_modifier_falls_back_to_character_rare_pool_when_candidates_have_no_rares():
+    run_state = RunState(seed=2412, character_id="Ironclad")
+    run_state.modifiers = [BigGameHunterModifier()]
+    reward = CardReward(
+        run_state.player.player_id,
+        context="elite",
+        custom_card_ids=(CardId.ANGER,),
+        has_custom_card_pool=True,
+    )
+
+    reward.populate(run_state, create_room(RoomType.ELITE))
+
+    assert reward.cards
+    assert all(card.rarity == CardRarity.RARE for card in reward.cards)
+    assert all(card.card_id != CardId.ANGER for card in reward.cards)
+
+
+def test_big_game_hunter_modifier_keeps_colorless_rare_candidates():
+    run_state = RunState(seed=2413, character_id="Ironclad")
+    run_state.modifiers = [BigGameHunterModifier()]
+    assert run_state.player.obtain_relic("DINGY_RUG")
+    reward = CardReward(run_state.player.player_id, context="elite")
+
+    reward.populate(run_state, create_room(RoomType.ELITE))
+
+    ironclad_pool = set(get_character("Ironclad").card_pool)
+    assert any(card_id not in ironclad_pool for card_id in reward.custom_card_ids)
+    assert all(card.rarity == CardRarity.RARE for card in reward.cards)
+
+
 def test_big_game_hunter_modifier_respects_locked_reward_rarities():
     run_state = RunState(seed=2410, character_id="Ironclad")
     run_state.modifiers = [BigGameHunterModifier()]

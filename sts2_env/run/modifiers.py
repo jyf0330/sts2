@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from sts2_env.cards.factory import card_metadata, eligible_character_cards, eligible_registered_cards
 from sts2_env.core.enums import CardRarity, CombatSide, MapPointType, PowerId, RoomType
 from sts2_env.core.selection import CardChoiceOption, PendingCardChoice
 from sts2_env.run.events import EventResult
@@ -212,19 +213,62 @@ class BigGameHunterModifier(ModifierModel):
             return options
         if not options.allow_card_pool_modifications or options.forced_rarities:
             return options
+        candidate_ids = tuple(options.custom_card_ids)
+        rare_ids: tuple
+        if candidate_ids:
+            rare_ids = tuple(
+                card_id
+                for card_id in candidate_ids
+                if card_metadata(card_id).rarity == CardRarity.RARE
+            )
+        else:
+            character_ids = options.character_ids
+            if options.use_default_character_pool and not character_ids:
+                character_ids = (player.character_id,)
+            seen_ids = set()
+            rares = []
+            for character_id in character_ids:
+                for card_id in eligible_character_cards(
+                    character_id,
+                    rarity=CardRarity.RARE,
+                    generation_context=options.generation_context,
+                ):
+                    if card_id in seen_ids:
+                        continue
+                    seen_ids.add(card_id)
+                    rares.append(card_id)
+            if options.include_colorless:
+                for card_id in eligible_registered_cards(
+                    module_name="sts2_env.cards.colorless",
+                    rarity=CardRarity.RARE,
+                    generation_context=options.generation_context,
+                ):
+                    if card_id in seen_ids:
+                        continue
+                    seen_ids.add(card_id)
+                    rares.append(card_id)
+            rare_ids = tuple(rares)
+        if not rare_ids:
+            rare_ids = tuple(
+                eligible_character_cards(
+                    player.character_id,
+                    rarity=CardRarity.RARE,
+                    generation_context=options.generation_context,
+                )
+            )
         return CardRewardGenerationOptions(
             context=options.context,
             num_cards=options.num_cards,
             character_ids=options.character_ids,
             forced_rarities=(CardRarity.RARE,) * options.num_cards,
             include_colorless=options.include_colorless,
-            use_default_character_pool=options.use_default_character_pool,
+            use_default_character_pool=False,
             generation_context=options.generation_context,
             roll_upgrade=options.roll_upgrade,
             card_creation_source=options.card_creation_source,
             allow_card_pool_modifications=options.allow_card_pool_modifications,
-            has_custom_card_pool=options.has_custom_card_pool,
-            custom_card_ids=options.custom_card_ids,
+            has_custom_card_pool=True,
+            custom_card_ids=rare_ids,
         )
 
 
