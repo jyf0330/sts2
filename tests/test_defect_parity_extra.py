@@ -75,6 +75,19 @@ class TestDefectParityExtra:
         assert enemy.current_hp == starting_hp - 16
         assert not combat.orb_queue.orbs
 
+    def test_dualcast_stops_before_second_evoke_after_combat_ends(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        combat.channel_orb(combat.player, "LIGHTNING")
+        enemy.current_hp = 8
+        combat.hand = [make_dualcast()]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.is_over
+        assert len(combat.orb_queue.orbs) == 1
+        assert combat.orb_queue.orbs[0].orb_type == OrbType.LIGHTNING
+
     def test_scrape_discards_drawn_star_cost_and_star_x_cards(self):
         """Matches Scrape.cs: drawn star-cost and star-X cards are discarded."""
         combat = _make_combat()

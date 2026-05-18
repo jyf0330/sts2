@@ -96,6 +96,8 @@ class OrbQueue:
 
     def evoke_front(self, combat: CombatState | None = None) -> None:
         """Evoke the front (first) orb and remove it."""
+        if combat is not None and getattr(combat, "is_over", False):
+            return
         if not self.orbs:
             return
         orb = self.orbs.pop(0)
@@ -127,6 +129,8 @@ class OrbQueue:
 
     def trigger_first_passive(self, combat: CombatState) -> None:
         """Trigger the passive of the first orb only."""
+        if getattr(combat, "is_over", False):
+            return
         if not self.orbs:
             return
         orb = self.orbs[0]
