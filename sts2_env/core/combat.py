@@ -1993,12 +1993,26 @@ class CombatState:
         state = self.combat_player_state_for(owner)
         if state is None or count <= 0:
             return
-        hand = state.hand
-        discard = state.discard
-        for _ in range(min(count, len(hand))):
-            card = hand.pop()
-            discard.append(card)
-            fire_after_card_discarded(card, self)
+        discard_count = min(count, len(state.hand))
+        if discard_count <= 0:
+            return
+
+        def _discard_selected(selected_cards: list[CardInstance]) -> None:
+            for card in selected_cards:
+                if card in state.hand:
+                    state.hand.remove(card)
+                    state.discard.append(card)
+                    fire_after_card_discarded(card, self)
+
+        self.request_multi_card_choice(
+            prompt="Choose hand cards to discard",
+            cards=list(state.hand),
+            source_pile="hand",
+            resolver=_discard_selected,
+            min_count=discard_count,
+            max_count=discard_count,
+            owner=owner,
+        )
 
     def reduce_retained_card_cost(self, owner: Creature) -> None:
         state = self.combat_player_state_for(owner)

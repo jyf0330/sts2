@@ -105,9 +105,13 @@ class TestSilentParityExtra2:
 
         combat.end_player_turn()
 
+        assert combat.pending_choice is not None
+        assert [option.card for option in combat.pending_choice.options] == scripted_draw
+        assert combat.resolve_pending_choice(2)
         assert combat.round_number == 2
         assert len(combat.hand) == 5
         assert len(combat.discard_pile) == 1
+        assert combat.discard_pile[0] is scripted_draw[2]
         assert id(combat.discard_pile[0]) in scripted_ids
         seen_scripted = sum(1 for card in combat.hand + combat.discard_pile if id(card) in scripted_ids)
         assert seen_scripted == 6
