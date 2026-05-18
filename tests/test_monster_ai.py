@@ -2079,6 +2079,15 @@ class TestFixedRotation:
         assert ship_combat.player.current_hp == 70
         assert [card.card_id for card in ship_combat.discard_pile] == [CardId.WOUND, CardId.WOUND]
 
+        lethal_ship, lethal_ship_ai = create_haunted_ship(Rng(170))
+        lethal_ship_combat = _make_combat(170)
+        lethal_ship_combat.add_enemy(lethal_ship, lethal_ship_ai)
+        lethal_ship_combat.player.current_hp = 10
+        lethal_ship_ai.states["RAMMING_SPEED_MOVE"].perform(lethal_ship_combat)
+        assert lethal_ship_combat.is_over
+        assert lethal_ship_combat.player_won is False
+        assert lethal_ship_combat.discard_pile == []
+
         ship_combat.round_number = 2
         ship_ai.on_move_performed()
         ship_ai.roll_move(Rng(70))

@@ -439,6 +439,8 @@ def create_haunted_ship(rng: Rng) -> tuple[Creature, MonsterAI]:
 
     def ramming_speed(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, ramming_speed_dmg)
+        if combat.is_over:
+            return
         combat.add_status_cards_to_discard(combat.primary_player, "WOUND", 2)
 
     def swipe(combat: CombatState) -> None:
