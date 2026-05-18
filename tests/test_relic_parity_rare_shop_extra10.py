@@ -135,6 +135,22 @@ class TestRelicParityRareShopExtra10:
         assert combat.play_card(0)
         assert combat.player.block == 4
 
+    def test_intimidating_helmet_block_triggers_after_block_gained_hooks(self):
+        combat = _make_ironclad_combat(["IntimidatingHelmet"], seed=1925)
+        enemy = combat.enemies[0]
+        start_hp = enemy.current_hp
+        bash = make_bash()
+        bash.owner = combat.player
+        combat.player.apply_power(PowerId.JUGGERNAUT, 5)
+        combat.hand = [bash]
+        combat.energy = 2
+        combat.player.block = 0
+
+        assert combat.play_card(0, 0)
+
+        assert combat.player.block == 4
+        assert enemy.current_hp == start_hp - 13
+
     def test_ivory_tile_refunds_one_energy_after_three_cost_card_is_played(self):
         """Matches IvoryTile.cs: cards spending at least 3 energy refund 1 energy."""
         combat = _make_ironclad_combat(["IvoryTile"], seed=1902)
@@ -161,6 +177,20 @@ class TestRelicParityRareShopExtra10:
 
         relic.before_turn_end(combat.player, CombatSide.PLAYER, combat)
         assert combat.player.block == 4
+
+    def test_cloak_clasp_block_triggers_after_block_gained_hooks(self):
+        combat = _make_ironclad_combat(["CloakClasp"], seed=1926)
+        relic = _combat_relic(combat, "CLOAK_CLASP")
+        enemy = combat.enemies[0]
+        start_hp = enemy.current_hp
+        combat.hand = [make_strike_ironclad(), make_defend_ironclad()]
+        combat.player.apply_power(PowerId.JUGGERNAUT, 5)
+        combat.player.block = 0
+
+        relic.before_turn_end(combat.player, CombatSide.PLAYER, combat)
+
+        assert combat.player.block == 2
+        assert enemy.current_hp == start_hp - 5
 
     def test_meat_on_the_bone_heals_twelve_after_victory_when_below_half_hp(self):
         """Matches MeatOnTheBone.cs: if combat ends at or below 50% HP, heal 12."""

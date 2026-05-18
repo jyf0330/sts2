@@ -91,6 +91,21 @@ def test_captains_wheel_grants_block_only_on_round_three_player_block_clear():
     assert player.block == 18
 
 
+def test_captains_wheel_block_triggers_after_block_gained_hooks():
+    combat = _make_ironclad_combat(["CaptainsWheel"], seed=1030)
+    player = combat.player
+    enemy = combat.enemies[0]
+    start_hp = enemy.current_hp
+    player.block = 0
+    player.apply_power(PowerId.JUGGERNAUT, 5)
+
+    combat.round_number = 3
+    fire_after_block_cleared(player, combat)
+
+    assert player.block == 18
+    assert enemy.current_hp == start_hp - 5
+
+
 def test_tough_bandages_only_grants_block_when_discard_happens_on_player_side():
     combat = _make_ironclad_combat(["ToughBandages"], seed=1003)
     player = combat.player
@@ -105,6 +120,23 @@ def test_tough_bandages_only_grants_block_when_discard_happens_on_player_side():
     combat.current_side = CombatSide.ENEMY
     fire_after_card_discarded(card, combat)
     assert player.block == 3
+
+
+def test_tough_bandages_block_triggers_after_block_gained_hooks():
+    combat = _make_ironclad_combat(["ToughBandages"], seed=1031)
+    player = combat.player
+    enemy = combat.enemies[0]
+    start_hp = enemy.current_hp
+    player.block = 0
+    player.apply_power(PowerId.JUGGERNAUT, 5)
+    card = make_strike_ironclad()
+    card.owner = player
+
+    combat.current_side = CombatSide.PLAYER
+    fire_after_card_discarded(card, combat)
+
+    assert player.block == 3
+    assert enemy.current_hp == start_hp - 5
 
 
 def test_the_abacus_gains_block_when_draw_triggers_shuffle():

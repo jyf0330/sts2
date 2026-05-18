@@ -25,6 +25,17 @@ if TYPE_CHECKING:
     from sts2_env.run.run_state import RunState
 
 
+def _gain_unpowered_block(owner: Creature, amount: int, combat: CombatState) -> int:
+    before = owner.block
+    owner.gain_block(amount, unpowered=True)
+    gained = owner.block - before
+    if gained > 0:
+        from sts2_env.core.hooks import fire_after_block_gained
+
+        fire_after_block_gained(owner, gained, combat)
+    return gained
+
+
 def _upgrade_reward_cards(owner: Creature, cards: list[CardInstance], card_type: CardType) -> list[CardInstance]:
     for card in cards:
         if card.card_type == card_type:
@@ -136,7 +147,7 @@ class CaptainsWheel(RelicInstance):
 
     def after_block_cleared(self, owner: Creature, creature: Creature, combat: CombatState) -> None:
         if creature is owner and combat.round_number == 3:
-            owner.gain_block(self.BLOCK, unpowered=True)
+            _gain_unpowered_block(owner, self.BLOCK, combat)
 
 
 @register_relic
@@ -401,7 +412,7 @@ class IntimidatingHelmet(RelicInstance):
 
     def before_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
         if getattr(card, "owner", None) is owner and getattr(card, "energy_spent", 0) >= self.ENERGY_THRESHOLD:
-            owner.gain_block(self.BLOCK, unpowered=True)
+            _gain_unpowered_block(owner, self.BLOCK, combat)
 
 
 @register_relic
@@ -965,7 +976,7 @@ class ToughBandages(RelicInstance):
 
     def after_card_discarded(self, owner: Creature, card: object, combat: CombatState) -> None:
         if getattr(card, "owner", None) is owner and combat.current_side == CombatSide.PLAYER:
-            owner.gain_block(self.BLOCK, unpowered=True)
+            _gain_unpowered_block(owner, self.BLOCK, combat)
 
 
 @register_relic
@@ -1242,4 +1253,4 @@ class CloakClasp(RelicInstance):
             state = combat.combat_player_state_for(owner)
             hand_size = len(state.hand) if state is not None else 0
             if hand_size > 0:
-                owner.gain_block(hand_size, unpowered=True)
+                _gain_unpowered_block(owner, hand_size, combat)
