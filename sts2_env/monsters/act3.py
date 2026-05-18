@@ -372,7 +372,7 @@ def create_globe_head(rng: Rng) -> tuple[Creature, MonsterAI]:
 
     def galvanic_burst(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, galvanic_burst_dmg)
-        creature.apply_power(PowerId.STRENGTH, 2)
+        combat.apply_power_to(creature, PowerId.STRENGTH, 2, applier=creature)
 
     states: dict[str, MonsterState] = {
         "SHOCKING_SLAP": MoveState("SHOCKING_SLAP", shocking_slap, [attack_intent(shocking_slap_dmg), debuff_intent()], follow_up_id="THUNDER_STRIKE"),

@@ -1225,6 +1225,15 @@ class TestFixedRotation:
 
         assert actual_moves == expected_moves
 
+        lethal_combat = _make_combat(147)
+        lethal_creature, lethal_ai = create_globe_head(Rng(147))
+        lethal_combat.add_enemy(lethal_creature, lethal_ai)
+        lethal_combat.player.current_hp = 16
+        lethal_ai.states["GALVANIC_BURST"].perform(lethal_combat)
+        assert lethal_combat.is_over
+        assert lethal_combat.player_won is False
+        assert lethal_creature.get_power_amount(PowerId.STRENGTH) == 0
+
     def test_flail_and_mysterious_knights_use_original_move_ids(self):
         creature, ai = create_flail_knight(Rng(41))
         assert creature.max_hp == 101
