@@ -37,6 +37,7 @@ from sts2_env.encounters.act4 import (
 )
 from sts2_env.encounters.events import setup_mysterious_knight
 from sts2_env.monsters.act1 import (
+    apply_cubex_construct_room_setup,
     create_axe_ruby_raider,
     create_assassin_ruby_raider,
     create_brute_ruby_raider,
@@ -357,6 +358,10 @@ class TestFixedRotation:
         assert ids.count("PUNCH_CONSTRUCT") == 1
         assert ids.count("CUBEX_CONSTRUCT") == 2
 
+        cubexes = [enemy for enemy in combat.enemies if enemy.monster_id == "CUBEX_CONSTRUCT"]
+        assert [cubex.block for cubex in cubexes] == [13, 13]
+        assert [cubex.get_power_amount(PowerId.ARTIFACT) for cubex in cubexes] == [1, 1]
+
     def test_fat_gremlin_flee_escapes_without_dying(self):
         combat = CombatState(
             player_hp=80,
@@ -414,6 +419,12 @@ class TestFixedRotation:
         cubex, cubex_ai = create_cubex_construct(Rng(11))
         assert cubex_ai.current_move.state_id == "CHARGE_UP_MOVE"
         assert {"REPEATER_MOVE", "REPEATER_MOVE_2", "EXPEL_BLAST", "SUBMERGE_MOVE"}.issubset(cubex_ai.states)
+        assert cubex.block == 0
+        assert cubex.get_power_amount(PowerId.ARTIFACT) == 0
+        combat = _make_combat(11)
+        combat.add_enemy(cubex, cubex_ai)
+        apply_cubex_construct_room_setup(cubex, combat)
+        assert cubex.block == 13
         assert cubex.get_power_amount(PowerId.ARTIFACT) == 1
 
         _, flyconid_ai = create_flyconid(Rng(12))
@@ -498,6 +509,19 @@ class TestFixedRotation:
 
             assert creature.block == expected_block
             assert counter.calls == [expected_block]
+
+    def test_cubex_initial_room_setup_triggers_after_block_gained_hook(self):
+        combat = _make_combat(121)
+        creature, ai = create_cubex_construct(Rng(121))
+        combat.add_enemy(creature, ai)
+        counter = _BlockHookCounterPower()
+        creature.powers[PowerId.JUGGERNAUT] = counter
+
+        apply_cubex_construct_room_setup(creature, combat)
+
+        assert creature.block == 13
+        assert creature.get_power_amount(PowerId.ARTIFACT) == 1
+        assert counter.calls == [13]
 
     def test_thieving_hopper_has_original_stats_and_fixed_escape_rotation(self):
         creature, ai = create_thieving_hopper(Rng(11))

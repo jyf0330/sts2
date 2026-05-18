@@ -107,11 +107,12 @@ def create_cubex_construct(rng: Rng) -> tuple[Creature, MonsterAI]:
         "SUBMERGE_MOVE": MoveState("SUBMERGE_MOVE", submerge, [defend_intent()], follow_up_id="CHARGE_UP_MOVE"),
     }
 
-    # Initial setup: gain 13 block + 1 artifact
-    creature.gain_block(13)
-    creature.apply_power(PowerId.ARTIFACT, 1)
-
     return creature, MonsterAI(states, "CHARGE_UP_MOVE")
+
+
+def apply_cubex_construct_room_setup(creature: Creature, combat: CombatState) -> None:
+    _gain_block(creature, 13, combat)
+    creature.apply_power(PowerId.ARTIFACT, 1)
 
 
 # ---- Flyconid (HP 47-49 / 51-53 asc) ----

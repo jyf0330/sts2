@@ -18,6 +18,7 @@ from sts2_env.monsters.act1_weak import (
     create_twig_slime_m,
 )
 from sts2_env.monsters.act1 import (
+    apply_cubex_construct_room_setup,
     create_cubex_construct,
     create_flyconid,
     create_fogmog,
@@ -85,6 +86,7 @@ WEAK_ENCOUNTERS: list[EncounterSetup] = [
 def setup_cubex_construct_normal(combat: CombatState, rng: Rng) -> None:
     creature, ai = create_cubex_construct(rng)
     combat.add_enemy(creature, ai)
+    apply_cubex_construct_room_setup(creature, combat)
 
 
 def setup_flyconid_normal(combat: CombatState, rng: Rng) -> None:

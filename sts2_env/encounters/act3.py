@@ -30,7 +30,7 @@ from sts2_env.monsters.act3 import (
     create_queen,
     create_test_subject,
 )
-from sts2_env.monsters.act1 import create_cubex_construct
+from sts2_env.monsters.act1 import apply_cubex_construct_room_setup, create_cubex_construct
 from sts2_env.monsters.act4 import create_punch_construct
 from sts2_env.monsters.shared import create_torch_head_amalgam
 
@@ -78,8 +78,10 @@ def setup_construct_menagerie_normal(combat: CombatState, rng: Rng) -> None:
     combat.add_enemy(c1, a1)
     c2, a2 = create_cubex_construct(rng)
     combat.add_enemy(c2, a2)
+    apply_cubex_construct_room_setup(c2, combat)
     c3, a3 = create_cubex_construct(rng)
     combat.add_enemy(c3, a3)
+    apply_cubex_construct_room_setup(c3, combat)
 
 
 def setup_fabricator_normal(combat: CombatState, rng: Rng) -> None:
