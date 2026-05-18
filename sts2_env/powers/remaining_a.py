@@ -256,7 +256,7 @@ class BattlewornDummyTimeLimitPower(PowerInstance):
             self.amount -= 1
             return
         # Time's up -- creature escapes
-        escape = getattr(combat, "creature_escape", None)
+        escape = getattr(combat, "escape_creature", None)
         if escape is not None:
             escape(owner)
         self.amount = 0

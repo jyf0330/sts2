@@ -107,6 +107,7 @@ from sts2_env.monsters.act2 import (
     create_wriggler,
 )
 from sts2_env.monsters.shared import (
+    create_battle_friend_v1,
     create_dense_vegetation_wriggler,
     create_the_adversary_mk_one,
     create_the_adversary_mk_two,
@@ -405,6 +406,30 @@ class TestFixedRotation:
         ai.on_move_performed()
         ai.roll_move(Rng(5))
         ai.current_move.perform(combat)
+
+        assert creature.escaped
+        assert not creature.is_alive
+        assert not creature.is_dead
+
+    def test_battleworn_dummy_escapes_when_time_limit_expires(self):
+        combat = CombatState(
+            player_hp=80,
+            player_max_hp=80,
+            deck=create_ironclad_starter_deck(),
+            rng_seed=5,
+            character_id="Ironclad",
+        )
+        creature, ai = create_battle_friend_v1(Rng(5))
+        combat.add_enemy(creature, ai)
+        combat.start_combat()
+
+        combat.end_player_turn()
+        assert creature.get_power_amount(PowerId.BATTLEWORN_DUMMY_TIME_LIMIT) == 2
+
+        combat.end_player_turn()
+        assert creature.get_power_amount(PowerId.BATTLEWORN_DUMMY_TIME_LIMIT) == 1
+
+        combat.end_player_turn()
 
         assert creature.escaped
         assert not creature.is_alive
