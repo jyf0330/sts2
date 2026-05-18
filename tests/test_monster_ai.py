@@ -45,6 +45,7 @@ from sts2_env.monsters.act1 import (
     create_bygone_effigy,
     create_crossbow_ruby_raider,
     create_cubex_construct,
+    create_ceremonial_beast,
     create_eye_with_teeth,
     create_flyconid,
     create_fogmog,
@@ -437,6 +438,25 @@ class TestFixedRotation:
         wake_ai.current_move.perform(combat)
 
         assert wake_creature.get_power_amount(PowerId.STRENGTH) == 10
+
+    def test_ceremonial_beast_attack_buffs_stop_after_killing_player(self):
+        plow_combat = _make_combat(110)
+        plow_beast, plow_ai = create_ceremonial_beast(Rng(110))
+        plow_combat.add_enemy(plow_beast, plow_ai)
+        plow_combat.player.current_hp = 18
+        plow_ai.states["PLOW"].perform(plow_combat)
+        assert plow_combat.is_over
+        assert plow_combat.player_won is False
+        assert plow_beast.get_power_amount(PowerId.STRENGTH) == 0
+
+        crush_combat = _make_combat(111)
+        crush_beast, crush_ai = create_ceremonial_beast(Rng(111))
+        crush_combat.add_enemy(crush_beast, crush_ai)
+        crush_combat.player.current_hp = 17
+        crush_ai.states["CRUSH"].perform(crush_combat)
+        assert crush_combat.is_over
+        assert crush_combat.player_won is False
+        assert crush_beast.get_power_amount(PowerId.STRENGTH) == 0
 
     def test_act1_normal_monsters_use_original_move_ids(self):
         cubex, cubex_ai = create_cubex_construct(Rng(11))

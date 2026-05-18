@@ -695,7 +695,7 @@ def create_ceremonial_beast(rng: Rng) -> tuple[Creature, MonsterAI]:
 
     def plow_move(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, plow_dmg)
-        creature.apply_power(PowerId.STRENGTH, 2)
+        combat.apply_power_to(creature, PowerId.STRENGTH, 2, applier=creature)
 
     def stun(combat: CombatState) -> None:
         _phase["stunned"] = True
@@ -709,7 +709,7 @@ def create_ceremonial_beast(rng: Rng) -> tuple[Creature, MonsterAI]:
 
     def crush(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, crush_dmg)
-        creature.apply_power(PowerId.STRENGTH, 3)
+        combat.apply_power_to(creature, PowerId.STRENGTH, 3, applier=creature)
 
     # Phase 1 check: is plow broken?
     plow_check = ConditionalBranchState("PLOW_CHECK")
