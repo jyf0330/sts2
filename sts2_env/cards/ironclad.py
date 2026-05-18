@@ -1334,6 +1334,8 @@ def second_wind(card: CardInstance, combat: CombatState, target: Creature | None
     owner = _owner(card, combat)
     for c in to_exhaust:
         combat.exhaust_card(c)
+        if combat.is_over:
+            return
         block = calculate_block(block_per, owner, ValueProp.MOVE, combat, card_source=card)
         before = owner.block
         owner.gain_block(block)

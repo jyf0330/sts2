@@ -27,6 +27,7 @@ from sts2_env.core.enums import PowerId
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle
 from sts2_env.powers.base import PowerInstance
+from sts2_env.relics.registry import create_relic_by_name
 
 
 class _CannotHitPower(PowerInstance):
@@ -148,6 +149,22 @@ class TestIroncladParityExtra3:
         assert strike in combat.hand
         assert defend in combat.exhaust_pile
         assert inflame in combat.exhaust_pile
+
+    def test_second_wind_stops_after_exhaust_ends_combat(self):
+        combat = _make_combat()
+        combat.relics.append(create_relic_by_name("CharonsAshes"))
+        enemy = combat.enemies[0]
+        enemy.current_hp = 3
+        defend = make_defend_ironclad()
+        inflame = make_inflame()
+        combat.hand = [make_second_wind(), defend, inflame]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.is_over
+        assert combat.player.block == 0
+        assert defend in combat.exhaust_pile
+        assert inflame in combat.hand
 
     def test_dark_embrace_draws_for_each_second_wind_exhaust(self):
         """Matches DarkEmbracePower + SecondWind: each owner exhaust draws 1 card."""
