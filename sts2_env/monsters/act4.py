@@ -34,8 +34,14 @@ def _deal_damage_to_player(combat: CombatState, creature: Creature, base_dmg: in
         apply_damage(combat.primary_player, dmg, ValueProp.MOVE, combat, creature)
 
 
-def _gain_block(creature: Creature, amount: int) -> None:
+def _gain_block(creature: Creature, amount: int, combat: CombatState) -> None:
+    before = creature.block
     creature.gain_block(amount)
+    gained = creature.block - before
+    if gained > 0:
+        from sts2_env.core.hooks import fire_after_block_gained
+
+        fire_after_block_gained(creature, gained, combat)
 
 
 # ========================================================================
@@ -94,7 +100,7 @@ def create_seapunk(rng: Rng) -> tuple[Creature, MonsterAI]:
         _deal_damage_to_player(combat, creature, spinning_kick_dmg, hits=4)
 
     def bubble_burp(combat: CombatState) -> None:
-        _gain_block(creature, bubble_block)
+        _gain_block(creature, bubble_block, combat)
         creature.apply_power(PowerId.STRENGTH, bubble_str, applier=creature)
 
     states: dict[str, MonsterState] = {
@@ -554,7 +560,7 @@ def create_punch_construct(
     creature.apply_power(PowerId.ARTIFACT, 1)
 
     def ready(combat: CombatState) -> None:
-        _gain_block(creature, ready_block)
+        _gain_block(creature, ready_block, combat)
 
     def strong_punch(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, strong_punch_dmg)
@@ -806,7 +812,7 @@ def create_skulking_colony(rng: Rng) -> tuple[Creature, MonsterAI]:
     inertia_block = 10
 
     def inertia(combat: CombatState) -> None:
-        _gain_block(creature, inertia_block)
+        _gain_block(creature, inertia_block, combat)
         creature.apply_power(PowerId.STRENGTH, 3, applier=creature)
 
     def zoom(combat: CombatState) -> None:
@@ -1056,7 +1062,7 @@ def create_lagavulin_matriarch(rng: Rng) -> tuple[Creature, MonsterAI]:
 
     def slash2(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, slash2_dmg)
-        _gain_block(creature, slash2_block)
+        _gain_block(creature, slash2_block, combat)
 
     def soul_siphon(combat: CombatState) -> None:
         combat.apply_power_to(combat.primary_player, PowerId.STRENGTH, -2, applier=creature)

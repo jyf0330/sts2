@@ -1640,6 +1640,12 @@ class TestFixedRotation:
         seapunk_effect_ai.states["BUBBLE_BURP_MOVE"].perform(seapunk_combat)
         assert seapunk_effect.block == 7
         assert seapunk_effect.get_power_amount(PowerId.STRENGTH) == 1
+        counter = _BlockHookCounterPower()
+        seapunk_effect.powers[PowerId.JUGGERNAUT] = counter
+        seapunk_effect.block = 0
+        seapunk_effect_ai.states["BUBBLE_BURP_MOVE"].perform(seapunk_combat)
+        assert seapunk_effect.block == 7
+        assert counter.calls == [7]
 
         sludge, sludge_ai = create_sludge_spinner(Rng(53))
         sludge_combat = _make_combat(53)
@@ -1840,6 +1846,12 @@ class TestFixedRotation:
         ]
         punch_ai.states["READY_MOVE"].perform(punch_combat)
         assert punch.block == 10
+        counter = _BlockHookCounterPower()
+        punch.powers[PowerId.JUGGERNAUT] = counter
+        punch.block = 0
+        punch_ai.states["READY_MOVE"].perform(punch_combat)
+        assert punch.block == 10
+        assert counter.calls == [10]
         punch_ai.states["STRONG_PUNCH_MOVE"].perform(punch_combat)
         assert punch_combat.player.current_hp == 66
         punch_ai.states["FAST_PUNCH_MOVE"].perform(punch_combat)
@@ -2025,6 +2037,12 @@ class TestFixedRotation:
         colony_ai.states["INERTIA_MOVE"].perform(colony_combat)
         assert colony.block == 10
         assert colony.get_power_amount(PowerId.STRENGTH) == 3
+        counter = _BlockHookCounterPower()
+        colony.powers[PowerId.JUGGERNAUT] = counter
+        colony.block = 0
+        colony_ai.states["INERTIA_MOVE"].perform(colony_combat)
+        assert colony.block == 10
+        assert counter.calls == [10]
 
         colony_zoom, colony_zoom_ai = create_skulking_colony(Rng(80))
         colony_zoom_combat = _make_combat(80)
@@ -2158,6 +2176,12 @@ class TestFixedRotation:
         matriarch_effect_ai.current_move.perform(matriarch_effect_combat)
         assert matriarch_effect_combat.player.current_hp == 31
         assert matriarch_effect.block == 12
+        counter = _BlockHookCounterPower()
+        matriarch_effect.powers[PowerId.JUGGERNAUT] = counter
+        matriarch_effect.block = 0
+        matriarch_effect_ai.states["SLASH2_MOVE"].perform(matriarch_effect_combat)
+        assert matriarch_effect.block == 12
+        assert counter.calls == [12]
         matriarch_effect_ai.on_move_performed()
         matriarch_effect_ai.roll_move(Rng(88))
         matriarch_effect_ai.current_move.perform(matriarch_effect_combat)
