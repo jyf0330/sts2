@@ -306,6 +306,44 @@ class TestPotionInstance:
         assert combat.player.current_hp == player_hp - 12
         assert enemy.current_hp == enemy_hp - 12
 
+    def test_block_potion_block_triggers_after_block_gained_hooks(self):
+        combat = _make_silent_combat()
+        enemy = combat.enemies[0]
+        start_hp = enemy.current_hp
+        combat.player.apply_power(PowerId.JUGGERNAUT, 5)
+        combat.potions = [create_potion("BlockPotion"), None, None]
+
+        assert combat.use_potion(0)
+
+        assert combat.player.block == 12
+        assert enemy.current_hp == start_hp - 5
+
+    def test_fortifier_uses_original_block_amount_and_triggers_hooks(self):
+        combat = _make_silent_combat()
+        enemy = combat.enemies[0]
+        start_hp = enemy.current_hp
+        combat.player.block = 4
+        combat.player.apply_power(PowerId.JUGGERNAUT, 5)
+        combat.potions = [create_potion("Fortifier"), None, None]
+
+        assert combat.use_potion(0)
+
+        assert combat.player.block == 12
+        assert enemy.current_hp == start_hp - 5
+
+    def test_ship_in_a_bottle_block_triggers_after_block_gained_hooks(self):
+        combat = _make_silent_combat()
+        enemy = combat.enemies[0]
+        start_hp = enemy.current_hp
+        combat.player.apply_power(PowerId.JUGGERNAUT, 5)
+        combat.potions = [create_potion("ShipInABottle"), None, None]
+
+        assert combat.use_potion(0)
+
+        assert combat.player.block == 10
+        assert combat.player.get_power_amount(PowerId.BLOCK_NEXT_TURN) == 10
+        assert enemy.current_hp == start_hp - 5
+
 
 class TestSpecificPotions:
     """Verify specific notable potions have correct attributes."""

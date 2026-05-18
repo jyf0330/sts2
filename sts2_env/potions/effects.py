@@ -24,6 +24,17 @@ if TYPE_CHECKING:
 
 # ─── Helpers ──────────────────────────────────────────────────────────
 
+def _gain_unpowered_block(target: Creature, amount: int, combat: CombatState) -> int:
+    before = target.block
+    target.gain_block(amount, unpowered=True)
+    gained = target.block - before
+    if gained > 0:
+        from sts2_env.core.hooks import fire_after_block_gained
+
+        fire_after_block_gained(target, gained, combat)
+    return gained
+
+
 def _deal_unpowered_damage(
     combat: CombatState, dealer: Creature, target: Creature, base_damage: int,
 ) -> None:
@@ -70,7 +81,7 @@ def _attack_potion(combat: CombatState, user: Creature, target: Creature | None)
 def _block_potion(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Target gains 12 block (unpowered)."""
     t = target if target is not None else user
-    t.gain_block(12)
+    _gain_unpowered_block(t, 12, combat)
 
 
 def _blood_potion(combat: CombatState, user: Creature, target: Creature | None) -> None:
@@ -295,7 +306,7 @@ def _duplicator(combat: CombatState, user: Creature, target: Creature | None) ->
 def _fortifier(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Double target's current block."""
     t = target if target is not None else user
-    t.gain_block(t.block)
+    _gain_unpowered_block(t, t.block * 2, combat)
 
 
 def _fysh_oil(combat: CombatState, user: Creature, target: Creature | None) -> None:
@@ -587,7 +598,7 @@ def _shackling_potion(combat: CombatState, user: Creature, target: Creature | No
 def _ship_in_a_bottle(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Target gains 10 block now and 10 block next turn."""
     t = target if target is not None else user
-    t.gain_block(10)
+    _gain_unpowered_block(t, 10, combat)
     combat.apply_power_to(t, PowerId.BLOCK_NEXT_TURN, 10, applier=user)
 
 
