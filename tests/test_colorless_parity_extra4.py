@@ -215,6 +215,17 @@ class TestColorlessParityExtra4:
         assert enemy.current_hp == 93
         assert combat.player.block == 7
 
+    def test_fisticuffs_does_not_gain_block_after_combat_ending(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = 7
+        combat.hand = [make_fisticuffs()]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+        assert combat.is_over
+        assert combat.player.block == 0
+
     def test_beacon_of_hope_triggers_from_colorless_block_cards(self):
         combat = _make_combat()
         ally = combat.add_ally_player(
