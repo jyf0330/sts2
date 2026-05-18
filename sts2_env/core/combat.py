@@ -2375,7 +2375,7 @@ class CombatState:
     def exhaust_card(self, card: CardInstance | None) -> None:
         from sts2_env.core.hooks import fire_after_card_exhausted
 
-        if card is None:
+        if card is None or (self._combat_started and self.is_over):
             return
         was_in_combat = self._is_card_in_combat(card)
         self._remove_card_from_piles(card)

@@ -16,6 +16,7 @@ from sts2_env.core.enums import CardId, CardType, PowerId
 from sts2_env.core.combat import CombatState
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle
+from sts2_env.relics.registry import create_relic_by_name
 
 
 class _LastRng:
@@ -89,6 +90,28 @@ class TestDefectChoiceParity:
 
         assert status_draw not in combat.draw_pile
         assert status_discard not in combat.discard_pile
+        assert strike in combat.hand
+
+    def test_flak_cannon_stops_exhausting_after_exhaust_ends_combat(self):
+        combat = _make_combat()
+        combat.relics.append(create_relic_by_name("CharonsAshes"))
+        enemy = combat.enemies[0]
+        enemy.current_hp = 3
+        status_hand = make_dazed()
+        status_draw = make_burn()
+        status_discard = make_wound()
+        strike = make_strike_defect()
+
+        combat.hand = [make_flak_cannon(), status_hand, strike]
+        combat.draw_pile = [status_draw]
+        combat.discard_pile = [status_discard]
+        combat.energy = 2
+
+        assert combat.play_card(0)
+        assert combat.is_over
+        assert status_hand in combat.exhaust_pile
+        assert status_draw in combat.draw_pile
+        assert status_discard in combat.discard_pile
         assert strike in combat.hand
 
     def test_compact_transforms_only_status_cards_in_hand_into_fuel(self):
