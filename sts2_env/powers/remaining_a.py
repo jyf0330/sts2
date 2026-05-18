@@ -1599,7 +1599,7 @@ class ForegoneConclusionPower(PowerInstance):
     def before_hand_draw(self, owner: Creature, combat: CombatState) -> None:
         if not getattr(owner, "is_player", False):
             return
-        select = getattr(combat, "select_cards_from_draw_to_hand", None)
+        select = getattr(combat, "search_draw_pile_to_hand", None)
         if select is not None:
             select(owner, self.amount)
         self.amount = 0  # signal removal

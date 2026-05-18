@@ -210,3 +210,32 @@ class TestRegentParityExtra3:
 
         assert first_drawn in combat.exhaust_pile
         assert first_drawn not in combat.hand
+
+    def test_foregone_conclusion_selects_draw_pile_cards_before_hand_draw(self):
+        """Matches ForegoneConclusionPower.cs: choose draw-pile cards into hand before drawing."""
+        combat = _make_combat()
+        skill = create_card(CardId.FOREGONE_CONCLUSION)
+        chosen_a = create_card(CardId.DEFEND_REGENT)
+        chosen_b = create_card(CardId.FALLING_STAR)
+        later_cards = [create_card(CardId.STRIKE_REGENT) for _ in range(5)]
+        combat.hand = [skill]
+        combat.draw_pile = [chosen_a, chosen_b, *later_cards]
+        combat.discard_pile = []
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.FOREGONE_CONCLUSION) == 2
+
+        combat.end_player_turn()
+
+        assert combat.pending_choice is not None
+        assert combat.pending_choice.min_choices == 2
+        assert combat.pending_choice.max_choices == 2
+
+        assert combat.resolve_pending_choice(0)
+        assert combat.resolve_pending_choice(1)
+        assert combat.resolve_pending_choice(None)
+
+        assert chosen_a in combat.hand
+        assert chosen_b in combat.hand
+        assert combat.player.get_power_amount(PowerId.FOREGONE_CONCLUSION) == 0
