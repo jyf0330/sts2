@@ -5,9 +5,11 @@ import sts2_env.powers  # noqa: F401
 from sts2_env.cards.ironclad import create_ironclad_starter_deck, make_inflame
 from sts2_env.cards.ironclad_basic import make_strike_ironclad
 from sts2_env.cards.necrobinder import create_necrobinder_starter_deck
+from sts2_env.cards.regent import create_regent_starter_deck
 from sts2_env.cards.status import make_sweeping_gaze
 from sts2_env.core.combat import CombatState
-from sts2_env.core.enums import CardId, PowerId
+from sts2_env.core.enums import CardId, CombatSide, PowerId
+from sts2_env.core.hooks import fire_after_turn_end
 from sts2_env.powers.base import PowerInstance
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle
@@ -51,6 +53,21 @@ def _make_necrobinder_combat(relics: list[str] | None = None, *, seed: int = 601
     return combat
 
 
+def _make_regent_combat(relics: list[str] | None = None, *, seed: int = 602) -> CombatState:
+    combat = CombatState(
+        player_hp=70,
+        player_max_hp=70,
+        deck=create_regent_starter_deck(),
+        rng_seed=seed,
+        character_id="Regent",
+        relics=relics or [],
+    )
+    creature, ai = create_shrinker_beetle(Rng(seed))
+    combat.add_enemy(creature, ai)
+    combat.start_combat()
+    return combat
+
+
 class TestRelicParityRareShopExtra8:
     def test_big_hat_generates_two_ethereal_cards_on_first_turn(self):
         combat = _make_necrobinder_combat(["BigHat"])
@@ -80,6 +97,17 @@ class TestRelicParityRareShopExtra8:
         combat.end_player_turn()
         assert combat.round_number == 3
         assert combat.energy == 6
+
+    def test_lunar_pastry_does_not_gain_stars_after_combat_ending(self):
+        combat = _make_regent_combat(["LunarPastry"])
+        combat.stars = 0
+        combat.player.stars = 0
+        combat.is_over = True
+
+        fire_after_turn_end(CombatSide.PLAYER, combat)
+
+        assert combat.stars == 0
+        assert combat.player.stars == 0
 
     def test_history_course_replays_last_attack_or_skill_on_next_turn_only_once(self):
         combat = _make_ironclad_combat(["HistoryCourse"])

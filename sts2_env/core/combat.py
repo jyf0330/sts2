@@ -2038,7 +2038,7 @@ class CombatState:
 
     def gain_stars(self, owner: Creature, amount: int) -> None:
         state = self.combat_player_state_for(owner)
-        if state is not None and amount > 0:
+        if not self.is_over and state is not None and amount > 0:
             state.stars += amount
             owner.gain_stars(amount)
             self._stars_gained_this_turn.append((owner, amount))

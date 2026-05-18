@@ -545,7 +545,7 @@ class LunarPastry(RelicInstance):
 
     def after_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         if side == CombatSide.PLAYER:
-            owner.gain_stars(self.STARS)
+            combat.gain_stars(owner, self.STARS)
 
 
 @register_relic

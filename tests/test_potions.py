@@ -325,6 +325,17 @@ class TestPotionInstance:
         assert combat.player.current_hp == player_hp - 12
         assert enemy.current_hp == enemy_hp - 12
 
+    def test_star_potion_uses_combat_gain_stars_gate(self):
+        combat = _make_silent_combat()
+        combat.stars = 0
+        combat.player.stars = 0
+        combat.is_over = True
+
+        create_potion("StarPotion").use(combat, combat.player)
+
+        assert combat.stars == 0
+        assert combat.player.stars == 0
+
     def test_block_potion_block_triggers_after_block_gained_hooks(self):
         combat = _make_silent_combat()
         enemy = combat.enemies[0]

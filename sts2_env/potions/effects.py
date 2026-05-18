@@ -213,8 +213,7 @@ def _star_potion(combat: CombatState, user: Creature, target: Creature | None) -
 
     Stars are a Regent mechanic; calls gain_stars if available.
     """
-    if hasattr(user, "gain_stars"):
-        user.gain_stars(3)
+    combat.gain_stars(user, 3)
 
 
 def _strength_potion(combat: CombatState, user: Creature, target: Creature | None) -> None:

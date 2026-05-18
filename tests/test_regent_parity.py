@@ -212,18 +212,31 @@ class TestRegentParity:
         assert enemy.current_hp == starting_hp - 7
         assert blade.base_damage == 15
 
-    def test_knockout_blow_only_gains_stars_on_kill(self):
-        """Matches KnockoutBlow.cs: stars are granted only if the target dies."""
+    def test_knockout_blow_gains_stars_only_if_combat_continues_after_kill(self):
+        """Matches KnockoutBlow.cs: GainStars is skipped once the final enemy kill makes combat ending."""
         combat = _make_combat()
-        enemy = combat.enemies[0]
-        enemy.current_hp = 10
-        enemy.max_hp = 10
+        first = combat.enemies[0]
+        second, second_ai = create_shrinker_beetle(Rng(43))
+        combat.add_enemy(second, second_ai)
+        first.current_hp = 10
+        first.max_hp = 10
         combat.hand = [create_card(CardId.KNOCKOUT_BLOW)]
         combat.energy = 3
 
         assert combat.play_card(0, 0)
-        assert enemy.is_dead
+        assert first.is_dead
         assert combat.stars == 5
+
+        final_combat = _make_combat()
+        final_enemy = final_combat.enemies[0]
+        final_enemy.current_hp = 10
+        final_enemy.max_hp = 10
+        final_combat.hand = [create_card(CardId.KNOCKOUT_BLOW)]
+        final_combat.energy = 3
+
+        assert final_combat.play_card(0, 0)
+        assert final_combat.is_over
+        assert final_combat.stars == 0
 
     def test_charge_sorts_draw_pile_then_transforms_exact_selected_cards(self):
         """Matches Charge.cs: sorted draw-pile selection, then transform chosen cards into MinionStrike."""

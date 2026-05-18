@@ -151,6 +151,19 @@ def test_gain_energy_card_effect_uses_card_owner_state():
     assert ally_state.energy == 1
 
 
+def test_gain_stars_does_not_gain_after_combat_ending():
+    combat = _make_combat(character_id="Regent")
+    combat.stars = 0
+    combat.player.stars = 0
+    combat.is_over = True
+
+    combat.gain_stars(combat.player, 3)
+
+    assert combat.stars == 0
+    assert combat.player.stars == 0
+    assert combat.count_stars_gained_this_turn(combat.player) == 0
+
+
 def test_seeker_strike_stable_shuffles_draw_pile_before_choice():
     combat = _make_combat()
     combat.rng = _ReverseShuffleRng()
