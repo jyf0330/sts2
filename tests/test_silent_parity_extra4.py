@@ -88,6 +88,18 @@ class TestSilentParityExtra4:
         assert combat.player.block == 12
         assert sum(1 for card in combat.hand if card.card_id == CardId.SHIV) == 3
 
+    def test_cloak_and_dagger_does_not_create_shiv_after_block_ends_combat(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = 5
+        combat.player.apply_power(PowerId.JUGGERNAUT, 5)
+        combat.hand = [make_cloak_and_dagger()]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.is_over
+        assert all(card.card_id != CardId.SHIV for card in combat.hand)
+
     def test_dagger_spray_hits_all_enemies_twice(self):
         combat = _make_combat(extra_enemies=1)
         starts = [enemy.current_hp for enemy in combat.enemies]

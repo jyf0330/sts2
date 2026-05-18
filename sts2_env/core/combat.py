@@ -986,7 +986,7 @@ class CombatState:
         random_position: bool = False,
         bottom_position: bool = False,
     ) -> None:
-        if card is None:
+        if card is None or (self._combat_started and self.is_over):
             return
         self._remove_card_from_piles(card)
         card.owner = owner
