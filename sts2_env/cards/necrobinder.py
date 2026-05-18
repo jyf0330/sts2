@@ -920,7 +920,7 @@ def transfigure(card: CardInstance, combat: CombatState, target: Creature | None
 def undeath(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     _gain_block(card, combat)
     clone = card.clone(combat.rng.next_int(1, 2**31 - 1))
-    combat.move_card_to_discard(clone)
+    combat.add_generated_card_to_creature_discard(_owner(card, combat), clone)
 
 
 # ---------------------------------------------------------------------------

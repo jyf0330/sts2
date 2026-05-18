@@ -160,6 +160,7 @@ class TestNecrobinderParity:
         assert combat.player.block == 7
         clones = [card for card in combat.discard_pile if card.card_id == CardId.UNDEATH]
         assert len(clones) == 2
+        assert combat.count_generated_cards_this_combat(combat.player) == 1
 
     def test_bodyguard_summons_osty_at_card_summon_value(self):
         """Matches Bodyguard.cs: summon Osty using the card's summon value."""
