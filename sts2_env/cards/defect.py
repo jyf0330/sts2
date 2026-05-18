@@ -1122,11 +1122,12 @@ def make_bulk_up() -> CardInstance:
     )
 
 
-def make_capacitor() -> CardInstance:
+def make_capacitor(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.CAPACITOR, cost=1, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
-        effect_vars={"slots": 2}, instance_id=_get_next_id(),
+        upgraded=upgraded,
+        effect_vars={"slots": 3 if upgraded else 2}, instance_id=_get_next_id(),
     )
 
 
