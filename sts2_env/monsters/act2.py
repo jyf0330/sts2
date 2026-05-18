@@ -46,8 +46,14 @@ def _deal_damage_to_player(combat: CombatState, creature: Creature, base_dmg: in
         apply_damage(combat.primary_player, dmg, ValueProp.MOVE, combat, creature)
 
 
-def _gain_block(creature: Creature, amount: int) -> None:
+def _gain_block(creature: Creature, amount: int, combat: CombatState) -> None:
+    before = creature.block
     creature.gain_block(amount)
+    gained = creature.block - before
+    if gained > 0:
+        from sts2_env.core.hooks import fire_after_block_gained
+
+        fire_after_block_gained(creature, gained, combat)
 
 
 def _thieving_hopper_targets(combat: CombatState, creature: Creature) -> list[Creature]:
@@ -185,7 +191,7 @@ def create_tunneler(rng: Rng) -> tuple[Creature, MonsterAI]:
 
     def burrow(combat: CombatState) -> None:
         creature.apply_power(PowerId.BURROWED, 1)
-        _gain_block(creature, burrow_block)
+        _gain_block(creature, burrow_block, combat)
 
     def bite(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, bite_dmg)
@@ -225,7 +231,7 @@ def create_bowlbug_egg(rng: Rng) -> tuple[Creature, MonsterAI]:
 
     def bite(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, bite_dmg)
-        _gain_block(creature, protect_block)
+        _gain_block(creature, protect_block, combat)
 
     states: dict[str, MonsterState] = {
         "BITE_MOVE": MoveState(
@@ -530,7 +536,7 @@ def create_louse_progenitor(rng: Rng) -> tuple[Creature, MonsterAI]:
         combat.apply_power_to(combat.primary_player, PowerId.FRAIL, 2)
 
     def curl_and_grow(combat: CombatState) -> None:
-        _gain_block(creature, curl_block)
+        _gain_block(creature, curl_block, combat)
         creature.apply_power(PowerId.STRENGTH, grow_str)
 
     def pounce(combat: CombatState) -> None:
@@ -772,7 +778,7 @@ def create_the_obscura(rng: Rng) -> tuple[Creature, MonsterAI]:
 
     def hardening_strike(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, hardening_dmg)
-        _gain_block(creature, hardening_block)
+        _gain_block(creature, hardening_block, combat)
 
     rand = RandomBranchState("RAND")
     rand.add_branch("PIERCING_GAZE_MOVE", MoveRepeatType.CANNOT_REPEAT)
@@ -964,13 +970,13 @@ def create_infested_prism(rng: Rng) -> tuple[Creature, MonsterAI]:
 
     def radiate(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, radiate_dmg)
-        _gain_block(creature, radiate_block)
+        _gain_block(creature, radiate_block, combat)
 
     def whirlwind(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, whirlwind_dmg, hits=3)
 
     def pulsate(combat: CombatState) -> None:
-        _gain_block(creature, pulsate_block)
+        _gain_block(creature, pulsate_block, combat)
         creature.apply_power(PowerId.STRENGTH, pulsate_str)
 
     states: dict[str, MonsterState] = {
@@ -1216,7 +1222,7 @@ def create_crusher(rng: Rng) -> tuple[Creature, MonsterAI]:
 
     def guarded_strike(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, guarded_strike_dmg)
-        _gain_block(creature, guarded_block)
+        _gain_block(creature, guarded_block, combat)
 
     states: dict[str, MonsterState] = {
         "THRASH_MOVE": MoveState("THRASH_MOVE", thrash, [attack_intent(thrash_dmg)], follow_up_id="ENLARGING_STRIKE_MOVE"),

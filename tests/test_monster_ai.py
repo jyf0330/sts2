@@ -583,6 +583,29 @@ class TestFixedRotation:
         ai.roll_move(Rng(23))
         assert ai.current_move.state_id == "BITE_MOVE"
 
+    def test_act2_monster_block_moves_trigger_after_block_gained_hooks(self):
+        cases = [
+            (create_tunneler(Rng(1)), "BURROW_MOVE", 32),
+            (create_bowlbug_egg(Rng(2)), "BITE_MOVE", 7),
+            (create_louse_progenitor(Rng(3)), "CURL_AND_GROW_MOVE", 14),
+            (create_the_obscura(Rng(4)), "HARDENING_STRIKE_MOVE", 6),
+            (create_infested_prism(Rng(5)), "RADIATE_MOVE", 16),
+            (create_infested_prism(Rng(6)), "PULSATE_MOVE", 20),
+            (create_crusher(Rng(7)), "GUARDED_STRIKE_MOVE", 18),
+        ]
+
+        for (creature, ai), state_id, expected_block in cases:
+            combat = _make_combat(121)
+            combat.add_enemy(creature, ai)
+            creature.block = 0
+            counter = _BlockHookCounterPower()
+            creature.powers[PowerId.JUGGERNAUT] = counter
+
+            ai.states[state_id].perform(combat)
+
+            assert creature.block == expected_block
+            assert counter.calls == [expected_block]
+
     def test_act2_workbugs_use_original_move_ids_and_setup_powers(self):
         _, egg_ai = create_bowlbug_egg(Rng(24))
         assert egg_ai.current_move.state_id == "BITE_MOVE"
