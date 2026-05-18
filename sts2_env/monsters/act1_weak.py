@@ -35,8 +35,14 @@ def _deal_damage_to_player(combat: CombatState, creature: Creature, base_dmg: in
         apply_damage(combat.primary_player, dmg, ValueProp.MOVE, combat, creature)
 
 
-def _gain_block(creature: Creature, amount: int) -> None:
+def _gain_block(creature: Creature, amount: int, combat: CombatState) -> None:
+    before = creature.block
     creature.gain_block(amount)
+    gained = creature.block - before
+    if gained > 0:
+        from sts2_env.core.hooks import fire_after_block_gained
+
+        fire_after_block_gained(creature, gained, combat)
 
 
 # ---- ShrinkerBeetle (HP 38-40) ----
@@ -102,7 +108,7 @@ def create_nibbit(rng: Rng, is_alone: bool = True, is_front: bool = False) -> tu
 
     def slice_move(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, 6)
-        _gain_block(creature, 5)
+        _gain_block(creature, 5, combat)
 
     def hiss(combat: CombatState) -> None:
         creature.apply_power(PowerId.STRENGTH, 2)

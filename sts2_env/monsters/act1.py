@@ -47,8 +47,14 @@ def _deal_damage_to_player(combat: CombatState, creature: Creature, base_dmg: in
         apply_damage(combat.primary_player, dmg, ValueProp.MOVE, combat, creature)
 
 
-def _gain_block(creature: Creature, amount: int) -> None:
+def _gain_block(creature: Creature, amount: int, combat: CombatState) -> None:
+    before = creature.block
     creature.gain_block(amount)
+    gained = creature.block - before
+    if gained > 0:
+        from sts2_env.core.hooks import fire_after_block_gained
+
+        fire_after_block_gained(creature, gained, combat)
 
 
 # ========================================================================
@@ -76,7 +82,7 @@ def create_cubex_construct(rng: Rng) -> tuple[Creature, MonsterAI]:
         _deal_damage_to_player(combat, creature, expel_dmg, hits=2)
 
     def submerge(combat: CombatState) -> None:
-        _gain_block(creature, 15)
+        _gain_block(creature, 15, combat)
 
     states: dict[str, MonsterState] = {
         "CHARGE_UP_MOVE": MoveState("CHARGE_UP_MOVE", charge_up, [buff_intent()], follow_up_id="REPEATER_MOVE"),
@@ -237,7 +243,7 @@ def create_inklet(rng: Rng, slot: str = "first") -> tuple[Creature, MonsterAI]:
 
     def submerge(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, sub_dmg)
-        _gain_block(creature, sub_block)
+        _gain_block(creature, sub_block, combat)
 
     rand = RandomBranchState("RAND")
     rand.add_branch("SPLATTER", MoveRepeatType.CANNOT_REPEAT)
@@ -343,7 +349,7 @@ def create_slithering_strangler(rng: Rng) -> tuple[Creature, MonsterAI]:
 
     def twack(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, twack_dmg)
-        _gain_block(creature, twack_block)
+        _gain_block(creature, twack_block, combat)
 
     def lash(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, lash_dmg)
@@ -430,7 +436,7 @@ def create_axe_ruby_raider(rng: Rng) -> tuple[Creature, MonsterAI]:
 
     def swing(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, swing_dmg)
-        _gain_block(creature, swing_block)
+        _gain_block(creature, swing_block, combat)
 
     def big_swing(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, big_swing_dmg)
@@ -471,7 +477,7 @@ def create_crossbow_ruby_raider(rng: Rng) -> tuple[Creature, MonsterAI]:
         _deal_damage_to_player(combat, creature, fire_dmg)
 
     def reload(combat: CombatState) -> None:
-        _gain_block(creature, reload_block)
+        _gain_block(creature, reload_block, combat)
 
     states: dict[str, MonsterState] = {
         "RELOAD_MOVE": MoveState("RELOAD_MOVE", reload, [defend_intent()], follow_up_id="FIRE_MOVE"),

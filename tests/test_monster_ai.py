@@ -37,6 +37,7 @@ from sts2_env.encounters.act4 import (
 )
 from sts2_env.encounters.events import setup_mysterious_knight
 from sts2_env.monsters.act1 import (
+    create_axe_ruby_raider,
     create_assassin_ruby_raider,
     create_brute_ruby_raider,
     create_byrdonis,
@@ -129,10 +130,21 @@ from sts2_env.monsters.intents import attack_intent, buff_intent, debuff_intent
 from sts2_env.monsters.state_machine import (
     MonsterAI, MoveState, RandomBranchState, ConditionalBranchState,
 )
+from sts2_env.powers.base import PowerInstance
 from sts2_env.run.rooms import CombatRoom
 
 
 # ---- Helpers ----
+
+class _BlockHookCounterPower(PowerInstance):
+    def __init__(self):
+        super().__init__(PowerId.JUGGERNAUT, 0)
+        self.calls: list[int] = []
+
+    def after_block_gained(self, owner, creature, amount, combat):
+        if creature is owner:
+            self.calls.append(amount)
+
 
 def _noop(combat):
     """Dummy effect for test moves."""
@@ -463,6 +475,29 @@ class TestFixedRotation:
         combat.player.current_hp = 80
         ai.states["LASH"].perform(combat)
         assert combat.player.current_hp == 68
+
+    def test_act1_monster_block_moves_trigger_after_block_gained_hooks(self):
+        from sts2_env.monsters.act1_weak import create_nibbit
+
+        cases = [
+            (create_nibbit(Rng(1)), "SLICE_MOVE", 5),
+            (create_slithering_strangler(Rng(2)), "TWACK", 5),
+            (create_axe_ruby_raider(Rng(3)), "SWING_1", 5),
+            (create_crossbow_ruby_raider(Rng(4)), "RELOAD_MOVE", 3),
+            (create_cubex_construct(Rng(5)), "SUBMERGE_MOVE", 15),
+        ]
+
+        for (creature, ai), state_id, expected_block in cases:
+            combat = _make_combat(120)
+            combat.add_enemy(creature, ai)
+            creature.block = 0
+            counter = _BlockHookCounterPower()
+            creature.powers[PowerId.JUGGERNAUT] = counter
+
+            ai.states[state_id].perform(combat)
+
+            assert creature.block == expected_block
+            assert counter.calls == [expected_block]
 
     def test_thieving_hopper_has_original_stats_and_fixed_escape_rotation(self):
         creature, ai = create_thieving_hopper(Rng(11))
