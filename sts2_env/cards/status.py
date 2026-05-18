@@ -13,6 +13,7 @@ from sts2_env.core.enums import (
     CardId, CardTag, CardType, TargetType, CardRarity, ValueProp, PowerId,
 )
 from sts2_env.core.damage import calculate_damage, apply_damage, calculate_block
+from sts2_env.core.hooks import fire_after_block_gained
 from sts2_env.core.creature import Creature
 from sts2_env.core.combat import CombatState
 
@@ -62,7 +63,16 @@ def _deal_damage_all(card: CardInstance, combat: CombatState) -> None:
 def _gain_block(card: CardInstance, combat: CombatState) -> None:
     owner = _owner(card, combat)
     block = calculate_block(card.base_block, owner, ValueProp.MOVE, combat, card_source=card)
-    owner.gain_block(block)
+    _gain_resolved_block(owner, block, combat)
+
+
+def _gain_resolved_block(creature: Creature, block: int, combat: CombatState) -> int:
+    before = creature.block
+    creature.gain_block(block)
+    gained = creature.block - before
+    if gained > 0:
+        fire_after_block_gained(creature, gained, combat)
+    return gained
 
 
 # ===========================================================================
@@ -666,7 +676,7 @@ def make_enlightenment(upgraded: bool = False) -> CardInstance:
 def entrench_effect(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     # Double current block
     owner = _owner(card, combat)
-    owner.gain_block(owner.block)
+    _gain_resolved_block(owner, owner.block, combat)
 
 
 def make_entrench(upgraded: bool = False) -> CardInstance:
@@ -905,7 +915,7 @@ def stack_effect(card: CardInstance, combat: CombatState, target: Creature | Non
     discard_count = len(state.discard) if state is not None else 0
     total_block = card.effect_vars.get("calc_base", card.base_block or 0) + card.effect_vars.get("calc_extra", 1) * discard_count
     block = calculate_block(total_block, owner, ValueProp.MOVE, combat, card_source=card)
-    owner.gain_block(block)
+    _gain_resolved_block(owner, block, combat)
 
 
 def make_stack(upgraded: bool = False) -> CardInstance:

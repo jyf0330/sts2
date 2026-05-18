@@ -8,6 +8,7 @@ from sts2_env.core.enums import (
     CardId, CardTag, CardType, TargetType, CardRarity, ValueProp, PowerId, RoomType,
 )
 from sts2_env.core.damage import calculate_damage, apply_damage, calculate_block
+from sts2_env.core.hooks import fire_after_block_gained
 from sts2_env.core.creature import Creature
 from sts2_env.core.combat import CombatState
 
@@ -18,6 +19,15 @@ def _owner(card: CardInstance, combat: CombatState) -> Creature:
         or getattr(getattr(combat, "active_card_source", None), "owner", None)
         or combat.primary_player
     )
+
+
+def _gain_resolved_block(creature: Creature, block: int, combat: CombatState) -> int:
+    before = creature.block
+    creature.gain_block(block)
+    gained = creature.block - before
+    if gained > 0:
+        fire_after_block_gained(creature, gained, combat)
+    return gained
 
 
 # ---------------------------------------------------------------------------
@@ -36,7 +46,7 @@ def strike_silent(card: CardInstance, combat: CombatState, target: Creature | No
 def defend_silent(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     owner = _owner(card, combat)
     blk = calculate_block(card.base_block, owner, ValueProp.MOVE, combat, card_source=card)
-    owner.gain_block(blk)
+    _gain_resolved_block(owner, blk, combat)
 
 
 @register_effect(CardId.NEUTRALIZE)
@@ -52,7 +62,7 @@ def neutralize(card: CardInstance, combat: CombatState, target: Creature | None)
 def survivor(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     owner = _owner(card, combat)
     blk = calculate_block(card.base_block, owner, ValueProp.MOVE, combat, card_source=card)
-    owner.gain_block(blk)
+    _gain_resolved_block(owner, blk, combat)
     if not combat.hand:
         return
     combat.request_card_choice(
@@ -91,7 +101,7 @@ def anticipate(card: CardInstance, combat: CombatState, target: Creature | None)
 def backflip(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     owner = _owner(card, combat)
     blk = calculate_block(card.base_block, owner, ValueProp.MOVE, combat, card_source=card)
-    owner.gain_block(blk)
+    _gain_resolved_block(owner, blk, combat)
     combat._draw_cards(card.effect_vars.get("cards", 2))
 
 
@@ -107,7 +117,7 @@ def blade_dance(card: CardInstance, combat: CombatState, target: Creature | None
 def cloak_and_dagger(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     owner = _owner(card, combat)
     blk = calculate_block(card.base_block, owner, ValueProp.MOVE, combat, card_source=card)
-    owner.gain_block(blk)
+    _gain_resolved_block(owner, blk, combat)
     count = card.effect_vars.get("cards", 1)
     for _ in range(count):
         combat.add_generated_card_to_creature_hand(owner, _make_shiv())
@@ -151,15 +161,15 @@ def deadly_poison(card: CardInstance, combat: CombatState, target: Creature | No
 def deflect(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     owner = _owner(card, combat)
     blk = calculate_block(card.base_block, owner, ValueProp.MOVE, combat, card_source=card)
-    owner.gain_block(blk)
+    _gain_resolved_block(owner, blk, combat)
 
 
 @register_effect(CardId.DODGE_AND_ROLL)
 def dodge_and_roll(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     owner = _owner(card, combat)
     blk = calculate_block(card.base_block, owner, ValueProp.MOVE, combat, card_source=card)
-    owner.gain_block(blk)
-    combat.apply_power_to(owner, PowerId.BLOCK_NEXT_TURN, blk)
+    gained = _gain_resolved_block(owner, blk, combat)
+    combat.apply_power_to(owner, PowerId.BLOCK_NEXT_TURN, gained)
 
 
 @register_effect(CardId.FLICK_FLACK)
@@ -265,7 +275,7 @@ def sucker_punch(card: CardInstance, combat: CombatState, target: Creature | Non
 def untouchable(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     owner = _owner(card, combat)
     blk = calculate_block(card.base_block, owner, ValueProp.MOVE, combat, card_source=card)
-    owner.gain_block(blk)
+    _gain_resolved_block(owner, blk, combat)
 
 
 # ---------------------------------------------------------------------------
@@ -289,7 +299,7 @@ def backstab(card: CardInstance, combat: CombatState, target: Creature | None) -
 def blur(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     owner = _owner(card, combat)
     blk = calculate_block(card.base_block, owner, ValueProp.MOVE, combat, card_source=card)
-    owner.gain_block(blk)
+    _gain_resolved_block(owner, blk, combat)
     combat.apply_power_to(owner, PowerId.BLUR, card.effect_vars.get("blur", 1))
 
 
@@ -322,10 +332,10 @@ def calculated_gamble(card: CardInstance, combat: CombatState, target: Creature 
 def dash(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
     owner = _owner(card, combat)
+    blk = calculate_block(card.base_block, owner, ValueProp.MOVE, combat, card_source=card)
+    _gain_resolved_block(owner, blk, combat)
     dmg = calculate_damage(card.base_damage, owner, target, ValueProp.MOVE, combat)
     apply_damage(target, dmg, ValueProp.MOVE, combat, owner)
-    blk = calculate_block(card.base_block, owner, ValueProp.MOVE, combat, card_source=card)
-    owner.gain_block(blk)
 
 
 @register_effect(CardId.ESCAPE_PLAN)
@@ -339,7 +349,7 @@ def escape_plan(card: CardInstance, combat: CombatState, target: Creature | None
         return
     owner = _owner(card, combat)
     blk = calculate_block(card.base_block, owner, ValueProp.MOVE, combat, card_source=card)
-    owner.gain_block(blk)
+    _gain_resolved_block(owner, blk, combat)
 
 
 @register_effect(CardId.EXPERTISE)
@@ -429,7 +439,7 @@ def footwork(card: CardInstance, combat: CombatState, target: Creature | None) -
 def hand_trick(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     owner = _owner(card, combat)
     blk = calculate_block(card.base_block, owner, ValueProp.MOVE, combat, card_source=card)
-    owner.gain_block(blk)
+    _gain_resolved_block(owner, blk, combat)
     candidates = [c for c in combat.hand if c.card_type == CardType.SKILL and not c.is_sly]
     if not candidates:
         return
@@ -501,7 +511,7 @@ def leg_sweep(card: CardInstance, combat: CombatState, target: Creature | None) 
     assert target is not None
     owner = _owner(card, combat)
     blk = calculate_block(card.base_block, owner, ValueProp.MOVE, combat, card_source=card)
-    owner.gain_block(blk)
+    _gain_resolved_block(owner, blk, combat)
     combat.apply_power_to(target, PowerId.WEAK, card.effect_vars.get("weak", 2))
 
 
@@ -527,7 +537,7 @@ def mirage(card: CardInstance, combat: CombatState, target: Creature | None) -> 
     block_amt = total_poison * extra
     owner = _owner(card, combat)
     blk = calculate_block(block_amt, owner, ValueProp.MOVE, combat, card_source=card)
-    owner.gain_block(blk)
+    _gain_resolved_block(owner, blk, combat)
 
 
 @register_effect(CardId.NOXIOUS_FUMES_CARD)

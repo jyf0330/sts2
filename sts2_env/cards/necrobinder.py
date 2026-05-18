@@ -12,6 +12,7 @@ from sts2_env.core.enums import (
     CardId, CardTag, CardType, TargetType, CardRarity, ValueProp, PowerId,
 )
 from sts2_env.core.damage import calculate_damage, apply_damage, calculate_block
+from sts2_env.core.hooks import fire_after_block_gained
 from sts2_env.core.creature import Creature
 from sts2_env.core.combat import CombatState
 
@@ -77,7 +78,16 @@ def _deal_damage_all(card: CardInstance, combat: CombatState) -> None:
 def _gain_block(card: CardInstance, combat: CombatState) -> None:
     owner = _owner(card, combat)
     block = calculate_block(card.base_block, owner, ValueProp.MOVE, combat, card_source=card)
-    owner.gain_block(block)
+    _gain_resolved_block(owner, block, combat)
+
+
+def _gain_resolved_block(creature: Creature, block: int, combat: CombatState) -> int:
+    before = creature.block
+    creature.gain_block(block)
+    gained = creature.block - before
+    if gained > 0:
+        fire_after_block_gained(creature, gained, combat)
+    return gained
 
 
 # ---------------------------------------------------------------------------
@@ -774,7 +784,7 @@ def sacrifice(card: CardInstance, combat: CombatState, target: Creature | None) 
         return
     block_gain = osty.max_hp * 2
     combat.kill_osty(_owner(card, combat))
-    owner.gain_block(block_gain)
+    _gain_resolved_block(owner, block_gain, combat)
 
 
 @register_effect(CardId.SEANCE)

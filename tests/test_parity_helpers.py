@@ -2740,6 +2740,28 @@ class TestStatusParity:
         assert ally.block == 12
         assert combat.player.block == 18
 
+    def test_non_ironclad_block_cards_fire_after_block_gained_hooks(self):
+        cases = [
+            ("Silent", create_ironclad_starter_deck(), make_survivor(), 8),
+            ("Defect", create_defect_starter_deck(), make_charge_battery(), 7),
+            ("Ironclad", create_ironclad_starter_deck(), make_stack(), 3),
+            ("Necrobinder", create_necrobinder_starter_deck(), make_sacrifice(), 10),
+        ]
+        for character_id, deck, card, expected_block in cases:
+            combat = _make_combat(deck, character_id)
+            ally = Creature(max_hp=50, current_hp=50, side=CombatSide.PLAYER, is_player=True)
+            combat.add_ally_player(ally)
+            combat.player.apply_power(PowerId.BEACON_OF_HOPE, 1)
+            combat.hand = [card]
+            combat.energy = 2
+            combat.discard_pile = [make_strike_ironclad(), make_strike_ironclad(), make_bash()]
+            if card.card_id == CardId.SACRIFICE:
+                combat.summon_osty(combat.player, 5)
+
+            assert combat.play_card(0)
+            assert combat.player.block == expected_block
+            assert ally.block == expected_block // 2
+
     def test_fisticuffs_gains_block_equal_to_total_damage(self):
         combat = _make_combat(create_ironclad_starter_deck(), "Ironclad")
         enemy = combat.enemies[0]

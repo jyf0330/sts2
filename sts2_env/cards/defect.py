@@ -9,6 +9,7 @@ from sts2_env.core.enums import (
     CardId, CardType, TargetType, CardRarity, ValueProp, PowerId, OrbType,
 )
 from sts2_env.core.damage import calculate_damage, apply_damage, calculate_block
+from sts2_env.core.hooks import fire_after_block_gained
 from sts2_env.core.creature import Creature
 from sts2_env.core.combat import CombatState
 
@@ -19,6 +20,15 @@ def _owner(card: CardInstance, combat: CombatState) -> Creature:
         or getattr(getattr(combat, "active_card_source", None), "owner", None)
         or combat.primary_player
     )
+
+
+def _gain_resolved_block(creature: Creature, block: int, combat: CombatState) -> int:
+    before = creature.block
+    creature.gain_block(block)
+    gained = creature.block - before
+    if gained > 0:
+        fire_after_block_gained(creature, gained, combat)
+    return gained
 
 
 # ---------------------------------------------------------------------------
@@ -143,7 +153,7 @@ def strike_defect(card: CardInstance, combat: CombatState, target: Creature | No
 def defend_defect(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     owner = _owner(card, combat)
     blk = calculate_block(card.base_block, owner, ValueProp.MOVE, combat, card_source=card)
-    owner.gain_block(blk)
+    _gain_resolved_block(owner, blk, combat)
 
 
 @register_effect(CardId.ZAP)
@@ -197,14 +207,14 @@ def beam_cell(card: CardInstance, combat: CombatState, target: Creature | None) 
 def boost_away(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     owner = _owner(card, combat)
     blk = calculate_block(card.base_block, owner, ValueProp.MOVE, combat, card_source=card)
-    owner.gain_block(blk)
+    _gain_resolved_block(owner, blk, combat)
     combat.add_generated_card_to_creature_discard(owner, _make_dazed())
 
 
 @register_effect(CardId.CHARGE_BATTERY)
 def charge_battery(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     blk = calculate_block(card.base_block, _owner(card, combat), ValueProp.MOVE, combat, card_source=card)
-    _owner(card, combat).gain_block(blk)
+    _gain_resolved_block(_owner(card, combat), blk, combat)
     combat.apply_power_to(_owner(card, combat), PowerId.ENERGY_NEXT_TURN, card.effect_vars.get("energy", 1))
 
 
@@ -277,7 +287,7 @@ def gunk_up(card: CardInstance, combat: CombatState, target: Creature | None) ->
 @register_effect(CardId.HOLOGRAM)
 def hologram(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     blk = calculate_block(card.base_block, _owner(card, combat), ValueProp.MOVE, combat, card_source=card)
-    _owner(card, combat).gain_block(blk)
+    _gain_resolved_block(_owner(card, combat), blk, combat)
     if not combat.discard_pile:
         return
     combat.request_card_choice(
@@ -297,13 +307,13 @@ def hotfix(card: CardInstance, combat: CombatState, target: Creature | None) -> 
 @register_effect(CardId.LEAP)
 def leap(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     blk = calculate_block(card.base_block, _owner(card, combat), ValueProp.MOVE, combat, card_source=card)
-    _owner(card, combat).gain_block(blk)
+    _gain_resolved_block(_owner(card, combat), blk, combat)
 
 
 @register_effect(CardId.LIGHTNING_ROD)
 def lightning_rod(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     blk = calculate_block(card.base_block, _owner(card, combat), ValueProp.MOVE, combat, card_source=card)
-    _owner(card, combat).gain_block(blk)
+    _gain_resolved_block(_owner(card, combat), blk, combat)
     combat.apply_power_to(_owner(card, combat), PowerId.LIGHTNING_ROD, card.effect_vars.get("lightning_rod_power", 2))
 
 
@@ -353,7 +363,7 @@ def uproar(card: CardInstance, combat: CombatState, target: Creature | None) -> 
 @register_effect(CardId.BOOT_SEQUENCE)
 def boot_sequence(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     blk = calculate_block(card.base_block, _owner(card, combat), ValueProp.MOVE, combat, card_source=card)
-    _owner(card, combat).gain_block(blk)
+    _gain_resolved_block(_owner(card, combat), blk, combat)
 
 
 @register_effect(CardId.BULK_UP)
@@ -389,7 +399,7 @@ def compact(card: CardInstance, combat: CombatState, target: Creature | None) ->
     from sts2_env.cards.status import make_fuel
 
     blk = calculate_block(card.base_block, _owner(card, combat), ValueProp.MOVE, combat, card_source=card)
-    _owner(card, combat).gain_block(blk)
+    _gain_resolved_block(_owner(card, combat), blk, combat)
     status_cards = [c for c in list(combat.hand) if c.card_type == CardType.STATUS]
     for status_card in status_cards:
         combat.transform_card(status_card, make_fuel(upgraded=card.upgraded))
@@ -432,7 +442,7 @@ def feral(card: CardInstance, combat: CombatState, target: Creature | None) -> N
 def fight_through(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     owner = _owner(card, combat)
     blk = calculate_block(card.base_block, owner, ValueProp.MOVE, combat, card_source=card)
-    owner.gain_block(blk)
+    _gain_resolved_block(owner, blk, combat)
     for _ in range(card.effect_vars.get("wounds", 2)):
         combat.add_generated_card_to_creature_discard(owner, _make_wound())
 
@@ -456,7 +466,7 @@ def fusion(card: CardInstance, combat: CombatState, target: Creature | None) -> 
 @register_effect(CardId.GLACIER)
 def glacier(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     blk = calculate_block(card.base_block, _owner(card, combat), ValueProp.MOVE, combat, card_source=card)
-    _owner(card, combat).gain_block(blk)
+    _gain_resolved_block(_owner(card, combat), blk, combat)
     _channel_orb(combat, OrbType.FROST)
     _channel_orb(combat, OrbType.FROST)
 
@@ -464,7 +474,7 @@ def glacier(card: CardInstance, combat: CombatState, target: Creature | None) ->
 @register_effect(CardId.GLASSWORK)
 def glasswork(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     blk = calculate_block(card.base_block, _owner(card, combat), ValueProp.MOVE, combat, card_source=card)
-    _owner(card, combat).gain_block(blk)
+    _gain_resolved_block(_owner(card, combat), blk, combat)
     _channel_orb(combat, OrbType.GLASS)
 
 
@@ -564,7 +574,7 @@ def scrape(card: CardInstance, combat: CombatState, target: Creature | None) -> 
 @register_effect(CardId.SHADOW_SHIELD)
 def shadow_shield(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     blk = calculate_block(card.base_block, _owner(card, combat), ValueProp.MOVE, combat, card_source=card)
-    _owner(card, combat).gain_block(blk)
+    _gain_resolved_block(_owner(card, combat), blk, combat)
     _channel_orb(combat, OrbType.DARK)
 
 
@@ -738,7 +748,7 @@ def genetic_algorithm(card: CardInstance, combat: CombatState, target: Creature 
     block_amt = card.effect_vars.get("block", 0)
     owner = _owner(card, combat)
     blk = calculate_block(block_amt, owner, ValueProp.MOVE, combat, card_source=card)
-    owner.gain_block(blk)
+    _gain_resolved_block(owner, blk, combat)
     increase = card.effect_vars.get("increase", 3)
     card.effect_vars["block"] = block_amt + increase
     if card.base_block is not None:

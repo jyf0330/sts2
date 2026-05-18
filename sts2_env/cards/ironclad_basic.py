@@ -6,6 +6,7 @@ from sts2_env.cards.base import CardInstance, _get_next_id
 from sts2_env.cards.registry import register_effect
 from sts2_env.core.enums import CardId, CardType, TargetType, CardRarity, ValueProp, PowerId
 from sts2_env.core.damage import calculate_damage, apply_damage, calculate_block
+from sts2_env.core.hooks import fire_after_block_gained
 from sts2_env.core.creature import Creature
 from sts2_env.core.combat import CombatState
 
@@ -16,6 +17,15 @@ def _owner(card: CardInstance, combat: CombatState) -> Creature:
         or getattr(getattr(combat, "active_card_source", None), "owner", None)
         or combat.primary_player
     )
+
+
+def _gain_resolved_block(creature: Creature, block: int, combat: CombatState) -> int:
+    before = creature.block
+    creature.gain_block(block)
+    gained = creature.block - before
+    if gained > 0:
+        fire_after_block_gained(creature, gained, combat)
+    return gained
 
 
 @register_effect(CardId.STRIKE_IRONCLAD)
@@ -30,7 +40,7 @@ def strike_ironclad(card: CardInstance, combat: CombatState, target: Creature | 
 def defend_ironclad(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     owner = _owner(card, combat)
     block = calculate_block(card.base_block, owner, ValueProp.MOVE, combat, card_source=card)
-    owner.gain_block(block)
+    _gain_resolved_block(owner, block, combat)
 
 
 @register_effect(CardId.BASH)
