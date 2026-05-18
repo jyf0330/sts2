@@ -918,6 +918,15 @@ class TestFixedRotation:
         assert {"DEAD_MOVE", "REATTACH_MOVE", "RAND"}.issubset(segment_ai.states)
         assert segment.get_power_amount(PowerId.REATTACH) == 25
 
+        lethal_segment, lethal_segment_ai = create_decimillipede_segment(Rng(140), starter_idx=1)
+        lethal_combat = _make_combat(140)
+        lethal_combat.add_enemy(lethal_segment, lethal_segment_ai)
+        lethal_combat.player.current_hp = 6
+        lethal_segment_ai.states["BULK_MOVE"].perform(lethal_combat)
+        assert lethal_combat.is_over
+        assert lethal_combat.player_won is False
+        assert lethal_segment.get_power_amount(PowerId.STRENGTH) == 0
+
         combat = _make_combat(41)
         entomancer, entomancer_ai = create_entomancer(Rng(41))
         combat.add_enemy(entomancer, entomancer_ai)

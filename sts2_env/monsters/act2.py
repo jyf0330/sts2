@@ -832,7 +832,7 @@ def create_decimillipede_segment(rng: Rng, starter_idx: int = 0) -> tuple[Creatu
 
     def bulk(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, bulk_dmg)
-        creature.apply_power(PowerId.STRENGTH, 2)
+        combat.apply_power_to(creature, PowerId.STRENGTH, 2, applier=creature)
 
     def dead_move(combat: CombatState) -> None:
         pass
