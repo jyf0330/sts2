@@ -2112,6 +2112,15 @@ class TestFixedRotation:
         assert eel_combat.player.current_hp == 71
         assert eel.get_power_amount(PowerId.VIGOR) == 7
 
+        lethal_eel, lethal_eel_ai = create_terror_eel(Rng(83))
+        lethal_eel_combat = _make_combat(83)
+        lethal_eel_combat.add_enemy(lethal_eel, lethal_eel_ai)
+        lethal_eel_combat.player.current_hp = 6
+        lethal_eel_ai.states["ThrashMove"].perform(lethal_eel_combat)
+        assert lethal_eel_combat.is_over
+        assert lethal_eel_combat.player_won is False
+        assert lethal_eel.get_power_amount(PowerId.VIGOR) == 0
+
         eel_shriek, eel_shriek_ai = create_terror_eel(Rng(82))
         eel_shriek_combat = _make_combat(82)
         eel_shriek_combat.add_enemy(eel_shriek, eel_shriek_ai)

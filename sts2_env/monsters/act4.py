@@ -868,7 +868,7 @@ def create_terror_eel(rng: Rng) -> tuple[Creature, MonsterAI]:
 
     def thrash(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, thrash_dmg, hits=3)
-        creature.apply_power(PowerId.VIGOR, 7, applier=creature)
+        combat.apply_power_to(creature, PowerId.VIGOR, 7, applier=creature)
 
     def stun(combat: CombatState) -> None:
         pass
