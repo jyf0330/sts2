@@ -16,6 +16,7 @@ from sts2_env.cards.necrobinder import (
     make_fear,
     make_fetch,
     make_flatten,
+    make_friendship,
     make_high_five,
     make_invoke,
     make_negative_pulse,
@@ -437,6 +438,24 @@ class TestNecrobinderParityExtra4:
         assert combat.play_card(0, 0)
         assert enemy.current_hp == starting_hp - 6
         assert combat.count_powered_hits_by_dealer_this_turn(osty) == 1
+
+    def test_friendship_lowers_strength_and_grants_friendship_power(self):
+        combat = _make_combat()
+        combat.hand = [make_friendship()]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.STRENGTH) == -2
+        assert combat.player.get_power_amount(PowerId.FRIENDSHIP) == 1
+
+    def test_upgraded_friendship_lowers_strength_by_reduced_amount(self):
+        combat = _make_combat()
+        combat.hand = [make_friendship(upgraded=True)]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.STRENGTH) == -1
+        assert combat.player.get_power_amount(PowerId.FRIENDSHIP) == 1
 
     def test_sic_em_uses_osty_damage_and_power_values(self):
         combat = _make_combat()

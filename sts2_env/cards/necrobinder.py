@@ -484,7 +484,7 @@ def fetch(card: CardInstance, combat: CombatState, target: Creature | None) -> N
 @register_effect(CardId.FRIENDSHIP)
 def friendship(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     strength = card.effect_vars.get("strength", 2)
-    combat.apply_power_to(_owner(card, combat), PowerId.STRENGTH, strength)
+    combat.apply_power_to(_owner(card, combat), PowerId.STRENGTH, -strength)
     combat.apply_power_to(_owner(card, combat), PowerId.FRIENDSHIP, 1)
 
 
