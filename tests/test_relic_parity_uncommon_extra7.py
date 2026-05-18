@@ -129,6 +129,19 @@ class TestRelicParityUncommonExtra7:
         combat._apply_card_after_card_entered_combat(other_owner_card, combat.enemies[0])  # noqa: SLF001
         assert player.block == 2
 
+    def test_regalite_block_triggers_after_block_gained_hooks(self):
+        combat = _make_ironclad_combat(["Regalite"], seed=1209)
+        player = combat.player
+        player.block = 0
+        player.apply_power(PowerId.JUGGERNAUT, 5)
+        enemy = combat.enemies[0]
+        start_hp = enemy.current_hp
+
+        combat.move_card_to_creature_hand(player, create_card(CardId.VOLLEY))
+
+        assert player.block == 2
+        assert enemy.current_hp == start_hp - 5
+
     def test_reptile_trinket_applies_temporary_strength_on_owned_potion_use(self):
         """Matches ReptileTrinket.cs: owned potion use in active combat grants temporary Strength(3)."""
         combat = _make_ironclad_combat(["ReptileTrinket"], seed=1205)

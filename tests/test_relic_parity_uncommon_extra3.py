@@ -6,10 +6,21 @@ from sts2_env.cards.ironclad import create_ironclad_starter_deck
 from sts2_env.cards.ironclad_basic import make_bash, make_defend_ironclad, make_strike_ironclad
 from sts2_env.cards.status import make_void
 from sts2_env.core.combat import CombatState
-from sts2_env.core.enums import CombatSide
+from sts2_env.core.enums import CombatSide, PowerId
 from sts2_env.core.hooks import fire_after_turn_end
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle, create_twig_slime_s
+from sts2_env.powers.base import PowerInstance
+
+
+class _BlockHookCounterPower(PowerInstance):
+    def __init__(self):
+        super().__init__(PowerId.JUGGERNAUT, 0)
+        self.calls: list[int] = []
+
+    def after_block_gained(self, owner, creature, amount, combat):
+        if creature is owner:
+            self.calls.append(amount)
 
 
 def _with_owner(cards: list, owner):
@@ -59,6 +70,16 @@ class TestRelicParityUncommonExtra3:
 
         assert combat.round_number == 3
         assert combat.player.block == 0
+
+    def test_horn_cleat_block_triggers_after_block_gained_hooks(self):
+        combat = _make_ironclad_combat(["HornCleat"], seed=818)
+        counter = _BlockHookCounterPower()
+        combat.player.powers[PowerId.JUGGERNAUT] = counter
+
+        combat.end_player_turn()
+
+        assert combat.player.block == 14
+        assert counter.calls == [14]
 
     def test_kusarigama_counts_attacks_per_turn_and_resets_on_new_turn(self):
         """Matches Kusarigama.cs: every 3 attacks this turn deals 6 to a random enemy."""
@@ -171,6 +192,20 @@ class TestRelicParityUncommonExtra3:
         assert combat.play_card(0, 0)
         assert combat.play_card(0, 0)
         assert combat.player.block == 4
+
+    def test_ornamental_fan_block_triggers_after_block_gained_hooks(self):
+        combat = _make_ironclad_combat(["OrnamentalFan"], seed=819)
+        combat.player.apply_power(PowerId.JUGGERNAUT, 5)
+        enemy = combat.enemies[0]
+        start_hp = enemy.current_hp
+        combat.hand = _with_owner([make_strike_ironclad() for _ in range(3)], combat.player)
+        combat.energy = 3
+
+        for _ in range(3):
+            assert combat.play_card(0, 0)
+
+        assert combat.player.block == 4
+        assert enemy.current_hp == start_hp - 23
 
     def test_joss_paper_draws_on_fifth_non_ethereal_exhaust(self):
         """Matches JossPaper.cs: every 5 exhausted cards draws 1."""

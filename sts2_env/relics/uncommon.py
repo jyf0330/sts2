@@ -21,6 +21,17 @@ if TYPE_CHECKING:
     from sts2_env.core.combat import CombatState
 
 
+def _gain_unpowered_block(owner: Creature, amount: int, combat: CombatState) -> int:
+    before = owner.block
+    owner.gain_block(amount, unpowered=True)
+    gained = owner.block - before
+    if gained > 0:
+        from sts2_env.core.hooks import fire_after_block_gained
+
+        fire_after_block_gained(owner, gained, combat)
+    return gained
+
+
 @lru_cache(maxsize=1)
 def _colorless_card_ids() -> frozenset[object]:
     from sts2_env.cards.factory import eligible_registered_cards
@@ -194,9 +205,10 @@ class GalacticDust(RelicInstance):
 
     def on_stars_spent(self, owner: Creature, amount: int, combat: CombatState) -> None:
         self._stars_spent += amount
-        while self._stars_spent >= self.STARS_THRESHOLD:
-            self._stars_spent -= self.STARS_THRESHOLD
-            owner.gain_block(self.BLOCK, unpowered=True)
+        blocks = self._stars_spent // self.STARS_THRESHOLD
+        if blocks > 0:
+            _gain_unpowered_block(owner, blocks * self.BLOCK, combat)
+            self._stars_spent %= self.STARS_THRESHOLD
 
 
 @register_relic
@@ -255,7 +267,7 @@ class HornCleat(RelicInstance):
 
     def after_block_cleared(self, owner: Creature, creature: Creature, combat: CombatState) -> None:
         if creature is owner and combat.round_number == 2:
-            owner.gain_block(self.BLOCK, unpowered=True)
+            _gain_unpowered_block(owner, self.BLOCK, combat)
 
 
 @register_relic
@@ -462,7 +474,7 @@ class Orichalcum(RelicInstance):
     def before_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         if self._should_trigger:
             self._should_trigger = False
-            owner.gain_block(self.BLOCK, unpowered=True)
+            _gain_unpowered_block(owner, self.BLOCK, combat)
 
     def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         self._should_trigger = False
@@ -490,7 +502,7 @@ class OrnamentalFan(RelicInstance):
                 and hasattr(card, "card_type") and card.card_type == CardType.ATTACK):
             self._attacks_this_turn += 1
             if self._attacks_this_turn % self.ATTACK_THRESHOLD == 0:
-                owner.gain_block(self.BLOCK, unpowered=True)
+                _gain_unpowered_block(owner, self.BLOCK, combat)
 
     def after_combat_end(self, owner: Creature, combat: CombatState) -> None:
         self._attacks_this_turn = 0
@@ -686,7 +698,7 @@ class Regalite(RelicInstance):
             or getattr(card, "card_id", None) in _colorless_card_ids()
         )
         if is_colorless:
-            owner.gain_block(self.BLOCK, unpowered=True)
+            _gain_unpowered_block(owner, self.BLOCK, combat)
 
 
 @register_relic
@@ -733,7 +745,7 @@ class RippleBasin(RelicInstance):
 
     def before_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         if side == CombatSide.PLAYER and self._attacks_played_this_turn == 0:
-            owner.gain_block(self.BLOCK, unpowered=True)
+            _gain_unpowered_block(owner, self.BLOCK, combat)
 
     def after_combat_end(self, owner: Creature, combat: CombatState) -> None:
         self._attacks_played_this_turn = 0
@@ -809,7 +821,7 @@ class TuningFork(RelicInstance):
                 and hasattr(card, "card_type") and card.card_type == CardType.SKILL):
             self._skills_played += 1
             if self._skills_played % self.SKILL_THRESHOLD == 0:
-                owner.gain_block(self.BLOCK, unpowered=True)
+                _gain_unpowered_block(owner, self.BLOCK, combat)
 
 
 @register_relic

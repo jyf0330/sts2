@@ -97,6 +97,18 @@ class TestRelicParityExtra2:
 
         assert combat.player.block == 10
 
+    def test_orichalcum_block_triggers_after_block_gained_hooks(self):
+        combat = _make_ironclad_combat(["Orichalcum"], seed=115)
+        enemy = combat.enemies[0]
+        start_hp = enemy.current_hp
+        combat.player.block = 0
+        combat.player.apply_power(PowerId.JUGGERNAUT, 5)
+
+        fire_before_turn_end(CombatSide.PLAYER, combat)
+
+        assert combat.player.block == 6
+        assert enemy.current_hp == start_hp - 5
+
     def test_mercury_hourglass_hits_all_enemies_each_player_turn_start(self):
         """Matches MercuryHourglass.cs: deal 3 to all enemies every player turn start."""
         combat = _make_ironclad_combat(["MercuryHourglass"], seed=103, enemies=2)

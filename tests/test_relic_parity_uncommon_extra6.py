@@ -171,6 +171,19 @@ class TestRelicParityUncommonExtra6:
             fire_after_card_played(skill_card, combat)
         assert combat.player.block == 14
 
+    def test_tuning_fork_block_triggers_after_block_gained_hooks(self):
+        combat = _make_ironclad_combat(["TuningFork"], seed=1111)
+        combat.player.apply_power(PowerId.JUGGERNAUT, 5)
+        enemy = combat.enemies[0]
+        start_hp = enemy.current_hp
+        skill_card = SimpleNamespace(card_type=CardType.SKILL, owner=combat.player)
+
+        for _ in range(10):
+            fire_after_card_played(skill_card, combat)
+
+        assert combat.player.block == 7
+        assert enemy.current_hp == start_hp - 5
+
     def test_tingsha_only_deals_damage_for_discards_during_player_side(self):
         """Matches Tingsha.cs: discard trigger damages random enemy only on player side."""
         combat = _make_ironclad_combat(["Tingsha"], seed=1106, enemies=2)

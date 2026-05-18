@@ -203,6 +203,18 @@ class TestRelicParityUncommonExtra4:
         fire_before_turn_end(CombatSide.PLAYER, combat)
         assert combat.player.block == 4
 
+    def test_ripple_basin_block_triggers_after_block_gained_hooks(self):
+        combat = _make_ironclad_combat(["RippleBasin"], seed=909)
+        combat.player.block = 0
+        combat.player.apply_power(PowerId.JUGGERNAUT, 5)
+        enemy = combat.enemies[0]
+        start_hp = enemy.current_hp
+
+        fire_before_turn_end(CombatSide.PLAYER, combat)
+
+        assert combat.player.block == 4
+        assert enemy.current_hp == start_hp - 5
+
     def test_self_forming_clay_applies_own_power_only_on_unblocked_damage(self):
         """Matches SelfFormingClay.cs: unblocked damage applies SelfFormingClayPower."""
         combat = _make_ironclad_combat(["SelfFormingClay"], seed=906)

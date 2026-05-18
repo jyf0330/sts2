@@ -10,6 +10,7 @@ from sts2_env.core.enums import CardId, CombatSide, PowerId, RoomType, ValueProp
 from sts2_env.core.hooks import fire_before_side_turn_start
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle, create_twig_slime_s
+from sts2_env.powers.base import PowerInstance
 from sts2_env.run.rooms import RoomVisitContext
 from sts2_env.run.run_state import RunState
 
@@ -18,6 +19,16 @@ def _with_owner(cards: list, owner):
     for card in cards:
         card.owner = owner
     return cards
+
+
+class _BlockHookCounterPower(PowerInstance):
+    def __init__(self):
+        super().__init__(PowerId.JUGGERNAUT, 0)
+        self.calls: list[int] = []
+
+    def after_block_gained(self, owner, creature, amount, combat):
+        if creature is owner:
+            self.calls.append(amount)
 
 
 def _make_ironclad_combat(
@@ -135,6 +146,17 @@ class TestRelicParityUncommonExtra5:
 
         assert combat.spend_stars(combat.player, 13) == 13
         assert combat.player.block == 20
+
+    def test_galactic_dust_multi_threshold_spend_triggers_one_block_gain_hook(self):
+        combat = _make_regent_combat(["GalacticDust"], seed=1018)
+        combat.gain_stars(combat.player, 25)
+        counter = _BlockHookCounterPower()
+        combat.player.powers[PowerId.JUGGERNAUT] = counter
+
+        assert combat.spend_stars(combat.player, 25) == 25
+
+        assert combat.player.block == 20
+        assert counter.calls == [20]
 
     def test_miniature_cannon_boosts_only_upgraded_attack_damage(self):
         """Matches MiniatureCannon.cs: powered upgraded attacks from owner gain +3 additive damage."""
