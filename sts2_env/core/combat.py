@@ -1670,8 +1670,8 @@ class CombatState:
 
     # ---- Card pile operations ----
 
-    def _draw_cards(self, count: int, from_hand_draw: bool = False) -> None:
-        self._draw_cards_for_creature(self.player, count, from_hand_draw=from_hand_draw)
+    def _draw_cards(self, count: int, from_hand_draw: bool = False) -> list[CardInstance]:
+        return self._draw_cards_for_creature(self.player, count, from_hand_draw=from_hand_draw)
 
     def _draw_cards_for_creature(
         self,
@@ -1679,18 +1679,19 @@ class CombatState:
         count: int,
         *,
         from_hand_draw: bool = False,
-    ) -> None:
+    ) -> list[CardInstance]:
         """Draw cards one at a time, reshuffling if needed."""
         from sts2_env.core.hooks import fire_after_card_drawn, should_draw
 
         if self.is_over or self.pending_choice is not None:
-            return
+            return []
         state = self.combat_player_state_for(owner)
         if state is None:
-            return
+            return []
         if not should_draw(self, owner, from_hand_draw):
-            return
+            return []
 
+        drawn_cards: list[CardInstance] = []
         remaining = max(0, count)
         while remaining > 0:
             if len(state.hand) >= MAX_HAND_SIZE:
@@ -1702,19 +1703,21 @@ class CombatState:
                     "remaining": remaining,
                     "from_hand_draw": from_hand_draw,
                 }
-                return
+                return drawn_cards
             if not state.draw:
                 break
             remaining -= 1
             card = state.draw.pop(0)
             setattr(card, "owner", owner)
             state.hand.append(card)
+            drawn_cards.append(card)
             self._draw_events_this_turn.append((owner, from_hand_draw))
             self._draw_events_combat.append(owner)
             self._apply_card_after_card_drawn_early(card, owner)
             fire_after_card_drawn(card, from_hand_draw, self)
             apply_enchantment_on_card_drawn(card, self, from_hand_draw)
             self._invoke_card_drawn(card, from_hand_draw, owner)
+        return drawn_cards
 
     def _resume_pending_draw(self) -> None:
         if self._pending_draw is None:
@@ -2160,9 +2163,10 @@ class CombatState:
             relic.on_stars_spent(owner, spent, self)
         return spent
 
-    def draw_cards(self, owner: Creature, count: int) -> None:
+    def draw_cards(self, owner: Creature, count: int) -> list[CardInstance]:
         if self.combat_player_state_for(owner) is not None and count > 0:
-            self._draw_cards_for_creature(owner, count, from_hand_draw=False)
+            return self._draw_cards_for_creature(owner, count, from_hand_draw=False)
+        return []
 
     def deal_damage(
         self,

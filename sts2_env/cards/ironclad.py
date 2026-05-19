@@ -1242,10 +1242,8 @@ def pillage(card: CardInstance, combat: CombatState, target: Creature | None) ->
     if state is None:
         return
     while len(state.hand) < MAX_HAND_SIZE:
-        previous_hand = {id(hand_card) for hand_card in state.hand}
-        combat.draw_cards(owner, 1)
-        drawn = next((hand_card for hand_card in state.hand if id(hand_card) not in previous_hand), None)
-        if drawn is None or drawn.card_type != CardType.ATTACK:
+        drawn_cards = combat.draw_cards(owner, 1)
+        if not drawn_cards or drawn_cards[0].card_type != CardType.ATTACK:
             break
 
 

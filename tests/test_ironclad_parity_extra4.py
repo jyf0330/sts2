@@ -710,6 +710,24 @@ class TestIroncladParityExtra4:
         assert combat.hand == [first, second, stop]
         assert combat.draw_pile == [remaining]
 
+    def test_pillage_continues_when_drawn_attack_leaves_hand(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.max_hp = 100
+        enemy.current_hp = 100
+        strike = make_strike_ironclad()
+        stop = make_defend_ironclad()
+        remaining = make_strike_ironclad()
+        combat.hand = [make_pillage()]
+        combat.draw_pile = [strike, stop, remaining]
+        combat.energy = 1
+        combat.player.apply_power(PowerId.HELLRAISER, 1)
+
+        assert combat.play_card(0, 0)
+        assert strike not in combat.hand
+        assert stop in combat.hand
+        assert combat.draw_pile == [remaining]
+
     def test_spite_draws_only_after_owner_took_unblocked_damage_this_turn(self):
         combat = _make_combat()
         enemy = combat.enemies[0]
