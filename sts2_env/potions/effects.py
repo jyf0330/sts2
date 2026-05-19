@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from sts2_env.cards.factory import create_cards_from_ids, create_character_cards, eligible_registered_cards
 from sts2_env.core.enums import (
-    CardType, PowerId, ValueProp, PotionTargetType, CardId,
+    CardRarity, CardType, PowerId, ValueProp, PotionTargetType, CardId,
 )
 from sts2_env.core.damage import calculate_damage, apply_damage
 from sts2_env.potions.base import register_potion_effect
@@ -49,6 +49,23 @@ def _deal_unpowered_damage_all(
     """Deal unpowered damage to all hittable enemies."""
     for enemy in list(combat.hittable_enemies):
         _deal_unpowered_damage(combat, dealer, enemy, base_damage)
+
+
+_SOURCE_CARD_RARITY_ORDER = {
+    CardRarity.BASIC: 1,
+    CardRarity.COMMON: 2,
+    CardRarity.UNCOMMON: 3,
+    CardRarity.RARE: 4,
+    CardRarity.ANCIENT: 5,
+    CardRarity.STATUS: 6,
+    CardRarity.CURSE: 7,
+    CardRarity.EVENT: 8,
+    CardRarity.QUEST: 9,
+}
+
+
+def _source_card_order(card) -> tuple[int, str]:
+    return (_SOURCE_CARD_RARITY_ORDER[card.rarity], card.card_id.name)
 
 
 # =====================================================================
@@ -266,8 +283,7 @@ def _ashwater(combat: CombatState, user: Creature, target: Creature | None) -> N
 def _blessing_of_the_forge(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Upgrade all upgradable cards in hand."""
     for card in list(combat.hand):
-        if hasattr(card, "can_upgrade") and card.can_upgrade():
-            card.upgrade()
+        combat.upgrade_card(card)
 
 
 def _bone_brew(combat: CombatState, user: Creature, target: Creature | None) -> None:
@@ -465,11 +481,11 @@ def _distilled_chaos(combat: CombatState, user: Creature, target: Creature | Non
 def _droplet_of_precognition(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Choose a card from draw pile and add to hand.
     """
-    combat._shuffle_if_needed()  # noqa: SLF001
     if combat.draw_pile:
+        candidates = sorted(combat.draw_pile, key=_source_card_order)
         combat.request_card_choice(
             prompt="Choose a draw pile card",
-            cards=list(combat.draw_pile),
+            cards=candidates,
             source_pile="draw",
             resolver=combat.move_card_to_hand,
         )
@@ -615,8 +631,8 @@ def _snecko_oil(combat: CombatState, user: Creature, target: Creature | None) ->
     """Draw 7 cards and randomize costs of all cards in hand (0-3)."""
     combat._draw_cards(7)  # noqa: SLF001
     for card in combat.hand:
-        if hasattr(card, "cost") and card.cost >= 0:
-            card.cost = combat.combat_energy_costs_rng.next_int(0, 3)
+        if hasattr(card, "cost") and not card.has_energy_cost_x and card.cost >= 0:
+            card.set_temporary_cost_for_turn(combat.combat_energy_costs_rng.next_int(0, 3))
 
 
 def _soldiers_stew(combat: CombatState, user: Creature, target: Creature | None) -> None:

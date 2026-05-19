@@ -6,7 +6,11 @@ Verifies potion registry, rarity counts, pool filtering, and instance behavior.
 import pytest
 
 import sts2_env.powers  # noqa: F401
+from sts2_env.cards.defect import make_tempest
+from sts2_env.cards.ironclad import make_bash
 from sts2_env.cards.silent import create_silent_starter_deck
+from sts2_env.cards.silent import make_defend_silent, make_neutralize, make_strike_silent
+from sts2_env.cards.status import make_ascenders_bane, make_byrd_swoop, make_wound
 from sts2_env.core.combat import CombatState
 from sts2_env.core.enums import CardId, CombatSide, PowerId, PotionRarity, PotionUsageType, PotionTargetType
 from sts2_env.core.hooks import fire_after_turn_end
@@ -373,6 +377,130 @@ class TestPotionInstance:
         assert combat.player.block == 10
         assert combat.player.get_power_amount(PowerId.BLOCK_NEXT_TURN) == 10
         assert enemy.current_hp == start_hp - 5
+
+    def test_direct_stat_and_power_potion_effects_match_source_values(self):
+        cases = [
+            ("DexterityPotion", PowerId.DEXTERITY, 2),
+            ("LiquidBronze", PowerId.THORNS, 3),
+            ("HeartOfIron", PowerId.PLATING, 7),
+            ("StableSerum", PowerId.RETAIN_HAND, 2),
+            ("GhostInAJar", PowerId.INTANGIBLE, 1),
+            ("GigantificationPotion", PowerId.GIGANTIFICATION, 1),
+            ("LuckyTonic", PowerId.BUFFER, 1),
+            ("MazalethsGift", PowerId.RITUAL, 1),
+            ("Duplicator", PowerId.DUPLICATION, 1),
+        ]
+        for potion_id, power_id, amount in cases:
+            combat = _make_silent_combat()
+            combat.potions = [create_potion(potion_id), None, None]
+
+            assert combat.use_potion(0)
+
+            assert combat.player.get_power_amount(power_id) == amount
+
+    def test_direct_enemy_debuff_potion_effects_match_source_values(self):
+        cases = [
+            ("VulnerablePotion", PowerId.VULNERABLE, 3),
+            ("WeakPotion", PowerId.WEAK, 3),
+            ("BeetleJuice", PowerId.SHRINK, 4),
+        ]
+        for potion_id, power_id, amount in cases:
+            combat = _make_silent_combat()
+            enemy = combat.enemies[0]
+            combat.potions = [create_potion(potion_id), None, None]
+
+            assert combat.use_potion(0, target_index=0)
+
+            assert enemy.get_power_amount(power_id) == amount
+
+    def test_fysh_oil_and_radiant_tincture_match_source_values(self):
+        combat = _make_silent_combat()
+        combat.potions = [create_potion("FyshOil"), create_potion("RadiantTincture"), None]
+
+        assert combat.use_potion(0)
+        assert combat.player.get_power_amount(PowerId.STRENGTH) == 1
+        assert combat.player.get_power_amount(PowerId.DEXTERITY) == 1
+
+        start_energy = combat.energy
+        assert combat.use_potion(1)
+        assert combat.energy == start_energy + 1
+        assert combat.player.get_power_amount(PowerId.RADIANCE) == 3
+
+    def test_blessing_of_the_forge_upgrades_all_upgradable_hand_cards(self):
+        combat = _make_silent_combat()
+        strike = make_strike_silent()
+        defend = make_defend_silent(upgraded=True)
+        combat.hand = [strike, defend]
+        combat.potions = [create_potion("BlessingOfTheForge"), None, None]
+
+        assert combat.use_potion(0)
+
+        assert strike.upgraded
+        assert defend.upgraded
+
+    def test_droplet_of_precognition_uses_only_current_draw_pile(self):
+        combat = _make_silent_combat()
+        discarded = make_strike_silent()
+        combat.hand = []
+        combat.draw_pile = []
+        combat.discard_pile = [discarded]
+        combat.potions = [create_potion("DropletOfPrecognition"), None, None]
+
+        assert combat.use_potion(0)
+
+        assert combat.pending_choice is None
+        assert combat.hand == []
+        assert combat.draw_pile == []
+        assert combat.discard_pile == [discarded]
+
+    def test_droplet_of_precognition_sorts_draw_pile_like_source(self):
+        combat = _make_silent_combat()
+        strike = make_strike_silent()
+        neutralize = make_neutralize()
+        bash = make_bash()
+        wound = make_wound()
+        curse = make_ascenders_bane()
+        event = make_byrd_swoop()
+        combat.hand = []
+        combat.draw_pile = [event, wound, bash, curse, strike, neutralize]
+        combat.potions = [create_potion("DropletOfPrecognition"), None, None]
+
+        assert combat.use_potion(0)
+
+        assert combat.pending_choice is not None
+        assert [option.card for option in combat.pending_choice.options] == [
+            bash,
+            neutralize,
+            strike,
+            wound,
+            curse,
+            event,
+        ]
+
+    def test_snecko_oil_randomizes_non_x_costs_for_this_turn_only(self):
+        combat = _make_silent_combat()
+        hand_card = make_strike_silent()
+        drawn_card = make_defend_silent()
+        x_cost = make_tempest()
+        hand_card.cost = hand_card.original_cost = 2
+        drawn_card.cost = drawn_card.original_cost = 1
+        x_cost.cost = x_cost.original_cost = 0
+        combat.hand = [hand_card, x_cost]
+        combat.draw_pile = [drawn_card]
+        combat.discard_pile = []
+        combat.potions = [create_potion("SneckoOil"), None, None]
+
+        assert combat.use_potion(0)
+
+        assert "_turn_cost_override" in hand_card.combat_vars
+        assert "_turn_cost_override" in drawn_card.combat_vars
+        assert "_turn_cost_override" not in x_cost.combat_vars
+        assert x_cost.cost == 0
+
+        hand_card.end_of_turn_cleanup()
+        drawn_card.end_of_turn_cleanup()
+        assert hand_card.cost == 2
+        assert drawn_card.cost == 1
 
 
 class TestSpecificPotions:
