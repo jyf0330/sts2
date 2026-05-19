@@ -2196,7 +2196,7 @@ class TrashHeap(EventModel):
     )
 
     def is_allowed(self, run_state: RunState) -> bool:
-        return run_state.player.current_hp > 5
+        return all(player.current_hp > 5 for player in run_state.players)
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
         return [

@@ -8,7 +8,7 @@ from sts2_env.core.enums import CardId
 from sts2_env.cards.silent import make_backstab
 from sts2_env.cards.status import make_clumsy, make_decay, make_doubt, make_exterminate, make_greed, make_guilty, make_injury, make_lantern_key, make_metamorphosis, make_poor_sleep, make_regret, make_squash
 from sts2_env.run.run_manager import RunManager
-from sts2_env.run.run_state import RunState
+from sts2_env.run.run_state import PlayerState, RunState
 from sts2_env.events.shared import BattlewornDummy, Bugslayer, ColorfulPhilosophers, ColossalFlower, Darv, DenseVegetation, DoorsOfLightAndDark, DrowningBeacon, GraveOfTheForgotten, HungryForMushrooms, InfestedAutomaton, LostWisp, Nonupeipe, Orobas, Pael, PunchOff, RoundTeaParty, SpiritGrafter, SunkenStatue, SunkenTreasury, Tanx, Tezcatara, TheLanternKey, ThisOrThat, Trial, TrashHeap, UnrestSite, Vakuu, Wellspring, _event_potion_options
 
 
@@ -229,6 +229,19 @@ def test_trash_heap_uses_event_rng_fixed_relic_and_card_pools():
     assert run_state.player.deck[-1].card_id == CardId.STACK
     assert run_state.rng.up_front.counter == up_front_counter
     assert run_state.rng.rewards.counter == rewards_counter
+
+
+def test_trash_heap_requires_all_players_above_spawn_hp_threshold():
+    run_state = RunState(seed=1932, character_id="Ironclad")
+    run_state.initialize_run()
+    run_state.player.current_hp = 6
+    ally = run_state.add_player(PlayerState(player_id=2, character_id="Silent", current_hp=5))
+    event = TrashHeap()
+
+    assert event.is_allowed(run_state) is False
+
+    ally.current_hp = 6
+    assert event.is_allowed(run_state) is True
 
 
 def test_battleworn_dummy_setting_two_upgrades_two_random_cards():
