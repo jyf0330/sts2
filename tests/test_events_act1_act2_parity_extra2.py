@@ -17,7 +17,7 @@ from sts2_env.events.act2 import (
 from sts2_env.potions.base import create_potion
 from sts2_env.run.reward_objects import CardReward, PotionReward, RelicReward
 from sts2_env.run.run_manager import RunManager
-from sts2_env.run.run_state import RunState
+from sts2_env.run.run_state import PlayerState, RunState
 
 
 def _make_run_state(seed: int = 401) -> RunState:
@@ -318,6 +318,18 @@ def test_waterlogged_scriptorium_tentacle_and_prickly_apply_steady_enchantments(
     prickly_done = event.resolve_pending_choice(None)
     assert prickly_done.finished
     assert all(card.enchantments.get("Steady") == 1 for card in selected_cards)
+
+
+def test_waterlogged_scriptorium_requires_all_players_to_have_spawn_gold():
+    run_state = _make_run_state(4061)
+    run_state.player.gold = 65
+    ally = run_state.add_player(PlayerState(player_id=2, character_id="Silent", gold=64))
+    event = WaterloggedScriptorium()
+
+    assert event.is_allowed(run_state) is False
+
+    ally.gold = 65
+    assert event.is_allowed(run_state) is True
 
 
 def test_waterlogged_scriptorium_prickly_handles_sparse_or_empty_candidates():
