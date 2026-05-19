@@ -867,7 +867,7 @@ class SoarPower(PowerInstance):
     ) -> float:
         if target is not owner:
             return 1.0
-        if not props.is_powered():
+        if not props.is_powered_attack():
             return 1.0
         return self.DAMAGE_DECREASE_PERCENT / 100.0
 
@@ -1478,7 +1478,7 @@ class TankPower(PowerInstance):
     ) -> float:
         if target is not owner:
             return 1.0
-        if not props.is_powered():
+        if not props.is_powered_attack():
             return 1.0
         return 2.0
 
@@ -1540,7 +1540,7 @@ class TheGambitPower(PowerInstance):
         self, owner: Creature, target: Creature, dealer: Creature | None,
         damage: int, props: ValueProp, combat: CombatState
     ) -> None:
-        if target is owner and props.is_powered() and damage > 0:
+        if target is owner and props.is_powered_attack() and damage > 0:
             owner.powers.pop(self.power_id, None)
             combat.kill_creature(owner)
 
@@ -1674,7 +1674,7 @@ class TrackingPower(PowerInstance):
     def modify_damage_multiplicative(
         self, owner: Creature, dealer: Creature | None, target: Creature, props: ValueProp
     ) -> float:
-        if not props.is_powered():
+        if not props.is_powered_attack():
             return 1.0
         if dealer is not owner:
             if not (dealer is not None and getattr(dealer, "pet_owner", None) is owner):

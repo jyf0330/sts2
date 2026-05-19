@@ -66,7 +66,7 @@ class ThornsPower(PowerInstance):
     ) -> None:
         card_source = getattr(combat, "active_card_source", None)
         is_omnislice = getattr(card_source, "card_id", None) == CardId.OMNISLICE
-        if target is owner and dealer is not None and (props.is_powered() or is_omnislice):
+        if target is owner and dealer is not None and (props.is_powered_attack() or is_omnislice):
             combat.deal_damage(
                 dealer=owner,
                 target=dealer,
@@ -105,7 +105,7 @@ class FlameBarrierPower(PowerInstance):
         props: ValueProp,
         combat: CombatState,
     ) -> None:
-        if target is owner and dealer is not None and props.is_powered():
+        if target is owner and dealer is not None and props.is_powered_attack():
             combat.deal_damage(
                 dealer=owner,
                 target=dealer,
@@ -156,7 +156,7 @@ class CurlUpPower(PowerInstance):
         if (
             target is owner
             and self._triggered_card is None
-            and props.is_powered()
+            and props.is_powered_attack()
             and dealer is not None
         ):
             self._triggered_card = getattr(combat, "active_card_source", None)
@@ -225,7 +225,7 @@ class ReflectPower(PowerInstance):
     ) -> None:
         result = getattr(combat, "_active_damage_result", None)
         blocked_amount = getattr(result, "blocked", 0)
-        if target is owner and blocked_amount > 0 and dealer is not None and props.is_powered():
+        if target is owner and blocked_amount > 0 and dealer is not None and props.is_powered_attack():
             combat.deal_damage(
                 dealer=owner,
                 target=dealer,
@@ -345,7 +345,7 @@ class InterceptPower(PowerInstance):
         target: Creature,
         props: ValueProp,
     ) -> float:
-        if target is owner and props.is_powered():
+        if target is owner and props.is_powered_attack():
             return float(len(self._covered_creatures) + 1)
         return 1.0
 

@@ -131,7 +131,7 @@ class GuardedPower(PowerInstance):
     ) -> float:
         if target is not owner:
             return 1.0
-        if not props.is_powered():
+        if not props.is_powered_attack():
             return 1.0
         return 0.5 ** len(self._appliers)
 
@@ -763,7 +763,7 @@ class KnockdownPower(PowerInstance):
             return 1.0
         if target is not owner:
             return 1.0
-        if not props.is_powered():
+        if not props.is_powered_attack():
             return 1.0
         multiplier = 1.0
         for amount, applier in self._instances:
@@ -804,7 +804,7 @@ class LeadershipPower(PowerInstance):
             return 0
         if dealer.side != owner.side:
             return 0
-        if not props.is_powered():
+        if not props.is_powered_attack():
             return 0
         return self.amount
 
@@ -1003,7 +1003,7 @@ class MonarchsGazePower(PowerInstance):
         self, owner: Creature, dealer: Creature, target: Creature,
         damage: int, props: ValueProp, combat: CombatState
     ) -> None:
-        if dealer is owner and props.is_powered():
+        if dealer is owner and props.is_powered_attack():
             combat.apply_power_to(target, PowerId.MONARCHS_GAZE_STRENGTH_DOWN, self.amount, applier=owner)
 
 
@@ -1458,7 +1458,7 @@ class PaperCutsPower(PowerInstance):
     ) -> None:
         if dealer is not owner:
             return
-        if not props.is_powered():
+        if not props.is_powered_attack():
             return
         if damage <= 0:
             return

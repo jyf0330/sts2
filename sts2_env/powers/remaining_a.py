@@ -644,7 +644,7 @@ class ConquerorPower(PowerInstance):
             return 1.0
         if target is not owner:
             return 1.0
-        if not props.is_powered():
+        if not props.is_powered_attack():
             return 1.0
         return 2.0
 
@@ -1132,7 +1132,7 @@ class DiamondDiademPower(PowerInstance):
     def modify_damage_multiplicative(
         self, owner: Creature, dealer: Creature | None, target: Creature, props: ValueProp
     ) -> float:
-        if self.amount > 0 and target is owner and props.is_powered():
+        if self.amount > 0 and target is owner and props.is_powered_attack():
             return 0.5
         return 1.0
 
@@ -1496,7 +1496,7 @@ class FlankingPower(PowerInstance):
     ) -> float:
         if target is not owner:
             return 1.0
-        if not props.is_powered():
+        if not props.is_powered_attack():
             return 1.0
         multiplier = 1.0
         for amount, applier in self._instances:
@@ -1537,7 +1537,7 @@ class FlutterPower(PowerInstance):
     def modify_damage_multiplicative(
         self, owner: Creature, dealer: Creature | None, target: Creature, props: ValueProp
     ) -> float:
-        if target is owner and props.is_powered():
+        if target is owner and props.is_powered_attack():
             return self._DAMAGE_DECREASE_PCT / 100.0
         return 1.0
 
@@ -1545,7 +1545,7 @@ class FlutterPower(PowerInstance):
         self, owner: Creature, target: Creature, dealer: Creature | None,
         damage: int, props: ValueProp, combat: CombatState
     ) -> None:
-        if target is owner and damage > 0 and props.is_powered():
+        if target is owner and damage > 0 and props.is_powered_attack():
             self.amount -= 1
             if self.amount <= 0:
                 combat._remove_power(owner, PowerId.FLUTTER)
@@ -1751,7 +1751,7 @@ class GigantificationPower(PowerInstance):
         card_type = getattr(card, "card_type", None) or getattr(card, "type", None)
         if card_type != CardType.ATTACK:
             return
-        if not getattr(attack, "damage_props", ValueProp.NONE).is_powered():
+        if not getattr(attack, "damage_props", ValueProp.NONE).is_powered_attack():
             return
         if self._command_to_modify is not None:
             return
@@ -1769,7 +1769,7 @@ class GigantificationPower(PowerInstance):
             return 1.0
         if getattr(card, "owner", None) is not owner:
             return 1.0
-        if not props.is_powered():
+        if not props.is_powered_attack():
             return 1.0
         if self._command_to_modify is None or card is getattr(self._command_to_modify, "model_source", None):
             return 3.0

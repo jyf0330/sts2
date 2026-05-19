@@ -44,7 +44,7 @@ class VigorPower(PowerInstance):
     def before_attack(self, owner: Creature, attack: object, combat: CombatState) -> None:
         if getattr(attack, "attacker", None) is not owner:
             return
-        if not getattr(attack, "damage_props", ValueProp.NONE).is_powered():
+        if not getattr(attack, "damage_props", ValueProp.NONE).is_powered_attack():
             return
         if self._command_to_modify is not None:
             return
@@ -59,7 +59,7 @@ class VigorPower(PowerInstance):
     ) -> int:
         if dealer is not owner:
             return 0
-        if not props.is_powered():
+        if not props.is_powered_attack():
             return 0
         active_attack = getattr(owner.combat_state, "active_attack", None)
         active_card_source = getattr(owner.combat_state, "active_card_source", None)
@@ -100,7 +100,7 @@ class DoubleDamagePower(PowerInstance):
     ) -> float:
         if dealer is not owner and getattr(dealer, "pet_owner", None) is not owner:
             return 1.0
-        if not props.is_powered():
+        if not props.is_powered_attack():
             return 1.0
         if getattr(owner.combat_state, "active_card_source", None) is None:
             return 1.0
@@ -154,7 +154,7 @@ class CrueltyPower(PowerInstance):
         """Return additive bonus to Vulnerable multiplier (e.g. +0.25)."""
         if target is owner:
             return 0.0
-        if not props.is_powered():
+        if not props.is_powered_attack():
             return 0.0
         return self.amount / 100.0
 
@@ -201,7 +201,7 @@ class PainfulStabsPower(PowerInstance):
     def after_attack(self, owner: Creature, attack: object, combat: CombatState) -> None:
         if getattr(attack, "attacker", None) is not owner:
             return
-        if not getattr(attack, "damage_props", ValueProp.NONE).is_powered():
+        if not getattr(attack, "damage_props", ValueProp.NONE).is_powered_attack():
             return
         wounds_by_player: dict[Creature, int] = {}
         for result in getattr(attack, "results", ()):
@@ -250,7 +250,7 @@ class LethalityPower(PowerInstance):
     ) -> float:
         if dealer is not owner:
             return 1.0
-        if not props.is_powered():
+        if not props.is_powered_attack():
             return 1.0
         combat = getattr(owner, "combat_state", None)
         card_source = getattr(combat, "active_card_source", None)
@@ -280,7 +280,7 @@ class AccuracyPower(PowerInstance):
     ) -> int:
         if dealer is not owner:
             return 0
-        if not props.is_powered():
+        if not props.is_powered_attack():
             return 0
         card = getattr(owner.combat_state, "active_card_source", None)
         if card is None:

@@ -125,7 +125,7 @@ class ColossusPower(PowerInstance):
     ) -> float:
         if target is not owner:
             return 1.0
-        if not props.is_powered():
+        if not props.is_powered_attack():
             return 1.0
         if dealer is None:
             return 1.0

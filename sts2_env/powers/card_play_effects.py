@@ -340,7 +340,7 @@ class EnvenomPower(PowerInstance):
         props: ValueProp,
         combat: CombatState,
     ) -> None:
-        if dealer is owner and props.is_powered() and damage > 0:
+        if dealer is owner and props.is_powered_attack() and damage > 0:
             combat.apply_power_to(target, PowerId.POISON, self.amount, applier=owner)
 
 
@@ -456,7 +456,7 @@ class PhantomBladesPower(PowerInstance):
         target: Creature,
         props: ValueProp,
     ) -> int:
-        if dealer is not owner or not props.is_powered() or self._shiv_played_this_turn:
+        if dealer is not owner or not props.is_powered_attack() or self._shiv_played_this_turn:
             return 0
         combat = getattr(owner, "combat_state", None)
         if combat is not None and combat.has_card_with_tag_finished_this_turn(owner, CardTag.SHIV):

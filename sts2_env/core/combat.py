@@ -989,7 +989,7 @@ class CombatState:
             if any(
                 getattr(dealer, "is_osty", False)
                 and getattr(dealer, "pet_owner", None) is owner
-                and props.is_powered()
+                and props.is_powered_attack()
                 for dealer, _, props in self._damage_events_this_turn
             ):
                 card.set_temporary_cost_for_turn(0)
@@ -1143,7 +1143,7 @@ class CombatState:
                     card.set_temporary_cost_for_turn(max(0, card.cost - 1))
 
     def _apply_flatten_after_osty_attack(self, dealer: Creature | None, props: ValueProp) -> None:
-        if dealer is None or not getattr(dealer, "is_osty", False) or not props.is_powered():
+        if dealer is None or not getattr(dealer, "is_osty", False) or not props.is_powered_attack():
             return
         owner = getattr(dealer, "pet_owner", None)
         state = self.combat_player_state_for(owner)
@@ -2254,14 +2254,14 @@ class CombatState:
         return sum(
             1
             for logged_dealer, logged_target, props in self._damage_events_this_turn
-            if logged_dealer is dealer and logged_target is target and props.is_powered()
+            if logged_dealer is dealer and logged_target is target and props.is_powered_attack()
         )
 
     def count_powered_hits_by_dealer_this_turn(self, dealer: Creature) -> int:
         return sum(
             1
             for logged_dealer, _, props in self._damage_events_this_turn
-            if logged_dealer is dealer and props.is_powered()
+            if logged_dealer is dealer and props.is_powered_attack()
         )
 
     def count_allied_powered_hits_on_target_this_turn(self, owner: Creature, target: Creature) -> int:
@@ -2272,7 +2272,7 @@ class CombatState:
             and logged_dealer is not None
             and logged_dealer is not owner
             and logged_dealer.side == owner.side
-            and props.is_powered()
+            and props.is_powered_attack()
         )
 
     def count_unblocked_hits_received_this_combat(self, target: Creature) -> int:

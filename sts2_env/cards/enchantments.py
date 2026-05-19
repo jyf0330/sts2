@@ -92,7 +92,7 @@ def reset_combat_enchantments(card: CardInstance) -> None:
 
 
 def enchant_damage_additive(card: CardInstance, props: ValueProp) -> int:
-    if not props.is_powered():
+    if not props.is_powered_attack():
         return 0
     total = 0
     total += card.enchantments.get("Sharp", 0)
@@ -103,7 +103,7 @@ def enchant_damage_additive(card: CardInstance, props: ValueProp) -> int:
 
 
 def enchant_damage_multiplicative(card: CardInstance, props: ValueProp) -> float:
-    if not props.is_powered():
+    if not props.is_powered_attack():
         return 1.0
     if card.has_enchantment("Favored"):
         return 2.0
@@ -113,7 +113,7 @@ def enchant_damage_multiplicative(card: CardInstance, props: ValueProp) -> float
 
 
 def enchant_block_additive(card: CardInstance, props: ValueProp) -> int:
-    if not props.is_powered():
+    if not props.is_powered_card_or_monster_move_block():
         return 0
     total = 0
     total += card.enchantments.get("Nimble", 0)

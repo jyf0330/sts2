@@ -891,7 +891,7 @@ class SuckPower(PowerInstance):
     def after_attack(self, owner: Creature, attack: object, combat: CombatState) -> None:
         if getattr(attack, "attacker", None) is not owner:
             return
-        if not getattr(attack, "damage_props", ValueProp.NONE).is_powered():
+        if not getattr(attack, "damage_props", ValueProp.NONE).is_powered_attack():
             return
         results = [
             result
@@ -1238,7 +1238,7 @@ class CoveredPower(PowerInstance):
         target: Creature,
         props: ValueProp,
     ) -> float:
-        if target is owner and props.is_powered():
+        if target is owner and props.is_powered_attack():
             return 0.0
         return 1.0
 
@@ -1390,7 +1390,7 @@ class PersonalHivePower(PowerInstance):
         props: ValueProp,
         combat: CombatState,
     ) -> None:
-        if target is owner and dealer is not None and props.is_powered():
+        if target is owner and dealer is not None and props.is_powered_attack():
             from sts2_env.cards.status import make_dazed
 
             dazed_owner = dealer

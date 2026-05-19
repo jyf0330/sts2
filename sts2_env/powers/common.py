@@ -193,7 +193,7 @@ class ShrinkPower(PowerInstance):
     def modify_damage_multiplicative(
         self, owner: Creature, dealer: Creature | None, target: Creature, props: ValueProp
     ) -> float:
-        if dealer is owner and props.is_powered():
+        if dealer is owner and props.is_powered_attack():
             return 0.7
         return 1.0
 
