@@ -153,6 +153,20 @@ def test_byrdonis_nest_take_adds_egg_without_counting_as_event_pet():
     assert event.is_allowed(run_state) is True
 
 
+def test_byrdonis_nest_requires_all_players_to_lack_event_pets():
+    run_state = _make_run_state(5051)
+    ally = run_state.add_player(
+        PlayerState(player_id=2, character_id="Silent", relics=["BYRDPIP"])
+    )
+    event = ByrdonisNest()
+
+    assert ally.has_event_pet() is True
+    assert event.is_allowed(run_state) is False
+
+    ally.relics.clear()
+    assert event.is_allowed(run_state) is True
+
+
 def test_sapphire_seed_eat_and_plant_apply_upgrade_and_sown():
     eat_state = _make_run_state(506)
     eat_state.player.current_hp = 60

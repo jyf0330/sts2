@@ -681,7 +681,7 @@ class ByrdonisNest(EventModel):
     event_id = "ByrdonisNest"
 
     def is_allowed(self, run_state: RunState) -> bool:
-        return not run_state.player.has_event_pet()
+        return all(not player.has_event_pet() for player in run_state.players)
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
         return [
