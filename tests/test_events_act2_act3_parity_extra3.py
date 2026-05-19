@@ -17,7 +17,7 @@ from sts2_env.events.act2 import (
 from sts2_env.events.act3 import TheArchitect
 from sts2_env.potions.base import create_potion
 from sts2_env.run.run_manager import RunManager
-from sts2_env.run.run_state import RunState
+from sts2_env.run.run_state import PlayerState, RunState
 
 
 def _make_run_state(seed: int) -> RunState:
@@ -175,6 +175,18 @@ def test_endless_conveyor_observe_and_targeted_dishes_apply_expected_effects():
     eel = event.choose(run_state, "grab")
     assert not eel.finished
     assert len(run_state.player.deck) == deck_before + 1
+
+
+def test_endless_conveyor_requires_all_players_to_have_initial_gold():
+    run_state = _make_run_state(9061)
+    run_state.player.gold = 105
+    ally = run_state.add_player(PlayerState(player_id=2, character_id="Silent", gold=104))
+    event = EndlessConveyor()
+
+    assert event.is_allowed(run_state) is False
+
+    ally.gold = 105
+    assert event.is_allowed(run_state) is True
 
 
 def test_endless_conveyor_excludes_the_dish_it_just_rolled_next_time():

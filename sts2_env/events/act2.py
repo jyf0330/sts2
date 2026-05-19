@@ -196,7 +196,7 @@ class EndlessConveyor(EventModel):
         self._last_dish: str = ""
 
     def is_allowed(self, run_state: RunState) -> bool:
-        return run_state.player.gold >= 105
+        return all(player.gold >= 105 for player in run_state.players)
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
         self._grabs = 0
