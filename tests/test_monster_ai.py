@@ -2640,9 +2640,27 @@ class TestFixedRotation:
         assert [card.card_id for card in primary_state.discard] == [CardId.BECKON]
         assert [card.card_id for card in ally_state.draw] == [CardId.BECKON]
         assert [card.card_id for card in ally_state.discard] == [CardId.BECKON]
+        expected_gaze_damage = 7
+        expected_scream_damage = 11
+        expected_scream_vulnerable = 3
+        assert soul_multiplayer_combat.osty is not None
+        osty_hp_before_gaze = soul_multiplayer_combat.osty.current_hp
+        primary_hp_before_gaze = soul_multiplayer_combat.primary_player.current_hp
+        ally_hp_before_gaze = ally.current_hp
         soul_multiplayer_ai.states["GAZE_MOVE"].perform(soul_multiplayer_combat)
         assert [card.card_id for card in primary_state.discard] == [CardId.BECKON, CardId.BECKON]
         assert [card.card_id for card in ally_state.discard] == [CardId.BECKON, CardId.BECKON]
+        expected_gaze_overflow = expected_gaze_damage - osty_hp_before_gaze
+        assert soul_multiplayer_combat.osty.current_hp == 0
+        assert soul_multiplayer_combat.primary_player.current_hp == primary_hp_before_gaze - expected_gaze_overflow
+        assert ally.current_hp == ally_hp_before_gaze - expected_gaze_damage
+        primary_hp_before_scream = soul_multiplayer_combat.primary_player.current_hp
+        ally_hp_before_scream = ally.current_hp
+        soul_multiplayer_ai.states["SCREAM_MOVE"].perform(soul_multiplayer_combat)
+        assert soul_multiplayer_combat.primary_player.current_hp == primary_hp_before_scream - expected_scream_damage
+        assert ally.current_hp == ally_hp_before_scream - expected_scream_damage
+        assert soul_multiplayer_combat.primary_player.get_power_amount(PowerId.VULNERABLE) == expected_scream_vulnerable
+        assert ally.get_power_amount(PowerId.VULNERABLE) == expected_scream_vulnerable
 
         matriarch, matriarch_ai = create_lagavulin_matriarch(Rng(87))
         matriarch_combat = _make_combat(87)
