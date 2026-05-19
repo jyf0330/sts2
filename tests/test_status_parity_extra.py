@@ -10,10 +10,12 @@ from sts2_env.cards.status import (
     make_beckon,
     make_brightest_flame,
     make_burn,
+    make_caltrops,
     make_debris,
     make_debt,
     make_decay,
     make_doubt,
+    make_entrench,
     make_enthralled,
     make_exterminate,
     make_feeding_frenzy,
@@ -23,7 +25,9 @@ from sts2_env.cards.status import (
     make_mad_science,
     make_maul,
     make_normality,
+    make_outmaneuver,
     make_peck,
+    make_relax,
     make_regret,
     make_rip_and_tear,
     make_shame,
@@ -34,6 +38,7 @@ from sts2_env.cards.status import (
     make_toxic,
     make_toric_toughness,
     make_void,
+    make_whistle,
 )
 from sts2_env.core.combat import CombatState
 from sts2_env.core.enums import CardId, CardType, CombatSide, PowerId, TargetType
@@ -80,6 +85,55 @@ class _FirstRng:
 
 
 class TestStatusParityExtra:
+    def test_caltrops_applies_thorns_power(self):
+        combat = _make_combat()
+        combat.hand = [make_caltrops(upgraded=True)]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.THORNS) == 5
+
+    def test_entrench_doubles_current_block_without_block_modifiers(self):
+        combat = _make_combat()
+        combat.player.block = 6
+        combat.player.apply_power(PowerId.NO_BLOCK, 1)
+        combat.hand = [make_entrench(upgraded=True)]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.player.block == 12
+
+    def test_outmaneuver_applies_energy_next_turn(self):
+        combat = _make_combat()
+        combat.hand = [make_outmaneuver(upgraded=True)]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.ENERGY_NEXT_TURN) == 3
+
+    def test_relax_gains_block_and_next_turn_draw_and_energy(self):
+        combat = _make_combat()
+        combat.hand = [make_relax(upgraded=True)]
+        combat.energy = 3
+
+        assert combat.play_card(0)
+        assert combat.player.block == 17
+        assert combat.player.get_power_amount(PowerId.DRAW_CARDS_NEXT_TURN) == 3
+        assert combat.player.get_power_amount(PowerId.ENERGY_NEXT_TURN) == 3
+
+    def test_whistle_deals_damage_stuns_target_and_exhausts(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = enemy.max_hp = 100
+        card = make_whistle(upgraded=True)
+        combat.hand = [card]
+        combat.energy = 3
+
+        assert combat.play_card(0, 0)
+        assert enemy.current_hp == 56
+        assert combat.enemy_ais[enemy.combat_id].current_move.state_id == "STUNNED"
+        assert card in combat.exhaust_pile
+
     def test_maul_play_grows_all_owner_maul_copies_and_upgrade_preserves_growth(self):
         combat = _make_combat()
         played = make_maul()

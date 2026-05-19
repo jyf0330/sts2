@@ -21,6 +21,10 @@ The detailed backlog sections below were captured as the pre-pass baseline. Afte
 
 Latest local pass also added direct coverage for:
 
+- Cards: `CALTROPS`, `ENTRENCH`, `OUTMANEUVER`, `RELAX`, `WHISTLE`
+
+Latest local pass also added direct coverage for:
+
 - Cards: `BURY`, `CALCIFY_CARD`, `DEFY`, `DEMESNE`, `DEVOUR_LIFE_CARD`, `LETHALITY_CARD`, `SCOURGE`, `SHARED_FATE`, `SQUEEZE`, `TIMES_UP`
 
 This pass also exposed and fixed the following logic mismatch:
