@@ -185,6 +185,17 @@ class TestNecrobinderParityExtra4:
         assert combat.play_card(0)
         assert combat.player.get_power_amount(PowerId.CALCIFY) == 6
 
+    def test_calcify_adds_damage_to_owner_osty_attacks(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        osty = combat.summon_osty(combat.player, 5)
+        assert osty is not None
+        combat.player.apply_power(PowerId.CALCIFY, 4)
+
+        combat.deal_damage(osty, enemy, 3, ValueProp.MOVE)
+
+        assert enemy.current_hp == enemy.max_hp - 7
+
     def test_defy_gains_block_and_applies_weak(self):
         combat = _make_combat()
         enemy = combat.enemies[0]

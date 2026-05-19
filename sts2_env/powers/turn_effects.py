@@ -952,10 +952,13 @@ class CalcifyPower(PowerInstance):
     def modify_damage_additive(
         self, owner: Creature, dealer: Creature | None, target: Creature, props: ValueProp
     ) -> int:
-        # In the sim, if the dealer is the owner's pet and attack is powered
-        if dealer is not None and props.is_powered():
-            if getattr(dealer, "is_pet_of", None) is owner:
-                return self.amount
+        if (
+            dealer is not None
+            and getattr(dealer, "is_osty", False)
+            and getattr(dealer, "pet_owner", None) is owner
+            and props.is_powered_attack()
+        ):
+            return self.amount
         return 0
 
 

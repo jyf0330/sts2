@@ -755,7 +755,7 @@ class SlowPower(PowerInstance):
     ) -> float:
         if target is not owner:
             return 1.0
-        if not props.is_powered():
+        if not props.is_powered_attack():
             return 1.0
         return 1.0 + 0.1 * self._slow_amount
 
@@ -1677,8 +1677,7 @@ class TrackingPower(PowerInstance):
         if not props.is_powered():
             return 1.0
         if dealer is not owner:
-            # Check if dealer is a pet of the owner
-            if not (dealer is not None and getattr(dealer, "is_pet_of", None) is owner):
+            if not (dealer is not None and getattr(dealer, "pet_owner", None) is owner):
                 return 1.0
         if target is None or not target.has_power(PowerId.WEAK):
             return 1.0

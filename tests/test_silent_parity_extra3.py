@@ -17,7 +17,7 @@ from sts2_env.cards.silent import (
     make_tracking,
 )
 from sts2_env.core.combat import CombatState
-from sts2_env.core.enums import CardId, CombatSide, PowerId
+from sts2_env.core.enums import CardId, CombatSide, PowerId, ValueProp
 from sts2_env.core.hooks import fire_after_side_turn_start, fire_after_turn_end
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle
@@ -192,6 +192,18 @@ class TestSilentParityExtra3:
         baseline_damage = baseline_start_hp - baseline_enemy.current_hp
 
         assert tracked_damage == baseline_damage * 2
+
+    def test_tracking_applies_to_owner_pet_attacks(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.apply_power(PowerId.WEAK, 1)
+        pet = combat.summon_event_pet(combat.player, "PAELS_LEGION")
+        assert pet is not None
+        combat.player.apply_power(PowerId.TRACKING, 2)
+
+        combat.deal_damage(pet, enemy, 5, ValueProp.MOVE)
+
+        assert enemy.current_hp == enemy.max_hp - 10
 
     def test_malaise_uses_x_energy_for_strength_and_weak_and_allows_zero_energy_play(self):
         combat = _make_combat()
