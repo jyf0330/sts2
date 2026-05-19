@@ -132,8 +132,8 @@ def setup_overgrowth_crawlers(combat: CombatState, rng: Rng) -> None:
 
 def setup_ruby_raiders_normal(combat: CombatState, rng: Rng) -> None:
     raider_creators = [
-        create_assassin_ruby_raider,
         create_axe_ruby_raider,
+        create_assassin_ruby_raider,
         create_brute_ruby_raider,
         create_crossbow_ruby_raider,
         create_tracker_ruby_raider,

@@ -292,10 +292,19 @@ class TestAct1NormalEncounters:
             "FIRST_ACID_GOOP",
         ]
 
-    def test_ruby_raiders_count(self):
+    def test_ruby_raiders_normal_samples_three_unique_raiders_in_original_pool_order(self):
+        encounter_seed = 42
+        expected_raiders_for_seed = [
+            "CROSSBOW_RUBY_RAIDER",
+            "AXE_RUBY_RAIDER",
+            "ASSASSIN_RUBY_RAIDER",
+        ]
         combat = _make_combat()
-        setup_ruby_raiders_normal(combat, Rng(42))
-        assert len(combat.enemies) == 3
+
+        setup_ruby_raiders_normal(combat, Rng(encounter_seed))
+
+        assert [enemy.monster_id for enemy in combat.enemies] == expected_raiders_for_seed
+        assert len(set(enemy.monster_id for enemy in combat.enemies)) == len(expected_raiders_for_seed)
 
     def test_slimes_normal_count(self):
         seen_small_orders = set()
