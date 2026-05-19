@@ -41,10 +41,12 @@ if TYPE_CHECKING:
 
 def _deal_damage_to_player(combat: CombatState, creature: Creature, base_dmg: int, hits: int = 1) -> None:
     for _ in range(hits):
-        if combat.primary_player.is_dead:
+        targets = living_player_targets(combat)
+        if not targets:
             break
-        dmg = calculate_damage(base_dmg, creature, combat.primary_player, ValueProp.MOVE, combat)
-        apply_damage(combat.primary_player, dmg, ValueProp.MOVE, combat, creature)
+        for target in targets:
+            dmg = calculate_damage(base_dmg, creature, target, ValueProp.MOVE, combat)
+            apply_damage(target, dmg, ValueProp.MOVE, combat, creature)
         combat._check_combat_end()  # noqa: SLF001
         if combat.is_over:
             break

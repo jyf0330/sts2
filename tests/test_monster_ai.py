@@ -348,6 +348,9 @@ class TestFixedRotation:
 
     def test_the_insatiable_liquify_applies_sandpit_and_frantic_escape(self):
         rng = Rng(7)
+        ally_player_id = 2
+        ally_character_id = "Silent"
+        ally_hp = 70
         combat = CombatState(
             player_hp=80,
             player_max_hp=80,
@@ -355,6 +358,18 @@ class TestFixedRotation:
             rng_seed=7,
             character_id="Ironclad",
         )
+        ally = combat.add_ally_player(
+            PlayerState(
+                player_id=ally_player_id,
+                character_id=ally_character_id,
+                max_hp=ally_hp,
+                current_hp=ally_hp,
+            )
+        )
+        ally_state = combat.combat_player_state_for(ally)
+        assert ally_state is not None
+        ally_state.draw.clear()
+        ally_state.discard.clear()
         creature, ai = create_the_insatiable(rng)
         combat.add_enemy(creature, ai)
 
@@ -363,11 +378,25 @@ class TestFixedRotation:
 
         sandpit = creature.powers.get(PowerId.SANDPIT)
         assert sandpit is not None
-        assert getattr(sandpit, "target", None) is combat.player
+        sandpit_instances = getattr(sandpit, "_instances", [])  # noqa: SLF001
+        assert [target for _, target in sandpit_instances] == [combat.player, ally]
         draw_frantic = [card for card in combat.draw_pile if card.card_id == CardId.FRANTIC_ESCAPE]
         discard_frantic = [card for card in combat.discard_pile if card.card_id == CardId.FRANTIC_ESCAPE]
         assert len(draw_frantic) == 3
         assert len(discard_frantic) == 3
+        ally_draw_frantic = [card for card in ally_state.draw if card.card_id == CardId.FRANTIC_ESCAPE]
+        ally_discard_frantic = [card for card in ally_state.discard if card.card_id == CardId.FRANTIC_ESCAPE]
+        assert len(ally_draw_frantic) == 3
+        assert len(ally_discard_frantic) == 3
+        expected_thrash_damage = 8
+        expected_thrash_hits = 2
+        primary_hp_before_thrash = combat.primary_player.current_hp
+        ally_hp_before_thrash = ally.current_hp
+        ai.roll_move(rng)
+        assert ai.current_move.state_id == "THRASH_MOVE_1"
+        ai.current_move.perform(combat)
+        assert combat.primary_player.current_hp == primary_hp_before_thrash - expected_thrash_damage * expected_thrash_hits
+        assert ally.current_hp == ally_hp_before_thrash - expected_thrash_damage * expected_thrash_hits
 
     def test_knowledge_demon_curse_choice_pauses_enemy_turn_and_resumes_after_choice(self):
         combat = CombatState(
