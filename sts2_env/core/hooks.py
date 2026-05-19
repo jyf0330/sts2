@@ -856,11 +856,7 @@ def fire_after_energy_reset(combat: CombatState, reset_owner: Creature | None = 
             continue
         relic.after_energy_reset_late(owner, combat)
     if reset_owner is not None:
-        owners = getattr(combat, "_after_energy_reset_owners_this_turn", None)
-        if owners is None:
-            owners = set()
-            combat._after_energy_reset_owners_this_turn = owners
-        owners.add(reset_owner)
+        combat.mark_energy_reset_this_turn(reset_owner)
 
 
 def fire_after_energy_spent(owner: Creature, card: object, amount: int, combat: CombatState) -> None:

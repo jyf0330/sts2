@@ -165,6 +165,7 @@ class CombatState:
         self._power_events_this_turn: list[tuple[Creature, PowerId, int, Creature | None]] = []
         self._generated_cards_combat: list[tuple[Creature, bool]] = []
         self._energy_spent_this_turn: dict[Creature, int] = {}
+        self._after_energy_reset_owners_this_turn: set[Creature] = set()
         self._orb_channel_events_combat: list[tuple[Creature, object]] = []
         self._active_card_source: object | None = None
         self._active_card_target: Creature | None = None
@@ -2320,6 +2321,12 @@ class CombatState:
 
     def energy_spent_this_turn(self, owner: Creature) -> int:
         return self._energy_spent_this_turn.get(owner, 0)
+
+    def has_energy_reset_this_turn(self, owner: Creature) -> bool:
+        return owner in self._after_energy_reset_owners_this_turn
+
+    def mark_energy_reset_this_turn(self, owner: Creature) -> None:
+        self._after_energy_reset_owners_this_turn.add(owner)
 
     def count_cards_drawn_this_combat(self, owner: Creature) -> int:
         return sum(1 for logged_owner in self._draw_events_combat if logged_owner is owner)

@@ -1728,7 +1728,7 @@ class GenesisPower(PowerInstance):
         if (
             side != owner.side
             or not getattr(owner, "is_player", False)
-            or owner in getattr(combat, "_after_energy_reset_owners_this_turn", set())
+            or combat.has_energy_reset_this_turn(owner)
         ):
             return
         self.after_energy_reset(owner, combat)

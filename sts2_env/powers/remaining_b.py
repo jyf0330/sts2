@@ -837,7 +837,7 @@ class LightningRodPower(PowerInstance):
         if (
             side == owner.side
             and owner.is_player
-            and owner not in getattr(combat, "_after_energy_reset_owners_this_turn", set())
+            and not combat.has_energy_reset_this_turn(owner)
         ):
             self.after_energy_reset(owner, combat)
 
@@ -1754,7 +1754,7 @@ class RadiancePower(PowerInstance):
         if (
             side == owner.side
             and owner.is_player
-            and owner not in getattr(combat, "_after_energy_reset_owners_this_turn", set())
+            and not combat.has_energy_reset_this_turn(owner)
         ):
             self.after_energy_reset(owner, combat)
 

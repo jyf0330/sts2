@@ -974,7 +974,7 @@ class SpinnerPower(PowerInstance):
     def after_side_turn_start(
         self, owner: Creature, side: CombatSide, combat: CombatState
     ) -> None:
-        if side == owner.side and owner not in getattr(combat, "_after_energy_reset_owners_this_turn", set()):
+        if side == owner.side and not combat.has_energy_reset_this_turn(owner):
             self.after_energy_reset(owner, combat)
 
 
