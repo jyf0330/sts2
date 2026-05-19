@@ -1811,13 +1811,10 @@ class ReaperFormPower(PowerInstance):
     ) -> None:
         if dealer is None:
             return
-        is_owner_or_pet = (dealer is owner) or (
-            getattr(dealer, "pet_owner", None) is not None
-            and getattr(dealer.pet_owner, "creature", None) is owner
-        )
+        is_owner_or_pet = dealer is owner or getattr(dealer, "pet_owner", None) is owner
         if not is_owner_or_pet:
             return
-        if not props.is_powered():
+        if not props.is_powered_attack():
             return
         result = getattr(combat, "_active_damage_result", None)
         total_damage = getattr(result, "total_damage", damage)

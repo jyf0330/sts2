@@ -704,6 +704,18 @@ class TestDamageModifierInteractions:
         assert simple_combat.energy == 1
         assert ally_state.energy == 1
 
+    def test_vital_spark_grants_energy_to_osty_owner(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        enemy.apply_power(PowerId.VITAL_SPARK, 1)
+        osty = simple_combat.summon_osty(player, 5)
+        assert osty is not None
+        simple_combat.energy = 0
+
+        simple_combat.deal_damage(osty, enemy, 0, ValueProp.MOVE)
+
+        assert simple_combat.energy == 1
+
     def test_personal_hive_adds_dazed_to_osty_owner_draw_pile(self, simple_combat):
         player = simple_combat.player
         enemy = simple_combat.enemies[0]

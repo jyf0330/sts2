@@ -550,6 +550,18 @@ class TestNecrobinderParityExtra4:
 
         assert enemy.get_power_amount(PowerId.DOOM) == 10
 
+    def test_reaper_form_doom_applies_from_owner_osty_damage(self):
+        combat = _make_combat()
+        player = combat.player
+        enemy = combat.enemies[0]
+        osty = combat.summon_osty(player, 5)
+        assert osty is not None
+        player.apply_power(PowerId.REAPER_FORM, 1)
+
+        combat.deal_damage(dealer=osty, target=enemy, amount=4, props=ValueProp.MOVE)
+
+        assert enemy.get_power_amount(PowerId.DOOM) == 4
+
     def test_necro_mastery_damage_hits_only_hittable_enemies(self):
         combat = _make_combat(extra_enemies=1)
         blocked, hittable = combat.enemies

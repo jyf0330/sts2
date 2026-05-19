@@ -1861,14 +1861,13 @@ class VitalSparkPower(PowerInstance):
         if target is not owner:
             return
         result = getattr(combat, "_active_damage_result", None)
-        if dealer is None or not props.is_powered() or getattr(result, "was_fully_blocked", False):
+        if dealer is None or not props.is_powered_attack() or getattr(result, "was_fully_blocked", False):
             return
-        # Resolve the actual player creature (handle pet -> owner)
         attacker = dealer
         if getattr(dealer, "is_pet", False):
             pet_owner = getattr(dealer, "pet_owner", None)
             if pet_owner is not None:
-                attacker = getattr(pet_owner, "creature", dealer)
+                attacker = pet_owner
         if getattr(attacker, "is_player", False):
             if attacker in self._triggered_players_this_turn:
                 return
