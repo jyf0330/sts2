@@ -59,6 +59,7 @@ from sts2_env.monsters.act1 import (
     create_phrog_parasite,
     create_slithering_strangler,
     create_tracker_ruby_raider,
+    create_vantom,
 )
 from sts2_env.monsters.act1_weak import create_leaf_slime_m
 from sts2_env.monsters.act4 import (
@@ -861,6 +862,64 @@ class TestFixedRotation:
         assert combat.is_over
         assert combat.player_won is False
         assert creature.get_power_amount(PowerId.STRENGTH) == 0
+
+    def test_vantom_matches_original_cycle_and_status_targets(self):
+        rng_seed = 1250
+        ally_hp = 100
+        osty_hp = 100
+        ink_blot_damage = 7
+        inky_lance_damage = 6
+        inky_lance_hits = 2
+        dismember_damage = 27
+        dismember_wounds = 3
+        prepare_strength = 2
+        combat = _make_combat(rng_seed)
+        ally = _add_test_ally(combat, hp=ally_hp)
+        primary_state = combat.combat_player_state_for(combat.primary_player)
+        ally_state = combat.combat_player_state_for(ally)
+        assert primary_state is not None
+        assert ally_state is not None
+        primary_state.discard.clear()
+        ally_state.discard.clear()
+        osty = combat.summon_osty(combat.primary_player, osty_hp)
+        assert osty is not None
+        creature, ai = create_vantom(Rng(rng_seed))
+        combat.add_enemy(creature, ai)
+
+        assert creature.max_hp == 173
+        assert creature.get_power_amount(PowerId.SLIPPERY) == 9
+        assert _run_ai(ai, Rng(rng_seed), 5) == [
+            "INK_BLOT_MOVE",
+            "INKY_LANCE_MOVE",
+            "DISMEMBER_MOVE",
+            "PREPARE_MOVE",
+            "INK_BLOT_MOVE",
+        ]
+
+        primary_hp_before = combat.primary_player.current_hp
+        ally_hp_before = ally.current_hp
+        osty_hp_before = osty.current_hp
+        ai.states["INK_BLOT_MOVE"].perform(combat)
+        ai.states["INKY_LANCE_MOVE"].perform(combat)
+        ai.states["DISMEMBER_MOVE"].perform(combat)
+        ai.states["PREPARE_MOVE"].perform(combat)
+
+        assert combat.primary_player.current_hp == primary_hp_before
+        assert ally.current_hp == ally_hp_before - ink_blot_damage - inky_lance_damage * inky_lance_hits - dismember_damage
+        assert osty.current_hp == osty_hp_before - ink_blot_damage - inky_lance_damage * inky_lance_hits - dismember_damage
+        assert [card.card_id for card in primary_state.discard] == [CardId.WOUND] * dismember_wounds
+        assert [card.card_id for card in ally_state.discard] == [CardId.WOUND] * dismember_wounds
+        assert combat.combat_player_state_for(osty) is None
+        assert creature.get_power_amount(PowerId.STRENGTH) == prepare_strength
+
+        lethal_combat = _make_combat(rng_seed + 1)
+        lethal_creature, lethal_ai = create_vantom(Rng(rng_seed + 1))
+        lethal_combat.add_enemy(lethal_creature, lethal_ai)
+        lethal_combat.player.current_hp = dismember_damage
+        lethal_ai.states["DISMEMBER_MOVE"].perform(lethal_combat)
+        assert lethal_combat.is_over
+        assert lethal_combat.player_won is False
+        assert lethal_combat.discard_pile == []
 
     def test_cubex_initial_room_setup_triggers_after_block_gained_hook(self):
         combat = _make_combat(121)

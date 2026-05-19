@@ -25,7 +25,7 @@ from sts2_env.monsters.targets import (
     apply_power_to_living_player_targets,
     living_player_targets,
 )
-from sts2_env.cards.status import make_dazed, make_infection
+from sts2_env.cards.status import make_dazed, make_infection, make_wound
 
 if TYPE_CHECKING:
     from sts2_env.core.combat import CombatState
@@ -639,7 +639,7 @@ def create_phrog_parasite(rng: Rng) -> tuple[Creature, MonsterAI]:
 # BOSS ENCOUNTERS
 # ========================================================================
 
-# ---- Vantom (HP 206 / 216 asc) ----
+# ---- Vantom (HP 173 / 183 asc) ----
 
 def create_parafright(rng: Rng) -> tuple[Creature, MonsterAI]:
     creature = Creature(max_hp=21, monster_id="PARAFRIGHT")
@@ -657,42 +657,59 @@ def create_parafright(rng: Rng) -> tuple[Creature, MonsterAI]:
 
 
 def create_vantom(rng: Rng) -> tuple[Creature, MonsterAI]:
-    hp = 206
+    hp = 173
     creature = Creature(max_hp=hp, monster_id="VANTOM")
-    chomp_dmg = 9
-    ghastly_dmg = 22
-    wail_dmg = 5
-    consume_parafrights = 2
+    ink_blot_dmg = 7
+    inky_lance_dmg = 6
+    inky_lance_hits = 2
+    dismember_dmg = 27
+    dismember_wounds = 3
+    prepare_strength = 2
+    slippery_amount = 9
 
-    def consume(combat: CombatState) -> None:
-        for _ in range(consume_parafrights):
-            pf, pf_ai = create_parafright(rng)
-            combat.add_enemy(pf, pf_ai)
+    def ink_blot(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, ink_blot_dmg)
 
-    def chomp(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, chomp_dmg, hits=2)
+    def inky_lance(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, inky_lance_dmg, hits=inky_lance_hits)
 
-    def ghastly_smash(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, ghastly_dmg)
+    def dismember(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, dismember_dmg)
+        if combat.is_over:
+            return
+        add_generated_cards_to_living_player_discards(combat, make_wound, dismember_wounds)
 
-    def wail(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, wail_dmg, hits=3)
-        combat.apply_power_to(combat.primary_player, PowerId.WEAK, 1)
-        combat.apply_power_to(combat.primary_player, PowerId.FRAIL, 1)
-
-    rand = RandomBranchState("RAND")
-    rand.add_branch("CHOMP", MoveRepeatType.CAN_REPEAT_X_TIMES, max_times=2)
-    rand.add_branch("GHASTLY_SMASH", MoveRepeatType.CAN_REPEAT_X_TIMES, max_times=2)
-    rand.add_branch("WAIL", MoveRepeatType.CAN_REPEAT_X_TIMES, max_times=2)
+    def prepare(combat: CombatState) -> None:
+        creature.apply_power(PowerId.STRENGTH, prepare_strength, applier=creature)
 
     states: dict[str, MonsterState] = {
-        "CONSUME": MoveState("CONSUME", consume, [Intent(IntentType.SUMMON), buff_intent()], follow_up_id="RAND"),
-        "RAND": rand,
-        "CHOMP": MoveState("CHOMP", chomp, [multi_attack_intent(chomp_dmg, 2)], follow_up_id="RAND"),
-        "GHASTLY_SMASH": MoveState("GHASTLY_SMASH", ghastly_smash, [attack_intent(ghastly_dmg)], follow_up_id="RAND"),
-        "WAIL": MoveState("WAIL", wail, [multi_attack_intent(wail_dmg, 3), debuff_intent()], follow_up_id="RAND"),
+        "INK_BLOT_MOVE": MoveState(
+            "INK_BLOT_MOVE",
+            ink_blot,
+            [attack_intent(ink_blot_dmg)],
+            follow_up_id="INKY_LANCE_MOVE",
+        ),
+        "INKY_LANCE_MOVE": MoveState(
+            "INKY_LANCE_MOVE",
+            inky_lance,
+            [multi_attack_intent(inky_lance_dmg, inky_lance_hits)],
+            follow_up_id="DISMEMBER_MOVE",
+        ),
+        "DISMEMBER_MOVE": MoveState(
+            "DISMEMBER_MOVE",
+            dismember,
+            [attack_intent(dismember_dmg), status_intent()],
+            follow_up_id="PREPARE_MOVE",
+        ),
+        "PREPARE_MOVE": MoveState(
+            "PREPARE_MOVE",
+            prepare,
+            [buff_intent()],
+            follow_up_id="INK_BLOT_MOVE",
+        ),
     }
-    return creature, MonsterAI(states, "CONSUME")
+    creature.apply_power(PowerId.SLIPPERY, slippery_amount)
+    return creature, MonsterAI(states, "INK_BLOT_MOVE")
 
 
 # ---- CeremonialBeast (HP 252 / 262 asc) ----
