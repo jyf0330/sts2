@@ -53,7 +53,7 @@ from sts2_env.core.enums import (
     TargetType,
     ValueProp,
 )
-from sts2_env.core.rng import Rng
+from sts2_env.core.rng import INT_MAX, Rng
 from sts2_env.core.selection import CardChoiceOption, PendingCardChoice
 from sts2_env.potions.base import PotionInstance
 
@@ -78,6 +78,7 @@ class CardPlayStartedEntry:
 class CardPlayFinishedEntry:
     card: CardInstance
     was_ethereal: bool
+    round_number: int
 
 
 class CombatState:
@@ -1433,6 +1434,13 @@ class CombatState:
                     self._pending_play = None
                     return
 
+                if card.combat_vars.get("_is_dupe"):
+                    self._pending_play = None
+                    if self._end_turn_after_play and self.current_side == CombatSide.PLAYER and not self.is_over:
+                        self._end_turn_after_play = False
+                        self.end_player_turn()
+                    return
+
                 if card.card_type != CardType.POWER:
                     if ctx["force_exhaust"] or card.exhausts or self.should_exhaust_played_card(owner, card):
                         owner_state.exhaust.append(card)
@@ -1484,7 +1492,11 @@ class CombatState:
         self._played_cards_this_turn.append(card)
         self._played_cards_combat.append(card)
         self._card_play_finished_entries_combat.append(
-            CardPlayFinishedEntry(card, card.is_ethereal)
+            CardPlayFinishedEntry(
+                card,
+                card.is_ethereal,
+                self.round_number,
+            )
         )
         self._record_finished_card_play(owner)
 
@@ -2575,7 +2587,7 @@ class CombatState:
     def clone_card_to_hand(self, owner: Creature, card: CardInstance | None) -> None:
         if self.combat_player_state_for(owner) is None or card is None:
             return
-        clone = card.clone(self.rng.next_int(1, 2**31 - 1))
+        clone = card.clone(self.rng.next_int(1, INT_MAX))
         self.add_generated_card_to_creature_hand(owner, clone)
 
     def insert_card_into_draw_pile(self, card: CardInstance | None, *, random_position: bool = False) -> None:
@@ -3167,6 +3179,20 @@ class CombatState:
             if entry.was_ethereal and getattr(entry.card, "owner", None) is owner
         )
 
+    def last_finished_attack_or_skill_from_previous_round(self, owner: Creature) -> CardInstance | None:
+        for entry in reversed(self._card_play_finished_entries_combat):
+            card = entry.card
+            if entry.round_number != self.round_number - 1:
+                continue
+            if getattr(card, "owner", None) is not owner:
+                continue
+            if card.card_type not in {CardType.ATTACK, CardType.SKILL}:
+                continue
+            if bool(card.combat_vars.get("_is_dupe")):
+                continue
+            return card
+        return None
+
     def count_cards_played_last_round(self, owner: Creature) -> int:
         return self._card_play_round_counts.get((self.round_number - 1, owner), 0)
 
@@ -3588,7 +3614,7 @@ class CombatState:
     def create_ethereal_clone_in_hand(self, owner: Creature, card: CardInstance) -> None:
         if self.combat_player_state_for(owner) is None:
             return
-        clone = card.clone(self.rng.next_int(1, 2**31 - 1))
+        clone = card.clone(self.rng.next_int(1, INT_MAX))
         clone.keywords = frozenset(set(clone.keywords) | {"ethereal"})
         self.add_generated_card_to_creature_hand(owner, clone)
 

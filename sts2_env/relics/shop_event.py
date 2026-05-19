@@ -14,6 +14,7 @@ from sts2_env.core.enums import (
     CardId, CardRarity, RelicRarity, CombatSide, CardTag, CardType, MapPointType, PowerId, RoomType, TargetType,
     ValueProp,
 )
+from sts2_env.core.rng import INT_MAX
 from sts2_env.relics.base import RelicId, RelicPool, RelicInstance
 from sts2_env.relics.registry import register_relic
 
@@ -2032,44 +2033,15 @@ class HistoryCourse(RelicInstance):
     relic_id = RelicId.HISTORY_COURSE
     rarity = RelicRarity.EVENT
     pool = RelicPool.EVENT
-    _DUPE_MARKER = "_history_course_dupe"
-
-    def __init__(self, relic_id: RelicId):
-        super().__init__(relic_id)
-        self._pending_replay_card: CardInstance | None = None
-
-    def before_combat_start(self, owner: Creature, combat: CombatState) -> None:
-        self._pending_replay_card = None
-
-    def after_combat_end(self, owner: Creature, combat: CombatState) -> None:
-        self._pending_replay_card = None
-
-    def after_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side != CombatSide.PLAYER:
-            return
-        played_this_turn = getattr(combat, "_played_cards_this_turn", ())
-        self._pending_replay_card = next(
-            (
-                card
-                for card in reversed(played_this_turn)
-                if getattr(card, "owner", None) is owner
-                and getattr(card, "card_type", None) in {CardType.ATTACK, CardType.SKILL}
-                and not bool(getattr(card, "is_dupe", False))
-                and not bool(getattr(card, "combat_vars", {}).get(self._DUPE_MARKER, 0))
-            ),
-            None,
-        )
 
     def after_player_turn_start_early(self, owner: Creature, combat: CombatState) -> None:
         if combat.round_number <= 1:
             return
-        pending = self._pending_replay_card
-        self._pending_replay_card = None
+        pending = combat.last_finished_attack_or_skill_from_previous_round(owner)
         if pending is None:
             return
-        replay = pending.clone(combat.rng.next_int(1, 2**31 - 1))
+        replay = pending.create_dupe(combat.rng.next_int(1, INT_MAX))
         replay.owner = owner
-        replay.combat_vars[self._DUPE_MARKER] = 1
         combat.auto_play_card(replay)
 
 

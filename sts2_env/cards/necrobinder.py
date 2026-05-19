@@ -15,6 +15,7 @@ from sts2_env.core.damage import calculate_damage, apply_damage, calculate_block
 from sts2_env.core.hooks import fire_after_block_gained
 from sts2_env.core.creature import Creature, get_power_class
 from sts2_env.core.combat import CombatState
+from sts2_env.core.rng import INT_MAX
 
 
 def _owner(card: CardInstance, combat: CombatState) -> Creature:
@@ -955,7 +956,7 @@ def transfigure(card: CardInstance, combat: CombatState, target: Creature | None
 @register_effect(CardId.UNDEATH)
 def undeath(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     _gain_block(card, combat)
-    clone = card.clone(combat.rng.next_int(1, 2**31 - 1))
+    clone = card.clone(combat.rng.next_int(1, INT_MAX))
     combat.add_generated_card_to_creature_discard(_owner(card, combat), clone)
 
 

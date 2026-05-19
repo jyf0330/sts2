@@ -304,6 +304,12 @@ class CardInstance:
             base_replay_count=self.base_replay_count,
         )
 
+    def create_dupe(self, new_id: int) -> CardInstance:
+        dupe = self.clone(new_id)
+        dupe.combat_vars["_is_dupe"] = 1
+        dupe.keywords = frozenset(keyword for keyword in dupe.keywords if keyword != "exhaust")
+        return dupe
+
     @property
     def should_retain_this_turn(self) -> bool:
         return self.is_retain or self.single_turn_retain

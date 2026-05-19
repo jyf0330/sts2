@@ -5,7 +5,8 @@ import sts2_env.powers  # noqa: F401
 from sts2_env.cards.ironclad import create_ironclad_starter_deck, make_inflame
 from sts2_env.cards.ironclad_basic import make_strike_ironclad
 from sts2_env.cards.necrobinder import create_necrobinder_starter_deck
-from sts2_env.cards.regent import create_regent_starter_deck
+from sts2_env.cards.regent import create_regent_starter_deck, make_i_am_invincible
+from sts2_env.cards.silent import make_deflect
 from sts2_env.cards.status import make_sweeping_gaze
 from sts2_env.core.combat import CombatState
 from sts2_env.core.enums import CardId, CombatSide, PowerId
@@ -150,6 +151,49 @@ class TestRelicParityRareShopExtra8:
         assert enemy.current_hp == starting_hp - 10
         combat.end_player_turn()
         assert enemy.current_hp == starting_hp - 10
+
+    def test_history_course_replays_last_card_played_after_player_turn_end(self):
+        combat = _make_ironclad_combat(["HistoryCourse"])
+        enemy = combat.enemies[0]
+        starting_hp = enemy.current_hp
+        top_draw_skill = make_i_am_invincible()
+        top_draw_skill.owner = combat.player
+        combat.hand = [make_strike_ironclad()]
+        combat.draw_pile = [top_draw_skill]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+
+        combat.end_player_turn()
+
+        assert enemy.current_hp == starting_hp - 6
+        assert combat.player.block >= top_draw_skill.base_block
+
+    def test_history_course_can_replay_non_dupe_clones(self):
+        combat = _make_ironclad_combat(["HistoryCourse"])
+        player = combat.player
+        clone = make_deflect().clone(123)
+        clone.owner = player
+        combat.hand = [clone]
+        combat.energy = 0
+
+        assert combat.play_card(0)
+
+        combat.end_player_turn()
+
+        assert combat.count_cards_played_this_combat(player) == 2
+        assert player.block == clone.base_block
+
+    def test_history_course_replay_dupe_does_not_enter_discard(self):
+        combat = _make_ironclad_combat(["HistoryCourse"])
+        combat.hand = [make_strike_ironclad()]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+
+        combat.end_player_turn()
+
+        assert len([card for card in combat.discard_pile if card.card_id == CardId.STRIKE_IRONCLAD]) == 1
 
     def test_ninja_scroll_adds_three_shivs_on_round_one(self):
         combat = _make_ironclad_combat(["NinjaScroll"])
