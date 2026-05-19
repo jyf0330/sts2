@@ -21,6 +21,15 @@ The detailed backlog sections below were captured as the pre-pass baseline. Afte
 
 Latest local pass also added direct coverage for:
 
+- Cards: `PILLAGE`, `PYRE`, `STAMPEDE_CARD`, `STONE_ARMOR`, `TAUNT`, `TREMBLE`, `UNMOVABLE`, `UNRELENTING`
+
+This pass also exposed and fixed the following logic mismatches:
+
+- `Pillage`: continuation now uses the actual card returned by the draw command, so draw-time effects that move an Attack out of hand, such as `Hellraiser`, do not stop the draw loop early.
+- `Unmovable`: block doubling now applies to the owner's own card / move block and no longer doubles another player's card block.
+
+Latest local pass also added direct coverage for:
+
 - Cards: `BARRICADE_CARD`, `BEACON_OF_HOPE`, `BLUDGEON`, `CORRUPTION_CARD`, `DEMON_FORM_CARD`, `DEMONIC_SHIELD`, `FISTICUFFS`, `FLAME_BARRIER_CARD`, `GOLD_AXE`
 
 This pass also exposed and fixed the following logic mismatch:

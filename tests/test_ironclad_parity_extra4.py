@@ -41,20 +41,26 @@ from sts2_env.cards.ironclad import (
     make_molten_fist,
     make_pacts_end,
     make_pillage,
+    make_pyre,
     make_setup_strike,
     make_spite,
     make_stomp,
+    make_stampede,
+    make_stone_armor,
     make_sword_boomerang,
+    make_taunt,
     make_thunderclap,
     make_thrash,
+    make_tremble,
     make_unmovable,
+    make_unrelenting,
     make_uppercut,
     make_whirlwind,
 )
 from sts2_env.cards.ironclad_basic import make_defend_ironclad, make_strike_ironclad
 from sts2_env.core.combat import CombatState
 from sts2_env.core.enums import CardId, CombatSide, PowerId, ValueProp
-from sts2_env.core.hooks import fire_after_block_gained, fire_after_turn_end
+from sts2_env.core.hooks import fire_after_block_gained, fire_after_turn_end, fire_before_turn_end
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle
 from sts2_env.powers.base import PowerInstance
@@ -229,6 +235,71 @@ class TestIroncladParityExtra4:
 
         assert combat.play_card_from_creature(ally, 0)
         assert ally.block == 5
+
+    def test_pyre_and_stone_armor_apply_reference_power_amounts(self):
+        combat = _make_combat()
+        combat.hand = [make_pyre(upgraded=True), make_stone_armor(upgraded=True)]
+        combat.energy = 3
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.PYRE) == 2
+        assert combat.max_energy == 5
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.PLATING) == 6
+
+    def test_tremble_and_taunt_apply_reference_vulnerable_and_block(self):
+        tremble_combat = _make_combat()
+        tremble_enemy = tremble_combat.enemies[0]
+        tremble_combat.hand = [make_tremble(upgraded=True)]
+        tremble_combat.energy = 1
+
+        assert tremble_combat.play_card(0, 0)
+        assert tremble_enemy.get_power_amount(PowerId.VULNERABLE) == 3
+
+        taunt_combat = _make_combat()
+        taunt_enemy = taunt_combat.enemies[0]
+        taunt_combat.hand = [make_taunt(upgraded=True)]
+        taunt_combat.energy = 1
+
+        assert taunt_combat.play_card(0, 0)
+        assert taunt_combat.player.block == 8
+        assert taunt_enemy.get_power_amount(PowerId.VULNERABLE) == 2
+
+    def test_unrelenting_makes_next_owner_attack_free(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.max_hp = 100
+        enemy.current_hp = 100
+        combat.hand = [make_unrelenting(), make_strike_ironclad()]
+        combat.energy = 2
+
+        assert combat.play_card(0, 0)
+        assert combat.energy == 0
+        assert combat.player.get_power_amount(PowerId.FREE_ATTACK) == 1
+        assert combat.play_card(0, 0)
+        assert combat.energy == 0
+        assert combat.player.get_power_amount(PowerId.FREE_ATTACK) == 0
+        assert enemy.current_hp == 82
+
+    def test_stampede_autoplays_random_attack_before_turn_end(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.max_hp = 100
+        enemy.current_hp = 100
+        strike = make_strike_ironclad()
+        defend = make_defend_ironclad()
+        combat.hand = [make_stampede()]
+        combat.energy = 2
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.STAMPEDE) == 1
+
+        combat.hand = [strike, defend]
+        fire_before_turn_end(CombatSide.PLAYER, combat)
+
+        assert strike not in combat.hand
+        assert defend in combat.hand
+        assert enemy.current_hp == 94
 
     def test_cinder_exhausts_top_draw_card_after_shuffle_if_needed(self):
         combat = _make_combat()
