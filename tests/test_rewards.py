@@ -14,6 +14,7 @@ from sts2_env.run.rewards import (
     generate_card_reward,
     generate_combat_card_rewards,
     generate_combat_reward_cards,
+    generate_noncombat_reward_cards,
     roll_for_upgrade,
 )
 from sts2_env.run.run_state import RunState
@@ -253,6 +254,36 @@ class TestConcreteCombatRewardCards:
 
         assert len(rewards) == 3
         assert all(card.card_id in eligible_character_cards("Ironclad", generation_context="combat") for card in rewards)
+
+
+class TestConcreteNoncombatRewardCards:
+    def test_uses_base_odds_without_changing_pity(self):
+        rs = RunState(2, character_id="Ironclad")
+        rs.initialize_run()
+        rs.card_rarity_odds.current_value = 0.4
+
+        rewards = generate_noncombat_reward_cards(rs, num_cards=1)
+
+        assert len(rewards) == 1
+        assert rewards[0].rarity == CardRarity.UNCOMMON
+        assert rs.card_rarity_odds.current_value == pytest.approx(0.4)
+
+    def test_filters_cost_before_selecting_card(self):
+        rs = RunState(1, character_id="Ironclad")
+        rs.initialize_run()
+
+        rewards = generate_noncombat_reward_cards(
+            rs,
+            num_cards=1,
+            forced_rarities=(CardRarity.COMMON,),
+            cost=0,
+            costs_x=False,
+        )
+
+        assert len(rewards) == 1
+        assert rewards[0].rarity == CardRarity.COMMON
+        assert rewards[0].cost == 0
+        assert rewards[0].has_energy_cost_x is False
 
 
 class TestCombatGenerationEligibility:

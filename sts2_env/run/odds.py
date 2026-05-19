@@ -178,6 +178,15 @@ class CardRarityOdds:
             return CardRarity.UNCOMMON
         return CardRarity.COMMON
 
+    def roll_with_base_odds(self, rng: Rng, context: str = "regular") -> CardRarity:
+        odds = self._get_odds(context)
+        roll_val = rng.next_float()
+        if roll_val < odds["rare"]:
+            return CardRarity.RARE
+        if roll_val < odds["uncommon"]:
+            return CardRarity.UNCOMMON
+        return CardRarity.COMMON
+
 
 # ── Potion Reward Odds ────────────────────────────────────────────────
 

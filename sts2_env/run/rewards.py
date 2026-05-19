@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from sts2_env.cards.base import CardInstance
-from sts2_env.cards.factory import card_metadata, create_card, eligible_character_cards, eligible_registered_cards
+from sts2_env.cards.factory import card_metadata, card_preview, create_card, eligible_character_cards, eligible_registered_cards
 from sts2_env.core.enums import CardId, CardRarity, CardType
 from sts2_env.core.rng import Rng
 
@@ -41,6 +41,22 @@ def _get_next_highest_rarity(rarity: CardRarity) -> CardRarity:
     if rarity == CardRarity.UNCOMMON:
         return CardRarity.RARE
     return CardRarity.RARE
+
+
+def _matches_card_instance_filters(
+    card_id: CardId,
+    *,
+    cost: int | None = None,
+    costs_x: bool | None = None,
+) -> bool:
+    if cost is None and costs_x is None:
+        return True
+    card = card_preview(card_id)
+    if cost is not None and card.cost != cost:
+        return False
+    if costs_x is not None and card.has_energy_cost_x != costs_x:
+        return False
+    return True
 
 
 def generate_card_reward(
@@ -146,6 +162,8 @@ def _pick_reward_card(
                     continue
                 if card_type is not None and metadata.card_type is not card_type:
                     continue
+                if not _matches_card_instance_filters(card_id, cost=cost, costs_x=costs_x):
+                    continue
                 if card_id in chosen_ids or card_id in seen_ids:
                     continue
                 seen_ids.add(card_id)
@@ -158,6 +176,8 @@ def _pick_reward_card(
                     rarity=current_rarity,
                     generation_context=generation_context,
                 ):
+                    if not _matches_card_instance_filters(card_id, cost=cost, costs_x=costs_x):
+                        continue
                     if card_id in chosen_ids or card_id in seen_ids:
                         continue
                     seen_ids.add(card_id)
@@ -169,6 +189,8 @@ def _pick_reward_card(
                     rarity=current_rarity,
                     generation_context=generation_context,
                 ):
+                    if not _matches_card_instance_filters(card_id, cost=cost, costs_x=costs_x):
+                        continue
                     if card_id in chosen_ids or card_id in seen_ids:
                         continue
                     seen_ids.add(card_id)
@@ -189,6 +211,8 @@ def _pick_reward_card(
                     continue
                 if card_type is not None and metadata.card_type is not card_type:
                     continue
+                if not _matches_card_instance_filters(card_id, cost=cost, costs_x=costs_x):
+                    continue
                 if card_id in seen_ids:
                     continue
                 seen_ids.add(card_id)
@@ -201,6 +225,8 @@ def _pick_reward_card(
                     rarity=current_rarity,
                     generation_context=generation_context,
                 ):
+                    if not _matches_card_instance_filters(card_id, cost=cost, costs_x=costs_x):
+                        continue
                     if card_id in seen_ids:
                         continue
                     seen_ids.add(card_id)
@@ -212,6 +238,8 @@ def _pick_reward_card(
                     rarity=current_rarity,
                     generation_context=generation_context,
                 ):
+                    if not _matches_card_instance_filters(card_id, cost=cost, costs_x=costs_x):
+                        continue
                     if card_id in seen_ids:
                         continue
                     seen_ids.add(card_id)
@@ -290,11 +318,10 @@ def generate_noncombat_reward_cards(
 ) -> list[CardInstance]:
     if character_ids is None:
         character_ids = (run_state.player.character_id,)
-    rarities = list(forced_rarities) if forced_rarities else generate_card_reward(
-        run_state,
-        context="regular",
-        num_cards=num_cards,
-    )
+    rarities = list(forced_rarities) if forced_rarities else [
+        run_state.card_rarity_odds.roll_with_base_odds(run_state.rng.rewards, context="regular")
+        for _ in range(num_cards)
+    ]
     chosen_ids: set = set()
     cards: list[CardInstance] = []
     for rarity in rarities:

@@ -6,7 +6,7 @@ from sts2_env.cards.factory import create_card
 from sts2_env.cards.ironclad import create_ironclad_starter_deck
 from sts2_env.cards.silent import make_backstab
 from sts2_env.cards.status import make_decay, make_doubt
-from sts2_env.core.enums import CardId, CardType
+from sts2_env.core.enums import CardId, CardRarity, CardType
 from sts2_env.events.shared import (
     DrowningBeacon,
     GraveOfTheForgotten,
@@ -111,6 +111,18 @@ def test_infested_automaton_study_adds_power_and_touch_core_adds_zero_cost_non_x
     added = run_state.player.deck[-1]
     assert added.cost == 0
     assert added.has_energy_cost_x is False
+
+
+def test_infested_automaton_study_uses_default_noncombat_rarity_odds():
+    run_state = _make_run_state(1)
+    event = InfestedAutomaton()
+
+    result = event.choose(run_state, "study")
+
+    assert result.finished
+    added = run_state.player.deck[-1]
+    assert added.card_type == CardType.POWER
+    assert added.rarity == CardRarity.UNCOMMON
 
 
 def test_sunken_statue_grab_sword_and_dive_apply_relic_gold_and_hp_changes():

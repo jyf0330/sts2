@@ -48,7 +48,6 @@ from sts2_env.run.reward_objects import (
     UpgradeCardsReward,
 )
 from sts2_env.run.rewards import generate_noncombat_reward_cards
-from sts2_env.run.rewards import generate_uniform_noncombat_cards
 from sts2_env.run.events import EventModel, EventOption, EventResult, register_event
 from sts2_env.characters.all import ALL_CHARACTERS
 
@@ -1052,7 +1051,7 @@ class InfestedAutomaton(EventModel):
 
     def choose(self, run_state: RunState, option_id: str) -> EventResult:
         if option_id == "study":
-            cards = generate_uniform_noncombat_cards(
+            cards = generate_noncombat_reward_cards(
                 run_state,
                 num_cards=1,
                 card_type=CardType.POWER,
@@ -1063,7 +1062,7 @@ class InfestedAutomaton(EventModel):
                 else:
                     run_state.player.add_card_instance_to_deck(cards[0])
             return EventResult(finished=True, description="Gained a random Power card.")
-        cards = generate_uniform_noncombat_cards(
+        cards = generate_noncombat_reward_cards(
             run_state,
             num_cards=1,
             cost=0,
