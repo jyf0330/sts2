@@ -1385,18 +1385,22 @@ class Reflections(EventModel):
                 rewards={"reward_objects": [RelicReward(run_state.player.player_id), PotionReward(run_state.player.player_id)]},
             )
         if option_id == "touch":
+            rng = self.get_rng(run_state)
             upgraded_cards = [card for card in run_state.player.deck if card.upgraded]
-            run_state.rng.niche.shuffle(upgraded_cards)
-            downgraded_cards = upgraded_cards[:2]
-            _downgrade_selected_cards(downgraded_cards, run_state)
+            for _ in range(2):
+                if not upgraded_cards:
+                    break
+                card = rng.choice(upgraded_cards)
+                upgraded_cards.remove(card)
+                _downgrade_selected_cards([card], run_state)
 
-            downgraded_ids = {id(card) for card in downgraded_cards}
-            upgrade_candidates = [
-                card for card in run_state.player.deck
-                if not card.upgraded and id(card) not in downgraded_ids
-            ]
-            run_state.rng.niche.shuffle(upgrade_candidates)
-            _upgrade_selected_cards(upgrade_candidates[:4], run_state)
+            upgrade_candidates = run_state.player.upgradable_deck_cards()
+            for _ in range(4):
+                if not upgrade_candidates:
+                    break
+                card = rng.choice(upgrade_candidates)
+                upgrade_candidates.remove(card)
+                _upgrade_selected_cards([card], run_state)
             return EventResult(finished=True,
                                description="Downgraded 2 and upgraded 4 cards.")
 

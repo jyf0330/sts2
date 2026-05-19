@@ -24,6 +24,15 @@ class _NoopShuffleRng:
         pass
 
 
+class _FirstChoiceRng:
+    def __init__(self) -> None:
+        self.choice_calls = 0
+
+    def choice(self, seq):
+        self.choice_calls += 1
+        return seq[0]
+
+
 def test_relic_trader_excludes_starter_relics_and_swaps_selected_relic():
     run_state = _make_run_state(91)
     run_state.current_act_index = 1
@@ -144,6 +153,30 @@ def test_reflections_touch_downgrades_two_and_upgrades_four_cards():
     assert result.finished
     assert len(run_state.player.deck) == 6
     assert sum(1 for card in run_state.player.deck if card.upgraded) == 4
+
+
+def test_reflections_touch_uses_event_rng_and_can_reupgrade_downgraded_cards():
+    run_state = _make_run_state(951)
+    first = create_card(CardId.STRIKE_IRONCLAD, upgraded=True)
+    second = create_card(CardId.DEFEND_IRONCLAD, upgraded=True)
+    third = create_card(CardId.BASH)
+    fourth = create_card(CardId.ANGER)
+    run_state.player.deck = [first, second, third, fourth]
+    event = Reflections()
+    event.rng = _FirstChoiceRng()
+    niche_counter = run_state.rng.niche.counter
+    rewards_counter = run_state.rng.rewards.counter
+
+    result = event.choose(run_state, "touch")
+
+    assert result.finished
+    assert event.rng.choice_calls == 6
+    assert run_state.rng.niche.counter == niche_counter
+    assert run_state.rng.rewards.counter == rewards_counter
+    assert first.upgraded is True
+    assert second.upgraded is True
+    assert third.upgraded is True
+    assert fourth.upgraded is True
 
 
 def test_reflections_shatter_duplicates_deck_and_adds_bad_luck():
