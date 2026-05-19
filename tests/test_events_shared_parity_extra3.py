@@ -76,6 +76,7 @@ def test_colorful_philosophers_choice_surfaces_three_rarity_tiered_card_rewards(
     assert all(isinstance(reward, CardReward) for reward in rewards)
     assert all(reward.character_ids == (chosen_pool,) for reward in rewards)
     assert all(reward.use_default_character_pool is False for reward in rewards)
+    assert all(reward.card_creation_source == "other" for reward in rewards)
     assert [reward.forced_rarities for reward in rewards] == [
         (CardRarity.COMMON, CardRarity.COMMON, CardRarity.COMMON),
         (CardRarity.UNCOMMON, CardRarity.UNCOMMON, CardRarity.UNCOMMON),
@@ -92,6 +93,17 @@ def test_colorful_philosophers_uses_event_rng_without_advancing_up_front_rng():
 
     assert len(options) == 3
     assert run_state.rng.up_front.counter == up_front_counter
+
+
+def test_colorful_philosophers_filters_to_unlocked_character_card_pools():
+    run_state = _make_run_state(412, character_id="Ironclad")
+    run_state.player.unlock_state["character_card_pools"] = ["Ironclad", "Silent", "Defect"]
+    event = ColorfulPhilosophers()
+
+    options = event.generate_initial_options(run_state)
+
+    assert [option.option_id for option in options] == ["pool_1", "pool_2"]
+    assert list(event._choices.values()) == ["Silent", "Defect"]
 
 
 def test_sunken_treasury_first_and_second_chests_apply_gold_and_greed_curse():

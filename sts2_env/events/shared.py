@@ -712,8 +712,15 @@ class ColorfulPhilosophers(EventModel):
     def __init__(self) -> None:
         self._choices: dict[str, str] = {}
 
+    def _unlocked_pools(self, run_state: RunState) -> tuple[str, ...]:
+        configured = run_state.player.unlock_state.get("character_card_pools")
+        if configured is None:
+            return self._POOL_ORDER
+        unlocked = set(configured)
+        return tuple(cid for cid in self._POOL_ORDER if cid in unlocked)
+
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
-        available = [cid for cid in self._POOL_ORDER if cid != run_state.player.character_id]
+        available = [cid for cid in self._unlocked_pools(run_state) if cid != run_state.player.character_id]
         rng = self.get_rng(run_state)
         while len(available) > 3:
             available.pop(rng.next_int_exclusive(0, len(available)))
@@ -736,6 +743,7 @@ class ColorfulPhilosophers(EventModel):
                 forced_rarities=(rarity, rarity, rarity),
                 use_default_character_pool=False,
                 generation_context=None,
+                card_creation_source="other",
                 roll_upgrade=False,
             )
             for rarity in (CardRarity.COMMON, CardRarity.UNCOMMON, CardRarity.RARE)
