@@ -459,27 +459,54 @@ class PanachePower(PowerInstance):
         super().__init__(PowerId.PANACHE, amount)
         self._cards_left: int = self._TRIGGER_EVERY
         self._started: bool = False
+        self._instances: list[tuple[int, int, bool]] = [(amount, self._TRIGGER_EVERY, False)]
+
+    def _add_instance(self, amount: int) -> None:
+        self._instances.append((amount, self._TRIGGER_EVERY, False))
+        self.amount = amount
+
+    def after_power_amount_changed(
+        self,
+        owner: Creature,
+        target: Creature,
+        power_id: PowerId,
+        amount: int,
+        applier: Creature | None,
+        source: object | None,
+        combat: CombatState,
+    ) -> None:
+        if owner is target and power_id == self.power_id and amount > 0 and self.amount != amount:
+            self._add_instance(amount)
 
     def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
         card_owner = getattr(card, "owner", None)
         if card_owner is not None and card_owner is not owner:
             return
-        if self._started:
-            self._cards_left -= 1
-            if self._cards_left <= 0:
+        updated_instances: list[tuple[int, int, bool]] = []
+        for amount, cards_left, started in self._instances:
+            if started:
+                cards_left -= 1
+            if cards_left <= 0:
                 for enemy in combat.hittable_enemies:
                     combat.deal_damage(
                         dealer=owner,
                         target=enemy,
-                        amount=self.amount,
+                        amount=amount,
                         props=ValueProp.UNPOWERED,
                     )
-                self._cards_left = self._TRIGGER_EVERY
-        self._started = True
+                cards_left = self._TRIGGER_EVERY
+            updated_instances.append((amount, cards_left, True))
+        self._instances = updated_instances
+        if self._instances:
+            _, self._cards_left, self._started = self._instances[-1]
 
     def after_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         if side == owner.side:
             self._cards_left = self._TRIGGER_EVERY
+            self._instances = [
+                (amount, self._TRIGGER_EVERY, started)
+                for amount, _, started in self._instances
+            ]
 
 
 class InfiniteBladesPower(PowerInstance):

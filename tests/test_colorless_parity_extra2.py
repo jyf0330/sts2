@@ -187,6 +187,31 @@ class TestColorlessParityExtra2:
         assert blocked.current_hp == 100
         assert hittable.current_hp == 93
 
+    def test_panache_keeps_separate_instances_like_reference(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = enemy.max_hp = 100
+        first = make_panache_card()
+        second = make_panache_card()
+        second.effect_vars["panache_damage"] = 14
+        combat.hand = [first, second]
+        combat.energy = 0
+
+        assert combat.play_card(0)
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.PANACHE) == 14
+
+        card = make_strike_ironclad()
+        card.owner = combat.player
+        for _ in range(4):
+            combat.player.powers[PowerId.PANACHE].after_card_played(combat.player, card, combat)
+
+        assert enemy.current_hp == 90
+
+        combat.player.powers[PowerId.PANACHE].after_card_played(combat.player, card, combat)
+
+        assert enemy.current_hp == 76
+
     def test_the_bomb_explosion_hits_only_hittable_enemies(self):
         combat = _make_combat(extra_enemies=1)
         blocked, hittable = combat.enemies
