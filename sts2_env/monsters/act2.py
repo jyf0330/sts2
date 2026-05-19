@@ -62,7 +62,11 @@ def _gain_block(creature: Creature, amount: int, combat: CombatState) -> None:
 
 
 def _thieving_hopper_targets(combat: CombatState, creature: Creature) -> list[Creature]:
-    return [target for target in combat.get_enemies_of(creature) if target.is_alive]
+    return [
+        state.creature
+        for state in combat.combat_player_states
+        if state.creature.is_alive
+    ]
 
 
 def _contains_card_instance(cards: list, card) -> bool:

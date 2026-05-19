@@ -85,6 +85,7 @@ from sts2_env.monsters.act4 import (
     create_waterfall_giant,
 )
 from sts2_env.monsters.act2 import (
+    _steal_card_with_swipe,
     create_bowlbug_egg,
     create_bowlbug_nectar,
     create_bowlbug_rock,
@@ -746,7 +747,6 @@ class TestFixedRotation:
     def test_thieving_hopper_steals_from_pet_owner_when_targeting_pet(self):
         rng_seed = 1212
         osty_hp = 5
-        defeated_hp = 0
         combat = _make_combat(rng_seed)
         combat.room = CombatRoom(room_type=RoomType.MONSTER)
         creature, ai = create_thieving_hopper(Rng(rng_seed))
@@ -762,9 +762,8 @@ class TestFixedRotation:
         state.discard.clear()
         combat.summon_osty(combat.primary_player, osty_hp)
         assert combat.osty is not None
-        combat.primary_player.current_hp = defeated_hp
 
-        ai.current_move.perform(combat)
+        _steal_card_with_swipe(combat, creature, combat.osty)
 
         assert stolen_card not in state.draw
         assert stolen_card not in state.player_state.deck
@@ -774,6 +773,32 @@ class TestFixedRotation:
         assert stolen_card in state.player_state.deck
         rewards = combat.room.extra_rewards[combat.player_id]
         assert rewards[0].card is stolen_card
+
+    def test_thieving_hopper_default_targets_do_not_steal_extra_card_from_osty_owner(self):
+        rng_seed = 1213
+        osty_hp = 5
+        combat = _make_combat(rng_seed)
+        combat.room = CombatRoom(room_type=RoomType.MONSTER)
+        creature, ai = create_thieving_hopper(Rng(rng_seed))
+        combat.add_enemy(creature, ai)
+        combat.start_combat()
+        state = combat.combat_player_state_for(combat.primary_player)
+        assert state is not None
+        first_card = make_battle_trance()
+        second_card = make_thunderclap()
+        for card in (first_card, second_card):
+            card.owner = combat.primary_player
+        state.player_state.deck[:] = [first_card, second_card]
+        state.hand.clear()
+        state.draw[:] = [first_card, second_card]
+        state.discard.clear()
+        combat.summon_osty(combat.primary_player, osty_hp)
+
+        ai.current_move.perform(combat)
+
+        assert len(state.player_state.deck) == 1
+        assert len(state.draw) == 1
+        assert creature.powers[PowerId.SWIPE].amount == 1
 
     def test_act2_tunneler_uses_original_burrow_cycle_and_unburrow_stun(self):
         combat = _make_combat(22)
