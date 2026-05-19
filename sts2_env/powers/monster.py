@@ -1177,15 +1177,30 @@ class CoveredPower(PowerInstance):
     def __init__(self, amount: int = 1):
         super().__init__(PowerId.COVERED, amount)
         self.covering_creature: Creature | None = None
+        self._covering_creatures: list[Creature] = []
 
-    def _detach_cover(self, owner: Creature) -> None:
-        coverer = self.covering_creature
-        if coverer is None:
+    def _attach_cover(self, owner: Creature, coverer: Creature, source: object | None) -> None:
+        if coverer in self._covering_creatures:
             return
+        self._covering_creatures.append(coverer)
+        self.covering_creature = coverer
+        if not coverer.has_power(PowerId.INTERCEPT):
+            coverer.apply_power(PowerId.INTERCEPT, 1, applier=coverer, source=source)
+        intercept = coverer.powers.get(PowerId.INTERCEPT)
+        add_covered_creature = getattr(intercept, "add_covered_creature", None)
+        if callable(add_covered_creature):
+            add_covered_creature(owner)
+
+    def _detach_cover(self, owner: Creature, coverer: Creature) -> None:
         intercept = coverer.powers.get(PowerId.INTERCEPT)
         remove_covered_creature = getattr(intercept, "remove_covered_creature", None)
         if callable(remove_covered_creature):
             remove_covered_creature(owner)
+
+    def _detach_all_covers(self, owner: Creature) -> None:
+        for coverer in list(self._covering_creatures):
+            self._detach_cover(owner, coverer)
+        self._covering_creatures = []
         self.covering_creature = None
 
     def after_power_amount_changed(
@@ -1200,17 +1215,7 @@ class CoveredPower(PowerInstance):
     ) -> None:
         if owner is not target or power_id != self.power_id or amount <= 0 or applier is None:
             return
-        if self.covering_creature is applier:
-            return
-        if self.covering_creature is not None:
-            self._detach_cover(owner)
-        self.covering_creature = applier
-        if not applier.has_power(PowerId.INTERCEPT):
-            applier.apply_power(PowerId.INTERCEPT, 1, applier=applier, source=source)
-        intercept = applier.powers.get(PowerId.INTERCEPT)
-        add_covered_creature = getattr(intercept, "add_covered_creature", None)
-        if callable(add_covered_creature):
-            add_covered_creature(owner)
+        self._attach_cover(owner, applier, source)
 
     def modify_damage_multiplicative(
         self,
@@ -1227,7 +1232,7 @@ class CoveredPower(PowerInstance):
         self, owner: Creature, side: CombatSide, combat: CombatState
     ) -> None:
         if side == CombatSide.ENEMY:
-            self._detach_cover(owner)
+            self._detach_all_covers(owner)
             owner.powers.pop(self.power_id, None)
 
     def on_ally_death(
@@ -1237,13 +1242,17 @@ class CoveredPower(PowerInstance):
         combat: CombatState,
         was_removal_prevented: bool = False,
     ) -> None:
-        if not was_removal_prevented and dead_creature is self.covering_creature:
-            self._detach_cover(owner)
+        if was_removal_prevented or dead_creature not in self._covering_creatures:
+            return
+        self._detach_cover(owner, dead_creature)
+        self._covering_creatures.remove(dead_creature)
+        self.covering_creature = self._covering_creatures[-1] if self._covering_creatures else None
+        if not self._covering_creatures:
             owner.powers.pop(self.power_id, None)
 
     def before_death(self, owner: Creature, creature: Creature, combat: CombatState) -> None:
         if creature is owner:
-            self._detach_cover(owner)
+            self._detach_all_covers(owner)
 
 
 # ---------------------------------------------------------------------------

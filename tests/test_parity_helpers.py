@@ -663,6 +663,30 @@ class TestMonsterDeathBroadcast:
         assert combat.kill_creature(coverer)
         assert PowerId.COVERED not in covered_enemy.powers
 
+    def test_covered_power_keeps_separate_coverers_like_reference(self):
+        combat = _make_combat(create_ironclad_starter_deck(), "Ironclad")
+        covered_enemy = combat.enemies[0]
+        first_coverer, first_ai = create_rocket(Rng(77))
+        second_coverer, second_ai = create_rocket(Rng(78))
+        combat.add_enemy(first_coverer, first_ai)
+        combat.add_enemy(second_coverer, second_ai)
+        combat.start_combat()
+
+        combat.apply_power_to(covered_enemy, PowerId.COVERED, 1, applier=first_coverer)
+        combat.apply_power_to(covered_enemy, PowerId.COVERED, 1, applier=second_coverer)
+
+        assert getattr(first_coverer.powers[PowerId.INTERCEPT], "_covered_creatures", []) == [covered_enemy]
+        assert getattr(second_coverer.powers[PowerId.INTERCEPT], "_covered_creatures", []) == [covered_enemy]
+
+        assert combat.kill_creature(first_coverer)
+
+        assert PowerId.COVERED in covered_enemy.powers
+        assert PowerId.INTERCEPT not in first_coverer.powers
+        assert getattr(second_coverer.powers[PowerId.INTERCEPT], "_covered_creatures", []) == [covered_enemy]
+
+        assert combat.kill_creature(second_coverer)
+        assert PowerId.COVERED not in covered_enemy.powers
+
     def test_covered_power_drops_when_coverer_dies_but_remains_in_combat(self):
         combat = _make_combat(create_ironclad_starter_deck(), "Ironclad")
         covered_enemy = combat.enemies[0]
