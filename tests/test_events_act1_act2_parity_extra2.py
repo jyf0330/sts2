@@ -281,6 +281,20 @@ def test_future_of_potions_trade_discards_potion_and_builds_upgraded_rewards():
     assert reward.cards[0].card_type in {CardType.ATTACK, CardType.SKILL}
 
 
+def test_future_of_potions_requires_all_players_to_have_two_potions():
+    run_state = _make_run_state(4051)
+    run_state.player.add_potion(create_potion("FirePotion"))
+    run_state.player.add_potion(create_potion("Clarity"))
+    ally = run_state.add_player(PlayerState(player_id=2, character_id="Silent"))
+    ally.add_potion(create_potion("FirePotion"))
+    event = TheFutureOfPotions()
+
+    assert event.is_allowed(run_state) is False
+
+    ally.add_potion(create_potion("Clarity"))
+    assert event.is_allowed(run_state) is True
+
+
 def test_waterlogged_scriptorium_tentacle_and_prickly_apply_steady_enchantments():
     run_state = _make_run_state(406)
     run_state.player.gold = 320

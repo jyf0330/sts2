@@ -1182,7 +1182,7 @@ class TheFutureOfPotions(EventModel):
         self._trade_choices: list[tuple[int, CardRarity, CardType]] = []
 
     def is_allowed(self, run_state: RunState) -> bool:
-        return len(run_state.player.held_potions()) >= 2
+        return all(len(player.held_potions()) >= 2 for player in run_state.players)
 
     def before_event_started(self, run_state: RunState) -> None:
         run_state.player.can_remove_potions = False
