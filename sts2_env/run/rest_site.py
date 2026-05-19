@@ -250,9 +250,9 @@ def generate_rest_site_options(
         if lifts_done < 3:
             options.append(LiftOption(lifts_done=lifts_done))
 
-    removable_count = sum(1 for c in player.deck if c.rarity.name not in ("STATUS", "CURSE"))
-    if "MEAT_CLEAVER" in normalized_relic_ids and removable_count >= 2:
-        options.append(CookOption(has_enough_removable=True))
+    removable_count = len(player.removable_deck_cards())
+    if "MEAT_CLEAVER" in normalized_relic_ids:
+        options.append(CookOption(has_enough_removable=removable_count >= 2))
 
     if "PAELS_GROWTH" in normalized_relic_ids:
         options.append(CloneOption())

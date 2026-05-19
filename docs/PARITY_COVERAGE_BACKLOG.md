@@ -21,6 +21,14 @@ The detailed backlog sections below were captured as the pre-pass baseline. Afte
 
 Latest local pass also added direct coverage for:
 
+- Relics: `BLOOD_SOAKED_ROSE`, `ELECTRIC_SHRYMP`, `GNARLED_HAMMER`, `GOLDEN_PEARL`, `IRON_CLUB`, `LOOMING_FRUIT`, `MEAT_CLEAVER`, `NEOWS_TORMENT`, `NUTRITIOUS_OYSTER`, `PAELS_HORN`, `RINGING_TRIANGLE`, `SCREAMING_FLAGON`, `SLING_OF_COURAGE`, `TANXS_WHISTLE`, `VERY_HOT_COCOA`
+
+This pass also exposed and fixed the following logic mismatch:
+
+- `MeatCleaver`: rest sites now show `Cook` even when fewer than two cards can be removed, with the option disabled, matching the original `CookRestSiteOption` behavior.
+
+Latest local pass also added direct coverage for:
+
 - Cards: `CALTROPS`, `ENTRENCH`, `OUTMANEUVER`, `RELAX`, `WHISTLE`
 
 Latest local pass also added direct coverage for:

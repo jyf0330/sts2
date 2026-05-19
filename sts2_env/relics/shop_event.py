@@ -2332,9 +2332,9 @@ class MeatCleaver(RelicInstance):
     def modify_rest_site_options(self, owner: Creature, options: list[object], run_state: RunState) -> list[object]:
         from sts2_env.run.rest_site import CookOption
 
-        removable_count = sum(1 for card in getattr(owner, "deck", []) if card.rarity.name not in ("STATUS", "CURSE"))
-        if removable_count >= 2 and not any(getattr(option, "option_id", "") == "COOK" for option in options):
-            options = [*options, CookOption(has_enough_removable=True)]
+        removable_count = len(owner.removable_deck_cards())
+        if not any(getattr(option, "option_id", "") == "COOK" for option in options):
+            options = [*options, CookOption(has_enough_removable=removable_count >= 2)]
         return options
 
 
