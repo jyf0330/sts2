@@ -349,6 +349,21 @@ def test_unrest_site_rest_adds_poor_sleep_curse():
     assert any(card.card_id == make_poor_sleep().card_id for card in run_state.player.deck)
 
 
+def test_unrest_site_requires_all_players_below_hp_threshold():
+    run_state = RunState(seed=231, character_id="Ironclad")
+    run_state.initialize_run()
+    run_state.player.current_hp = 56
+    ally = run_state.add_player(
+        PlayerState(player_id=2, character_id="Silent", max_hp=70, current_hp=50)
+    )
+    event = UnrestSite()
+
+    assert event.is_allowed(run_state) is False
+
+    ally.current_hp = 49
+    assert event.is_allowed(run_state) is True
+
+
 def test_bugslayer_adds_real_reward_cards_to_deck():
     run_state = RunState(seed=29, character_id="Ironclad")
     run_state.initialize_run()
