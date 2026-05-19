@@ -169,6 +169,24 @@ def test_slippery_bridge_hold_on_rerolls_away_from_previous_card_type():
     assert event._random_card_to_lose is bash  # noqa: SLF001
 
 
+def test_slippery_bridge_requires_all_players_to_have_removable_cards():
+    run_state = _make_run_state(923)
+    run_state.total_floor = 7
+    ally = run_state.add_player(PlayerState(player_id=2, character_id="Silent"))
+    eternal_card = create_card(CardId.STRIKE_IRONCLAD)
+    eternal_card.keywords = frozenset({"eternal"})
+    ally.deck = [eternal_card]
+    event = SlipperyBridge()
+
+    assert event.is_allowed(run_state) is False
+
+    ally.deck = [create_card(CardId.STRIKE_IRONCLAD)]
+    assert event.is_allowed(run_state) is True
+
+    run_state.total_floor = 6
+    assert event.is_allowed(run_state) is False
+
+
 def test_symbiote_kill_fire_transforms_selected_card_via_pending_choice():
     run_state = _make_run_state(93)
     target_card = run_state.player.deck[0]

@@ -913,8 +913,10 @@ class SlipperyBridge(EventModel):
         self._random_card_to_lose = None
 
     def is_allowed(self, run_state: RunState) -> bool:
-        has_removable = any(card.is_removable for card in run_state.player.deck)
-        return run_state.total_floor > 6 and has_removable
+        return (
+            run_state.total_floor > 6
+            and all(any(card.is_removable for card in player.deck) for player in run_state.players)
+        )
 
     def _roll_random_card_to_lose(self, run_state: RunState) -> None:
         if self._random_card_to_lose is None:
