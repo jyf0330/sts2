@@ -140,8 +140,8 @@ class TheLegendsWereTrue(EventModel):
     def is_allowed(self, run_state: RunState) -> bool:
         return (
             run_state.current_act_index == 0
-            and len(run_state.player.deck) > 0
-            and run_state.player.current_hp >= 10
+            and all(len(player.deck) > 0 for player in run_state.players)
+            and all(player.current_hp >= 10 for player in run_state.players)
         )
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:

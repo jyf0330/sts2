@@ -78,6 +78,22 @@ def test_the_legends_were_true_adds_spoils_map_and_returns_a_potion_reward():
     assert reward_objects[0].potion_id is not None
 
 
+def test_the_legends_were_true_requires_all_players_to_have_deck_and_hp():
+    run_state = _make_run_state(4010)
+    ally = run_state.add_player(PlayerState(player_id=2, character_id="Silent", current_hp=10))
+    ally.deck = []
+    event = TheLegendsWereTrue()
+
+    assert event.is_allowed(run_state) is False
+
+    ally.deck = [create_card(CardId.STRIKE_IRONCLAD)]
+    ally.current_hp = 9
+    assert event.is_allowed(run_state) is False
+
+    ally.current_hp = 10
+    assert event.is_allowed(run_state) is True
+
+
 def test_the_legends_were_true_potion_uses_event_specific_pool_order():
     run_state = _make_run_state(4011)
     run_state.rng.rewards = _FirstChoiceCountingRng()
