@@ -42,6 +42,7 @@ from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle
 from sts2_env.powers.base import PowerInstance
 from sts2_env.powers.remaining_c import SandpitPower
+from sts2_env.run.run_state import PlayerState
 
 
 def _make_combat(gold: int = 0, *, extra_enemies: int = 0) -> CombatState:
@@ -345,7 +346,7 @@ class TestStatusParityExtra:
         combat = _make_combat()
         enemy = combat.enemies[0]
         sandpit = SandpitPower(4)
-        sandpit.target = combat.player
+        sandpit.set_target(combat.player)
         enemy.powers[PowerId.SANDPIT] = sandpit
 
         frantic = make_frantic_escape()
@@ -361,6 +362,25 @@ class TestStatusParityExtra:
         assert combat.play_card(0)
         assert sandpit.amount == 6
         assert frantic.cost == 3
+
+    def test_frantic_escape_increases_only_matching_sandpit_instance(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        ally = combat.add_ally_player(PlayerState(player_id=2, character_id="Ironclad", max_hp=70, current_hp=70))
+        sandpit = SandpitPower(4)
+        sandpit.set_target(combat.player)
+        sandpit.add_instance(4, ally)
+        enemy.powers[PowerId.SANDPIT] = sandpit
+        ally_card = make_frantic_escape()
+        ally_state = combat.combat_player_state_for(ally)
+        assert ally_state is not None
+        ally_state.hand = [ally_card]
+        ally_state.zone_map["hand"] = ally_state.hand
+        ally_state.energy = 1
+
+        assert combat.play_card_from_creature(ally, 0)
+
+        assert sandpit._instances == [(4, combat.player), (5, ally)]  # noqa: SLF001
 
     def test_normality_blocks_playing_a_fourth_card_while_it_remains_in_hand(self):
         """Matches Normality.cs: while in hand, the player cannot play more than 3 cards per turn."""

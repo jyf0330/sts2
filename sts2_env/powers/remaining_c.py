@@ -423,20 +423,57 @@ class SandpitPower(PowerInstance):
     def __init__(self, amount: int):
         super().__init__(PowerId.SANDPIT, amount)
         self.target: Creature | None = None
+        self._instances: list[tuple[int, Creature | None]] = [(amount, None)]
+
+    def set_target(self, target: Creature | None) -> None:
+        self.target = target
+        amount, _ = self._instances[-1]
+        self._instances[-1] = (amount, target)
+
+    def add_instance(self, amount: int, target: Creature | None) -> None:
+        self._instances.append((amount, target))
+        self.amount = amount
+        self.target = target
+
+    def increment_target(self, target: Creature, amount: int = 1) -> bool:
+        for index, (turns, instance_target) in enumerate(self._instances):
+            if instance_target is target:
+                self._instances[index] = (turns + amount, instance_target)
+                self.amount = turns + amount
+                self.target = instance_target
+                return True
+        return False
 
     def after_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side == CombatSide.ENEMY:
-            self.amount -= 1
-            if self.amount <= 0:
-                combat._remove_power(owner, self.power_id)
+        if side != CombatSide.ENEMY:
+            return
+        remaining_instances: list[tuple[int, Creature | None]] = []
+        for turns, target in self._instances:
+            turns -= 1
+            if turns <= 0:
+                self._kill_target(owner, target, combat)
+            else:
+                remaining_instances.append((turns, target))
+        self._instances = remaining_instances
+        if not self._instances:
+            combat._remove_power(owner, self.power_id)
+            return
+        self.amount, self.target = self._instances[-1]
 
     def on_removed(self, owner: Creature, combat: CombatState) -> None:
-        if owner.is_dead or self.target is None or not self.target.is_alive:
+        if not owner.is_dead:
+            for _, target in list(self._instances):
+                self._kill_target(owner, target, combat)
+        self._instances = []
+        self.target = None
+
+    def _kill_target(self, owner: Creature, target: Creature | None, combat: CombatState) -> None:
+        if owner.is_dead or target is None or not target.is_alive:
             return
-        combat.kill_creature(self.target)
-        for ally in combat.get_player_allies_of(self.target):
+        combat.kill_creature(target)
+        for ally in combat.get_player_allies_of(target):
             combat.kill_creature(ally)
-        osty = combat.get_osty(self.target)
+        osty = combat.get_osty(target)
         if osty is not None and osty.is_alive:
             combat.kill_creature(osty)
 

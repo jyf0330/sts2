@@ -1022,8 +1022,12 @@ def create_the_insatiable(rng: Rng) -> tuple[Creature, MonsterAI]:
     def liquify_ground(combat: CombatState) -> None:
         for target in _player_targets(combat):
             sandpit = SandpitPower(4)
-            sandpit.target = target
-            creature.powers[PowerId.SANDPIT] = sandpit
+            sandpit.set_target(target)
+            existing = creature.powers.get(PowerId.SANDPIT)
+            if isinstance(existing, SandpitPower):
+                existing.add_instance(4, target)
+            else:
+                creature.powers[PowerId.SANDPIT] = sandpit
             combat.add_status_cards_to_draw(target, "FRANTIC_ESCAPE", 3, random_position=True)
             combat.add_status_cards_to_discard(target, "FRANTIC_ESCAPE", 3)
 

@@ -1261,7 +1261,12 @@ def frantic_escape_effect(card: CardInstance, combat: CombatState, target: Creat
     owner = _owner(card, combat)
     for enemy in combat.enemies:
         sandpit = enemy.powers.get(PowerId.SANDPIT)
-        if sandpit is not None and getattr(sandpit, "target", None) is owner:
+        if sandpit is None:
+            continue
+        increment_target = getattr(sandpit, "increment_target", None)
+        if callable(increment_target) and increment_target(owner, 1):
+            break
+        if getattr(sandpit, "target", None) is owner:
             sandpit.amount += 1
             break
     increase = card.combat_vars.get("cost_increase", 0) + 1

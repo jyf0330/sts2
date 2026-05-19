@@ -593,7 +593,7 @@ class TestSandpitPower:
         player = simple_combat.player
         enemy = simple_combat.enemies[0]
         sandpit = SandpitPower(1)
-        sandpit.target = player
+        sandpit.set_target(player)
         enemy.powers[PowerId.SANDPIT] = sandpit
 
         sandpit.after_side_turn_start(enemy, CombatSide.ENEMY, simple_combat)
