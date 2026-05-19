@@ -9,6 +9,7 @@ hooks, and hook-driven relic/power dispatch.
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Sequence
 
 from sts2_env.cards.base import (
@@ -63,6 +64,13 @@ if TYPE_CHECKING:
 
 
 _NO_CARD_PLAY_FILTER = object()
+_NO_CARD_FILTER = object()
+
+
+@dataclass(frozen=True)
+class CardPlayStartedEntry:
+    card: CardInstance
+    is_first_in_series: bool
 
 
 class CombatState:
@@ -160,7 +168,7 @@ class CombatState:
         self._legacy_extra_card_rewards: int = 0
         self._played_cards_this_turn: list[CardInstance] = []
         self._played_cards_combat: list[CardInstance] = []
-        self._card_play_starts_this_turn: list[CardInstance] = []
+        self._card_play_starts_this_turn: list[CardPlayStartedEntry] = []
         self._card_play_round_counts: dict[tuple[int, Creature], int] = {}
 
         for ally in ally_players or ():
@@ -1442,8 +1450,8 @@ class CombatState:
             with self.acting_player_view(owner):
                 self._apply_card_before_card_played(card, owner)
                 fire_before_card_played(card, self)
-            if ctx["remaining_plays"] == ctx["play_count"]:
-                self._card_play_starts_this_turn.append(card)
+            is_first_in_series = ctx["remaining_plays"] == ctx["play_count"]
+            self._card_play_starts_this_turn.append(CardPlayStartedEntry(card, is_first_in_series))
             ctx["remaining_plays"] -= 1
             previous_card_source = self._active_card_source
             self._active_card_source = card
@@ -3099,12 +3107,16 @@ class CombatState:
         owner: Creature,
         *,
         card_type: CardType | None = None,
+        first_in_series_only: bool = False,
+        exclude_card: object | None = _NO_CARD_FILTER,
     ) -> int:
         return sum(
             1
-            for card in self._card_play_starts_this_turn
-            if getattr(card, "owner", None) is owner
-            and (card_type is None or card.card_type == card_type)
+            for entry in self._card_play_starts_this_turn
+            if getattr(entry.card, "owner", None) is owner
+            and (card_type is None or entry.card.card_type == card_type)
+            and (not first_in_series_only or entry.is_first_in_series)
+            and (exclude_card is _NO_CARD_FILTER or entry.card is not exclude_card)
         )
 
     def count_cards_played_this_combat(

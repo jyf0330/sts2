@@ -239,10 +239,11 @@ class LethalityPower(PowerInstance):
 
     power_type = PowerType.BUFF
     stack_type = PowerStackType.COUNTER
+    FIRST_ATTACK_PLAY_START_COUNT = 1
+    PERCENT_SCALE = 100.0
 
     def __init__(self, amount: int):
         super().__init__(PowerId.LETHALITY, amount)
-        self._attacks_played_this_turn: int = 0
 
     def modify_damage_multiplicative(
         self, owner: Creature, dealer: Creature | None, target: Creature, props: ValueProp
@@ -251,18 +252,14 @@ class LethalityPower(PowerInstance):
             return 1.0
         if not props.is_powered():
             return 1.0
-        if self._attacks_played_this_turn > 0:
+        combat = getattr(owner, "combat_state", None)
+        card_source = getattr(combat, "active_card_source", None)
+        if card_source is None or getattr(card_source, "owner", None) is not owner:
             return 1.0
-        return 1.0 + self.amount / 100.0
-
-    def before_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
-        card_type = getattr(card, "card_type", None) or getattr(card, "type", None)
-        if card_type == CardType.ATTACK:
-            self._attacks_played_this_turn += 1
-
-    def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side == owner.side:
-            self._attacks_played_this_turn = 0
+        attack_starts = combat.count_card_play_starts_this_turn(owner, card_type=CardType.ATTACK)
+        if attack_starts > self.FIRST_ATTACK_PLAY_START_COUNT:
+            return 1.0
+        return 1.0 + self.amount / self.PERCENT_SCALE
 
 
 # ── AccuracyPower ────────────────────────────────────────────────────────

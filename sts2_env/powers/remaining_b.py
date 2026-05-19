@@ -691,10 +691,9 @@ class JugglingPower(PowerInstance):
         combat: CombatState,
     ) -> None:
         if owner is target and power_id == PowerId.JUGGLING and amount > 0:
-            self._attacks_played_this_turn = sum(
-                1
-                for card in combat._played_cards_this_turn
-                if getattr(card, "owner", None) is owner and getattr(card, "card_type", None) == CardType.ATTACK
+            self._attacks_played_this_turn = combat.count_card_play_starts_this_turn(
+                owner,
+                card_type=CardType.ATTACK,
             )
 
     def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
@@ -1216,9 +1215,10 @@ class NostalgiaPower(PowerInstance):
         card_play_starts = getattr(combat, "count_card_play_starts_this_turn", None)
         if not callable(card_play_starts):
             return True
-        qualifying_starts = card_play_starts(owner, card_type=CardType.ATTACK) + card_play_starts(
+        qualifying_starts = card_play_starts(owner, card_type=CardType.ATTACK, exclude_card=card) + card_play_starts(
             owner,
             card_type=CardType.SKILL,
+            exclude_card=card,
         )
         return qualifying_starts < self.amount
 

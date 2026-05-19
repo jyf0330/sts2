@@ -5,7 +5,7 @@ import pytest
 from sts2_env.core.creature import Creature
 from sts2_env.core.enums import CardId, CombatSide, PowerId, RoomType, ValueProp
 from sts2_env.core.damage import apply_damage, calculate_block, calculate_damage
-from sts2_env.core.combat import CombatState
+from sts2_env.core.combat import CardPlayStartedEntry, CombatState
 from sts2_env.core.hooks import (
     fire_after_block_cleared,
     fire_after_block_gained,
@@ -235,7 +235,7 @@ class TestPowerApplication:
         first.afflict("ringing")
         second.afflict("ringing")
         simple_combat.hand = [first, second]
-        simple_combat._card_play_starts_this_turn.append(first)  # noqa: SLF001
+        simple_combat._card_play_starts_this_turn.append(CardPlayStartedEntry(first, True))  # noqa: SLF001
         simple_combat.apply_power_to(simple_combat.player, PowerId.RINGING, 1)
 
         assert simple_combat.can_play_card(second) is False
@@ -433,6 +433,41 @@ class TestDebuffTickTiming:
 
 
 class TestDamageModifierInteractions:
+    LETHALITY_PERCENT = 50
+    PERCENT_SCALE = 100
+
+    def test_lethality_boosts_only_first_attack_started_this_turn(self, simple_combat):
+        enemy = simple_combat.enemies[0]
+        starting_hp = enemy.current_hp
+        first_attack = make_strike_ironclad()
+        second_attack = make_strike_ironclad()
+        first_attack_damage = int(first_attack.base_damage * (1 + self.LETHALITY_PERCENT / self.PERCENT_SCALE))
+        second_attack_damage = second_attack.base_damage
+        simple_combat.hand = [first_attack, second_attack]
+        simple_combat.energy = 2
+        simple_combat.apply_power_to(simple_combat.player, PowerId.LETHALITY, self.LETHALITY_PERCENT)
+
+        assert simple_combat.play_card(0, 0)
+        assert enemy.current_hp == starting_hp - first_attack_damage
+
+        assert simple_combat.play_card(0, 0)
+        assert enemy.current_hp == starting_hp - first_attack_damage - second_attack_damage
+
+    def test_lethality_only_boosts_first_play_in_replayed_attack_series(self, simple_combat):
+        enemy = simple_combat.enemies[0]
+        starting_hp = enemy.current_hp
+        strike = make_strike_ironclad()
+        first_hit_damage = int(strike.base_damage * (1 + self.LETHALITY_PERCENT / self.PERCENT_SCALE))
+        replay_hit_damage = strike.base_damage
+        simple_combat.hand = [strike]
+        simple_combat.energy = 1
+        simple_combat.apply_power_to(simple_combat.player, PowerId.LETHALITY, self.LETHALITY_PERCENT)
+        simple_combat.apply_power_to(simple_combat.player, PowerId.ECHO_FORM, 1)
+
+        assert simple_combat.play_card(0, 0)
+
+        assert enemy.current_hp == starting_hp - first_hit_damage - replay_hit_damage
+
     def test_cruelty_increases_vulnerable_multiplier(self, simple_combat):
         player = simple_combat.player
         enemy = simple_combat.enemies[0]
@@ -1154,7 +1189,7 @@ class TestPowerAmountChangedHooks:
         assert simple_combat.discard_pile == []
         assert PowerId.REBOUND not in simple_combat.player.powers
 
-    def test_nostalgia_moves_first_attack_or_skill_to_draw_top(self, simple_combat):
+    def test_nostalgia_moves_first_qualifying_card_to_draw_top(self, simple_combat):
         first = make_strike_ironclad()
         second = make_defend_ironclad()
         simple_combat.hand = [first, second]
@@ -1164,12 +1199,12 @@ class TestPowerAmountChangedHooks:
         simple_combat.apply_power_to(simple_combat.player, PowerId.NOSTALGIA, 1)
 
         assert simple_combat.play_card(0, 0)
-        assert first in simple_combat.discard_pile
-        assert simple_combat.draw_pile == []
+        assert simple_combat.draw_pile == [first]
+        assert first not in simple_combat.discard_pile
 
         assert simple_combat.play_card(0)
         assert second in simple_combat.discard_pile
-        assert simple_combat.draw_pile == []
+        assert simple_combat.draw_pile == [first]
 
     def test_nostalgia_counts_qualifying_cards_played_before_it_was_applied(self, simple_combat):
         first = make_strike_ironclad()

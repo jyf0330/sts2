@@ -94,7 +94,9 @@ class EchoFormPower(PowerInstance):
             return count
         combat = getattr(owner, "combat_state", None)
         play_starts = getattr(combat, "count_card_play_starts_this_turn", None)
-        started_this_turn = play_starts(owner) if callable(play_starts) else self._cards_echoed_this_turn
+        started_this_turn = (
+            play_starts(owner, first_in_series_only=True) if callable(play_starts) else self._cards_echoed_this_turn
+        )
         if started_this_turn < self.amount:
             self._cards_echoed_this_turn += 1
             return count + 1
