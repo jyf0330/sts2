@@ -158,7 +158,7 @@ def _transform_n_cards(run_state: RunState, count: int, rng=None) -> int:
     transformed = 0
     candidates = run_state.player.transformable_deck_cards()
     transform_rng = rng or run_state.rng.niche
-    run_state.rng.niche.shuffle(candidates)
+    transform_rng.shuffle(candidates)
     for old_card in candidates[:count]:
         new_card = create_transform_card(
             old_card,

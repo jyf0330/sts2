@@ -27,6 +27,17 @@ def _make_run_state(seed: int) -> RunState:
     return run_state
 
 
+class _TransformSecondCardRng:
+    def shuffle(self, seq) -> None:
+        seq[0], seq[1] = seq[1], seq[0]
+
+    def choice(self, seq):
+        return seq[0]
+
+    def next_float(self) -> float:
+        return 0.0
+
+
 def test_the_architect_is_pool_disabled_and_has_single_proceed_option():
     run_state = _make_run_state(901)
     event = TheArchitect()
@@ -137,6 +148,25 @@ def test_endless_conveyor_observe_and_targeted_dishes_apply_expected_effects():
     eel = event.choose(run_state, "grab")
     assert not eel.finished
     assert len(run_state.player.deck) == deck_before + 1
+
+
+def test_endless_conveyor_jelly_liver_uses_event_rng_for_transform_selection():
+    run_state = _make_run_state(9061)
+    run_state.player.gold = 200
+    first = create_card(CardId.STRIKE_IRONCLAD)
+    second = create_card(CardId.DEFEND_IRONCLAD)
+    run_state.player.deck = [first, second]
+    event = EndlessConveyor()
+    event.rng = _TransformSecondCardRng()
+    event._current_dish = "jelly_liver"  # noqa: SLF001
+    niche_counter = run_state.rng.niche.counter
+
+    result = event.choose(run_state, "grab")
+
+    assert result.finished is False
+    assert run_state.rng.niche.counter == niche_counter
+    assert run_state.player.deck[0].card_id == CardId.STRIKE_IRONCLAD
+    assert run_state.player.deck[1].card_id != CardId.DEFEND_IRONCLAD
 
 
 def test_fake_merchant_gating_options_and_choices_reflect_foul_potion_and_gold():
