@@ -5,7 +5,7 @@ import pytest
 from sts2_env.core.creature import Creature
 from sts2_env.core.enums import CardId, CombatSide, PowerId, RoomType, ValueProp
 from sts2_env.core.damage import apply_damage, calculate_block, calculate_damage
-from sts2_env.core.combat import CardPlayStartedEntry, CombatState
+from sts2_env.core.combat import CombatState
 from sts2_env.core.hooks import (
     fire_after_block_cleared,
     fire_after_block_gained,
@@ -19,12 +19,13 @@ from sts2_env.cards.defect import create_defect_starter_deck, make_beam_cell, ma
 from sts2_env.cards.ironclad import (
     create_ironclad_starter_deck,
     make_demon_form,
+    make_anger,
     make_inflame,
     make_juggling,
     make_sword_boomerang,
 )
 from sts2_env.cards.ironclad_basic import make_bash, make_defend_ironclad, make_strike_ironclad
-from sts2_env.cards.silent import _make_shiv, make_afterimage, make_serpent_form
+from sts2_env.cards.silent import _make_shiv, make_afterimage, make_deflect, make_serpent_form
 from sts2_env.cards.status import make_burn, make_dazed, make_rebound, make_sovereign_blade
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle, create_twig_slime_s
@@ -228,14 +229,14 @@ class TestPowerApplication:
         assert simple_combat.play_card(0, 0) is False
 
     def test_ringing_counts_card_play_starts_before_after_card_played(self, simple_combat):
-        first = make_strike_ironclad()
+        first = make_anger()
         second = make_strike_ironclad()
-        first.owner = simple_combat.player
-        second.owner = simple_combat.player
-        first.afflict("ringing")
         second.afflict("ringing")
         simple_combat.hand = [first, second]
-        simple_combat._card_play_starts_this_turn.append(CardPlayStartedEntry(first, True, 1))  # noqa: SLF001
+        simple_combat.energy = 1
+
+        assert simple_combat.play_card(0, 0)
+
         simple_combat.apply_power_to(simple_combat.player, PowerId.RINGING, 1)
 
         assert simple_combat.can_play_card(second) is False
@@ -1550,11 +1551,13 @@ class TestPowerAmountChangedHooks:
         assert simple_combat.can_play_card(new_skill) is False
 
     def test_smoggy_marks_new_skills_after_skill_play_started(self, simple_combat):
-        started_skill = make_defend_ironclad()
-        started_skill.owner = simple_combat.player
+        started_skill = make_deflect()
         new_skill = make_defend_ironclad()
         simple_combat.player.powers[PowerId.SMOGGY] = SmoggyPower()
-        simple_combat._card_play_starts_this_turn.append(CardPlayStartedEntry(started_skill, True, 1))  # noqa: SLF001
+        simple_combat.hand = [started_skill]
+        simple_combat.energy = 0
+
+        assert simple_combat.play_card(0)
 
         simple_combat.move_card_to_hand(new_skill)
 
