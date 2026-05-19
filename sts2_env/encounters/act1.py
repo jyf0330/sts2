@@ -90,6 +90,9 @@ def setup_cubex_construct_normal(combat: CombatState, rng: Rng) -> None:
 
 
 def setup_flyconid_normal(combat: CombatState, rng: Rng) -> None:
+    slime_creator = rng.choice([create_leaf_slime_m, create_twig_slime_m])
+    slime, slime_ai = slime_creator(rng)
+    combat.add_enemy(slime, slime_ai)
     creature, ai = create_flyconid(rng)
     combat.add_enemy(creature, ai)
 

@@ -243,8 +243,13 @@ class TestAct1NormalEncounters:
         for seed in range(5):
             combat = _make_combat(seed)
             setup_flyconid_normal(combat, Rng(seed))
-            assert len(combat.enemies) == 1
-            assert 47 <= combat.enemies[0].max_hp <= 49
+            assert combat.enemies[0].monster_id in {"LEAF_SLIME_M", "TWIG_SLIME_M"}
+            assert combat.enemies[1].monster_id == "FLYCONID"
+            assert 47 <= combat.enemies[1].max_hp <= 49
+            assert combat.enemy_ais[combat.enemies[1].combat_id].current_move.state_id in {
+                "FRAIL_SPORES_MOVE",
+                "SMASH_MOVE",
+            }
 
     def test_fogmog_count(self):
         combat = _make_combat()
