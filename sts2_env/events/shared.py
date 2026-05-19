@@ -2563,7 +2563,10 @@ class WoodCarvings(EventModel):
 
     def is_allowed(self, run_state: RunState) -> bool:
         from sts2_env.core.enums import CardRarity
-        return any(c.rarity == CardRarity.BASIC for c in run_state.player.deck)
+        return all(
+            any(c.rarity == CardRarity.BASIC and c.is_removable for c in player.deck)
+            for player in run_state.players
+        )
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
         snake_enabled = any(can_enchant_card(card, "Slither") for card in run_state.player.deck)

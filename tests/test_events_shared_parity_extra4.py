@@ -4,6 +4,7 @@ import sts2_env.events.shared  # noqa: F401
 
 import pytest
 
+from sts2_env.cards.factory import create_card
 from sts2_env.cards.ironclad import create_ironclad_starter_deck
 from sts2_env.cards.status import make_decay, make_doubt
 from sts2_env.core.enums import CardId
@@ -242,6 +243,20 @@ def test_wood_carvings_bird_snake_and_torus_mutate_deck_state():
     torus_final = torus_event.resolve_pending_choice(0)
     assert torus_final.finished
     assert torus_target.card_id == CardId.TORIC_TOUGHNESS
+
+
+def test_wood_carvings_requires_all_players_to_have_removable_basic_cards():
+    run_state = _make_run_state(5111)
+    ally = run_state.add_player(PlayerState(player_id=2, character_id="Silent"))
+    eternal_basic = create_card(CardId.STRIKE_IRONCLAD)
+    eternal_basic.keywords = frozenset({"eternal"})
+    ally.deck = [eternal_basic]
+    event = WoodCarvings()
+
+    assert event.is_allowed(run_state) is False
+
+    ally.deck = [create_card(CardId.STRIKE_IRONCLAD)]
+    assert event.is_allowed(run_state) is True
 
 
 def test_zen_weaver_applies_gold_card_gain_and_card_removal_costs():
