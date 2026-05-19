@@ -109,6 +109,36 @@ class CardMetadata:
     can_be_generated_by_modifiers: bool
 
 
+_MULTIPLAYER_ONLY_CARD_IDS = frozenset({
+    CardId.BEACON_OF_HOPE,
+    CardId.BELIEVE_IN_YOU,
+    CardId.COORDINATE_CARD,
+    CardId.DEMONIC_SHIELD,
+    CardId.ENERGY_SURGE,
+    CardId.FLANKING,
+    CardId.GANG_UP,
+    CardId.GLIMPSE_BEYOND,
+    CardId.HAMMER_TIME,
+    CardId.HUDDLE_UP,
+    CardId.IGNITION,
+    CardId.INTERCEPT_CARD,
+    CardId.KNOCKDOWN,
+    CardId.LARGESSE,
+    CardId.LEGION_OF_BONE,
+    CardId.LIFT,
+    CardId.MIMIC,
+    CardId.RALLY,
+    CardId.SNEAKY_CARD,
+    CardId.TAG_TEAM,
+    CardId.TANK_CARD,
+})
+
+_SINGLEPLAYER_ONLY_CARD_IDS = frozenset({
+    CardId.STRATAGEM,
+    CardId.WELL_LAID_PLANS,
+})
+
+
 @dataclass(frozen=True)
 class ReferenceCardDefinition:
     card_id_text: str
@@ -439,6 +469,14 @@ def _matches_generation_context(
     return True
 
 
+def _matches_player_count(card_id: CardId, *, is_multiplayer: bool | None) -> bool:
+    if is_multiplayer is None:
+        return True
+    if is_multiplayer:
+        return card_id not in _SINGLEPLAYER_ONLY_CARD_IDS
+    return card_id not in _MULTIPLAYER_ONLY_CARD_IDS
+
+
 def eligible_character_cards(
     character_id: str,
     *,
@@ -446,6 +484,7 @@ def eligible_character_cards(
     rarity: str | CardRarity | None = None,
     require_keyword: str | None = None,
     generation_context: GenerationContext | None = "combat",
+    is_multiplayer: bool | None = None,
 ) -> list[CardId]:
     """Return eligible class cards from the owning character's card pool."""
     rarity_filter = _coerce_rarity(rarity)
@@ -453,6 +492,8 @@ def eligible_character_cards(
     eligible: list[CardId] = []
 
     for card_id in config.card_pool:
+        if not _matches_player_count(card_id, is_multiplayer=is_multiplayer):
+            continue
         try:
             metadata = card_metadata(card_id)
         except KeyError:
@@ -477,6 +518,7 @@ def eligible_registered_cards(
     rarity: str | CardRarity | None = None,
     exclude_ids: set[CardId] | None = None,
     generation_context: GenerationContext | None = "combat",
+    is_multiplayer: bool | None = None,
 ) -> list[CardId]:
     """Return registered cards filtered by source module and metadata."""
     rarity_filter = _coerce_rarity(rarity)
@@ -486,6 +528,8 @@ def eligible_registered_cards(
     registry = _factory_registry()
     for card_id in CardId:
         if card_id in exclude_ids:
+            continue
+        if not _matches_player_count(card_id, is_multiplayer=is_multiplayer):
             continue
         if card_id in _LEGACY_NON_REFERENCE_CARD_IDS:
             continue
@@ -539,6 +583,7 @@ def create_character_cards(
     require_keyword: str | None = None,
     distinct: bool = True,
     generation_context: GenerationContext | None = "combat",
+    is_multiplayer: bool | None = None,
 ) -> list[CardInstance]:
     """Create cards from the owning character pool with optional filtering."""
     eligible = eligible_character_cards(
@@ -547,6 +592,7 @@ def create_character_cards(
         rarity=rarity,
         require_keyword=require_keyword,
         generation_context=generation_context,
+        is_multiplayer=is_multiplayer,
     )
     return create_cards_from_ids(eligible, rng, count, distinct=distinct)
 
@@ -560,6 +606,7 @@ def create_distinct_character_cards(
     rarity: str | CardRarity | None = None,
     require_keyword: str | None = None,
     generation_context: GenerationContext | None = "combat",
+    is_multiplayer: bool | None = None,
 ) -> list[CardInstance]:
     """Create up to `count` distinct cards from a character pool."""
     return create_character_cards(
@@ -570,6 +617,7 @@ def create_distinct_character_cards(
         rarity=rarity,
         require_keyword=require_keyword,
         generation_context=generation_context,
+        is_multiplayer=is_multiplayer,
         distinct=True,
     )
 
@@ -579,6 +627,7 @@ def eligible_transform_cards(
     *,
     character_id: str,
     generation_context: GenerationContext | None = None,
+    is_multiplayer: bool | None = None,
 ) -> list[CardId]:
     """Return the decompiled-style transform pool for a specific original card."""
     registry = _factory_registry()
@@ -592,21 +641,25 @@ def eligible_transform_cards(
         candidates = eligible_registered_cards(
             module_name="sts2_env.cards.colorless",
             generation_context=generation_context,
+            is_multiplayer=is_multiplayer,
         )
     elif original.card_id in set(get_character(character_id).card_pool):
         candidates = eligible_character_cards(
             character_id,
             generation_context=generation_context,
+            is_multiplayer=is_multiplayer,
         )
     elif source_module is not None:
         candidates = eligible_registered_cards(
             module_name=source_module,
             generation_context=generation_context,
+            is_multiplayer=is_multiplayer,
         )
     else:
         candidates = eligible_character_cards(
             character_id,
             generation_context=generation_context,
+            is_multiplayer=is_multiplayer,
         )
 
     if original.rarity not in {CardRarity.EVENT, CardRarity.ANCIENT}:
@@ -630,7 +683,11 @@ def eligible_transform_cards(
         return candidates
     return [
         card_id
-        for card_id in eligible_character_cards(character_id, generation_context=generation_context)
+        for card_id in eligible_character_cards(
+            character_id,
+            generation_context=generation_context,
+            is_multiplayer=is_multiplayer,
+        )
         if card_id != original.card_id and card_metadata(card_id).rarity in {CardRarity.COMMON, CardRarity.UNCOMMON, CardRarity.RARE}
     ]
 
@@ -641,12 +698,14 @@ def create_transform_card(
     character_id: str,
     rng: Rng,
     generation_context: GenerationContext | None = None,
+    is_multiplayer: bool | None = None,
 ) -> CardInstance:
     """Create a run-level transform result using the original-card-specific pool."""
     candidates = eligible_transform_cards(
         original,
         character_id=character_id,
         generation_context=generation_context,
+        is_multiplayer=is_multiplayer,
     )
     if not candidates:
         raise ValueError(f"No valid transform candidates for {original.card_id.name}")

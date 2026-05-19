@@ -1,8 +1,13 @@
 """Tests for combat card generation filters."""
 
-from sts2_env.cards.factory import eligible_character_cards, eligible_registered_cards
+from sts2_env.cards.factory import (
+    create_character_cards,
+    eligible_character_cards,
+    eligible_registered_cards,
+)
 from sts2_env.cards.ironclad import make_feed
 from sts2_env.core.enums import CardId, CardType
+from sts2_env.core.rng import Rng
 
 
 def test_character_combat_generation_excludes_basic_event_and_ineligible_cards():
@@ -24,6 +29,68 @@ def test_colorless_combat_generation_excludes_non_generatable_cards():
     assert CardId.ALCHEMIZE not in colorless_cards
     assert CardId.HAND_OF_GREED not in colorless_cards
     assert CardId.DISCOVERY in colorless_cards
+
+
+def test_card_generation_filters_multiplayer_constraints_like_reference():
+    singleplayer_colorless = set(
+        eligible_registered_cards(
+            module_name="sts2_env.cards.colorless",
+            generation_context="combat",
+            is_multiplayer=False,
+        )
+    )
+    multiplayer_colorless = set(
+        eligible_registered_cards(
+            module_name="sts2_env.cards.colorless",
+            generation_context="combat",
+            is_multiplayer=True,
+        )
+    )
+    singleplayer_silent = set(
+        eligible_character_cards(
+            "Silent",
+            generation_context="combat",
+            is_multiplayer=False,
+        )
+    )
+    multiplayer_silent = set(
+        eligible_character_cards(
+            "Silent",
+            generation_context="combat",
+            is_multiplayer=True,
+        )
+    )
+
+    assert CardId.BELIEVE_IN_YOU not in singleplayer_colorless
+    assert CardId.BELIEVE_IN_YOU in multiplayer_colorless
+    assert CardId.STRATAGEM in singleplayer_colorless
+    assert CardId.STRATAGEM not in multiplayer_colorless
+    assert CardId.WELL_LAID_PLANS in singleplayer_silent
+    assert CardId.WELL_LAID_PLANS not in multiplayer_silent
+
+
+def test_combat_card_creation_uses_multiplayer_constraints():
+    singleplayer_cards = create_character_cards(
+        "Necrobinder",
+        Rng(2),
+        25,
+        card_type=CardType.SKILL,
+        distinct=False,
+        generation_context="combat",
+        is_multiplayer=False,
+    )
+    multiplayer_cards = create_character_cards(
+        "Necrobinder",
+        Rng(2),
+        25,
+        card_type=CardType.SKILL,
+        distinct=False,
+        generation_context="combat",
+        is_multiplayer=True,
+    )
+
+    assert all(card.card_id != CardId.GLIMPSE_BEYOND for card in singleplayer_cards)
+    assert any(card.card_id == CardId.GLIMPSE_BEYOND for card in multiplayer_cards)
 
 
 def test_modifier_generation_excludes_modifier_blacklisted_cards():

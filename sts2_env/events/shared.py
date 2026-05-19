@@ -243,6 +243,7 @@ def _transform_n_cards(run_state: RunState, count: int, rng=None) -> int:
             character_id=run_state.player.character_id,
             rng=transform_rng,
             generation_context=None,
+            is_multiplayer=len(run_state.players) > 1,
         )
         old_card.card_id = new_card.card_id
         old_card.cost = new_card.cost
@@ -345,6 +346,7 @@ def _transform_selected_cards(cards: list, run_state: RunState, rng=None) -> int
             character_id=run_state.player.character_id,
             rng=transform_rng,
             generation_context=None,
+            is_multiplayer=len(run_state.players) > 1,
         )
         old_card.card_id = new_card.card_id
         old_card.cost = new_card.cost

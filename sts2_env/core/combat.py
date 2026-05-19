@@ -179,6 +179,10 @@ class CombatState:
         return self._root_player
 
     @property
+    def is_multiplayer(self) -> bool:
+        return len(self.combat_player_states) > 1
+
+    @property
     def current_player_state(self) -> CombatPlayerState:
         return self._acting_player_state or self._primary_player_state
 
@@ -2629,7 +2633,12 @@ class CombatState:
             return
         candidates = [
             card for card in state.hand
-            if eligible_transform_cards(card, character_id=state.character_id, generation_context="combat")
+            if eligible_transform_cards(
+                card,
+                character_id=state.character_id,
+                generation_context="combat",
+                is_multiplayer=self.is_multiplayer,
+            )
         ]
         required = min(count, len(candidates))
         if required <= 0:
@@ -2642,6 +2651,7 @@ class CombatState:
                     character_id=state.character_id,
                     rng=self.combat_card_selection_rng,
                     generation_context="combat",
+                    is_multiplayer=self.is_multiplayer,
                 )
                 self.transform_card(selected, replacement)
 
@@ -3290,6 +3300,7 @@ class CombatState:
             card_type=card_type,
             rarity=rarity,
             generation_context=generation_context,
+            is_multiplayer=self.is_multiplayer,
         )
         if generated:
             self._add_generated_cards_to_hand(generated, owner=owner)
@@ -3319,6 +3330,7 @@ class CombatState:
             card_type=card_type,
             distinct=False,
             generation_context=generation_context,
+            is_multiplayer=self.is_multiplayer,
         )
         if ethereal:
             for card in generated:
@@ -3354,6 +3366,7 @@ class CombatState:
             count,
             require_keyword="ethereal",
             generation_context=generation_context,
+            is_multiplayer=self.is_multiplayer,
         )
         self._add_generated_cards_to_hand(generated, owner=owner)
 
@@ -3364,6 +3377,7 @@ class CombatState:
         colorless_ids = eligible_registered_cards(
             module_name="sts2_env.cards.colorless",
             generation_context="combat",
+            is_multiplayer=self.is_multiplayer,
         )
         generated = create_cards_from_ids(
             colorless_ids,
@@ -3382,6 +3396,7 @@ class CombatState:
             self.combat_card_generation_rng,
             1,
             generation_context="combat",
+            is_multiplayer=self.is_multiplayer,
         )
         for card in generated:
             card.set_combat_cost(0)
@@ -3398,6 +3413,7 @@ class CombatState:
             card_type=CardType.ATTACK,
             distinct=True,
             generation_context="combat",
+            is_multiplayer=self.is_multiplayer,
         )
         for card in generated:
             card.set_temporary_cost_for_turn(0)

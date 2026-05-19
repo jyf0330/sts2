@@ -602,6 +602,7 @@ def distraction_effect(card: CardInstance, combat: CombatState, target: Creature
         1,
         card_type=CardType.SKILL,
         generation_context="combat",
+        is_multiplayer=combat.is_multiplayer,
     )
     if not generated:
         return
@@ -769,6 +770,7 @@ def mad_science_effect(card: CardInstance, combat: CombatState, target: Creature
                 1,
                 distinct=True,
                 generation_context="combat",
+                is_multiplayer=combat.is_multiplayer,
             )
             if generated:
                 generated[0].set_combat_cost(0)
@@ -816,6 +818,7 @@ def metamorphosis_effect(card: CardInstance, combat: CombatState, target: Creatu
         card_type=CardType.ATTACK,
         distinct=False,
         generation_context="combat",
+        is_multiplayer=combat.is_multiplayer,
     )
     for generated_card in generated:
         generated_card.set_free_this_combat()

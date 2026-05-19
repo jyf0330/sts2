@@ -60,6 +60,10 @@ def _matches_card_instance_filters(
     return True
 
 
+def _is_multiplayer_run(run_state: RunState) -> bool:
+    return len(run_state.players) > 1
+
+
 def generate_card_reward(
     run_state: RunState,
     context: str = "regular",
@@ -176,6 +180,7 @@ def _pick_reward_card(
                     card_type=card_type,
                     rarity=current_rarity,
                     generation_context=generation_context,
+                    is_multiplayer=_is_multiplayer_run(run_state),
                 ):
                     if not _matches_card_instance_filters(card_id, cost=cost, costs_x=costs_x):
                         continue
@@ -189,6 +194,7 @@ def _pick_reward_card(
                     card_type=card_type,
                     rarity=current_rarity,
                     generation_context=generation_context,
+                    is_multiplayer=_is_multiplayer_run(run_state),
                 ):
                     if not _matches_card_instance_filters(card_id, cost=cost, costs_x=costs_x):
                         continue
@@ -225,6 +231,7 @@ def _pick_reward_card(
                     card_type=card_type,
                     rarity=current_rarity,
                     generation_context=generation_context,
+                    is_multiplayer=_is_multiplayer_run(run_state),
                 ):
                     if not _matches_card_instance_filters(card_id, cost=cost, costs_x=costs_x):
                         continue
@@ -238,6 +245,7 @@ def _pick_reward_card(
                     card_type=card_type,
                     rarity=current_rarity,
                     generation_context=generation_context,
+                    is_multiplayer=_is_multiplayer_run(run_state),
                 ):
                     if not _matches_card_instance_filters(card_id, cost=cost, costs_x=costs_x):
                         continue
@@ -367,6 +375,7 @@ def generate_uniform_noncombat_cards(
             card_type=card_type,
             rarity=rarity,
             generation_context=None,
+            is_multiplayer=_is_multiplayer_run(run_state),
         ):
             if distinct and card_id in seen:
                 continue
@@ -378,6 +387,7 @@ def generate_uniform_noncombat_cards(
             card_type=card_type,
             rarity=rarity,
             generation_context=None,
+            is_multiplayer=_is_multiplayer_run(run_state),
         ):
             if distinct and card_id in seen:
                 continue

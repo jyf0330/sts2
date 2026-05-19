@@ -483,7 +483,12 @@ class PlayerState:
 
     def add_random_card_to_deck(self, rarity: str, upgraded: bool = False) -> bool:
         card_rarity = CardRarity[rarity.upper()]
-        candidates = eligible_character_cards(self.character_id, rarity=card_rarity, generation_context="modifier")
+        candidates = eligible_character_cards(
+            self.character_id,
+            rarity=card_rarity,
+            generation_context="modifier",
+            is_multiplayer=len(self.run_state.players) > 1,
+        )
         if not candidates:
             return False
         card_id = self.run_state.rng.rewards.choice(candidates)
@@ -679,6 +684,7 @@ class PlayerState:
                 character_id=self.character_id,
                 rng=rng or self.run_state.rng.niche,
                 generation_context=None,
+                is_multiplayer=len(self.run_state.players) > 1,
             )
             self._apply_card_replacement(card, replacement)
             transformed += 1
@@ -831,6 +837,7 @@ class PlayerState:
                 character_id=self.character_id,
                 rng=rng or self.run_state.rng.niche,
                 generation_context=None,
+                is_multiplayer=len(self.run_state.players) > 1,
             )
             self._apply_card_replacement(card, replacement)
             transformed += 1
@@ -1119,8 +1126,19 @@ class PlayerState:
     def offer_card_bundles(self) -> None:
         from sts2_env.run.reward_objects import CardBundlesReward
 
-        common_ids = eligible_character_cards(self.character_id, rarity=CardRarity.COMMON, generation_context=None)
-        uncommon_ids = eligible_character_cards(self.character_id, rarity=CardRarity.UNCOMMON, generation_context=None)
+        is_multiplayer = len(self.run_state.players) > 1
+        common_ids = eligible_character_cards(
+            self.character_id,
+            rarity=CardRarity.COMMON,
+            generation_context=None,
+            is_multiplayer=is_multiplayer,
+        )
+        uncommon_ids = eligible_character_cards(
+            self.character_id,
+            rarity=CardRarity.UNCOMMON,
+            generation_context=None,
+            is_multiplayer=is_multiplayer,
+        )
         used_ids: set[CardId] = set()
         bundles: list[list[CardInstance]] = []
         for _ in range(2):

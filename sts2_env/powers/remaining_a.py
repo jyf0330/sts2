@@ -412,6 +412,7 @@ class CallOfTheVoidPower(PowerInstance):
             for card_id in eligible_character_cards(
                 state.character_id,
                 generation_context="combat",
+                is_multiplayer=combat.is_multiplayer,
             )
             if create_card(card_id).rarity not in {CardRarity.BASIC, CardRarity.ANCIENT}
         ]

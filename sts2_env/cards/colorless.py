@@ -118,6 +118,7 @@ def discovery(card: CardInstance, combat: CombatState, target: Creature | None) 
         combat.combat_card_generation_rng,
         3,
         generation_context="combat",
+        is_multiplayer=combat.is_multiplayer,
     )
     if not candidates:
         return
@@ -243,6 +244,7 @@ def jack_of_all_trades(card: CardInstance, combat: CombatState, target: Creature
         module_name=__name__,
         exclude_ids={CardId.JACK_OF_ALL_TRADES},
         generation_context="combat",
+        is_multiplayer=combat.is_multiplayer,
     )
     generated = create_cards_from_ids(
         colorless_ids,
@@ -406,6 +408,7 @@ def splash(card: CardInstance, combat: CombatState, target: Creature | None) -> 
                 cfg.character_id,
                 card_type=CardType.ATTACK,
                 generation_context="combat",
+                is_multiplayer=combat.is_multiplayer,
             )
         )
 
@@ -614,6 +617,7 @@ def jackpot(card: CardInstance, combat: CombatState, target: Creature | None) ->
             module_name=None,
             card_type=None,
             generation_context="combat",
+            is_multiplayer=combat.is_multiplayer,
         )
         if card_preview(card_id).cost == 0 and not card_preview(card_id).has_energy_cost_x
     ]

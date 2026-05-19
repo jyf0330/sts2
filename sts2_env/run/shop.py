@@ -186,16 +186,18 @@ def _create_character_shop_card(
     for character_id in character_ids:
         candidates.extend(eligible_character_cards(
             character_id,
-            card_type=card_type,
-            rarity=rarity,
-            generation_context=None,
-        ))
+                card_type=card_type,
+                rarity=rarity,
+                generation_context=None,
+                is_multiplayer=len(run_state.players) > 1,
+            ))
     if not candidates:
         for character_id in character_ids:
             candidates.extend(eligible_character_cards(
                 character_id,
                 card_type=card_type,
                 generation_context=None,
+                is_multiplayer=len(run_state.players) > 1,
             ))
     card_id = rng.choice(candidates) if candidates else None
     card = None
@@ -232,6 +234,7 @@ def _create_colorless_shop_card(
         module_name="sts2_env.cards.colorless",
         rarity=rarity,
         generation_context=None,
+        is_multiplayer=len(run_state.players) > 1,
     )
     card_id = rng.choice(candidates) if candidates else None
     card = None

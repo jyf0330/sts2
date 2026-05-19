@@ -403,6 +403,7 @@ class HelloWorldPower(PowerInstance):
             self.amount,
             rarity="COMMON",
             generation_context="combat",
+            is_multiplayer=combat.is_multiplayer,
         )
         combat._add_generated_cards_to_hand(generated, owner=owner)
 

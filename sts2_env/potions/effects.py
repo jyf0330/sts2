@@ -65,6 +65,7 @@ def _attack_potion(combat: CombatState, user: Creature, target: Creature | None)
         card_type=CardType.ATTACK,
         distinct=True,
         generation_context="combat",
+        is_multiplayer=combat.is_multiplayer,
     )
     for generated_card in generated:
         generated_card.set_temporary_free_this_turn()
@@ -97,6 +98,7 @@ def _colorless_potion(combat: CombatState, user: Creature, target: Creature | No
     colorless_ids = eligible_registered_cards(
         module_name="sts2_env.cards.colorless",
         generation_context="combat",
+        is_multiplayer=combat.is_multiplayer,
     )
     generated = create_cards_from_ids(colorless_ids, combat.combat_card_generation_rng, 3, distinct=True)
     for generated_card in generated:
@@ -166,6 +168,7 @@ def _power_potion(combat: CombatState, user: Creature, target: Creature | None) 
         card_type=CardType.POWER,
         distinct=True,
         generation_context="combat",
+        is_multiplayer=combat.is_multiplayer,
     )
     for generated_card in generated:
         generated_card.set_temporary_free_this_turn()
@@ -189,6 +192,7 @@ def _skill_potion(combat: CombatState, user: Creature, target: Creature | None) 
         card_type=CardType.SKILL,
         distinct=True,
         generation_context="combat",
+        is_multiplayer=combat.is_multiplayer,
     )
     for generated_card in generated:
         generated_card.set_temporary_free_this_turn()
@@ -444,6 +448,7 @@ def _cosmic_concoction(combat: CombatState, user: Creature, target: Creature | N
     colorless_ids = eligible_registered_cards(
         module_name="sts2_env.cards.colorless",
         generation_context="combat",
+        is_multiplayer=combat.is_multiplayer,
     )
     generated = create_cards_from_ids(colorless_ids, combat.combat_card_generation_rng, 3, distinct=True)
     for generated_card in generated:
@@ -560,18 +565,21 @@ def _orobic_acid(combat: CombatState, user: Creature, target: Creature | None) -
         create_character_cards(
             combat.character_id, combat.combat_card_generation_rng, 1,
             card_type=CardType.ATTACK, distinct=True, generation_context="combat",
+            is_multiplayer=combat.is_multiplayer,
         )
     )
     generated.extend(
         create_character_cards(
             combat.character_id, combat.combat_card_generation_rng, 1,
             card_type=CardType.SKILL, distinct=True, generation_context="combat",
+            is_multiplayer=combat.is_multiplayer,
         )
     )
     generated.extend(
         create_character_cards(
             combat.character_id, combat.combat_card_generation_rng, 1,
             card_type=CardType.POWER, distinct=True, generation_context="combat",
+            is_multiplayer=combat.is_multiplayer,
         )
     )
     for generated_card in generated:

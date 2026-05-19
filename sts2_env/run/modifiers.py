@@ -232,6 +232,7 @@ class BigGameHunterModifier(ModifierModel):
                     character_id,
                     rarity=CardRarity.RARE,
                     generation_context=options.generation_context,
+                    is_multiplayer=len(run_state.players) > 1,
                 ):
                     if card_id in seen_ids:
                         continue
@@ -242,6 +243,7 @@ class BigGameHunterModifier(ModifierModel):
                     module_name="sts2_env.cards.colorless",
                     rarity=CardRarity.RARE,
                     generation_context=options.generation_context,
+                    is_multiplayer=len(run_state.players) > 1,
                 ):
                     if card_id in seen_ids:
                         continue
@@ -254,6 +256,7 @@ class BigGameHunterModifier(ModifierModel):
                     player.character_id,
                     rarity=CardRarity.RARE,
                     generation_context=options.generation_context,
+                    is_multiplayer=len(run_state.players) > 1,
                 )
             )
         return CardRewardGenerationOptions(

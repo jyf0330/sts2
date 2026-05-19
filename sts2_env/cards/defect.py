@@ -657,6 +657,7 @@ def white_noise(card: CardInstance, combat: CombatState, target: Creature | None
         1,
         card_type=CardType.POWER,
         generation_context="combat",
+        is_multiplayer=combat.is_multiplayer,
     )
     if not generated:
         return

@@ -1145,6 +1145,7 @@ def infernal_blade(card: CardInstance, combat: CombatState, target: Creature | N
         combat.combat_card_generation_rng,
         1,
         card_type=CardType.ATTACK,
+        is_multiplayer=combat.is_multiplayer,
     )
     if not generated:
         return
