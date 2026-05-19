@@ -51,6 +51,11 @@ class _SwapFirstTwoRng:
         return 0
 
 
+class _LastChoiceRng:
+    def choice(self, seq):
+        return seq[-1]
+
+
 def test_shared_event_random_gold_uses_exclusive_upper_bounds():
     run_state = RunState(seed=6, character_id="Ironclad")
     run_state.initialize_run()
@@ -188,9 +193,33 @@ def test_battleworn_dummy_and_trash_heap_surface_real_rewards():
 
     heap = TrashHeap()
     result = heap.choose(run_state, "dive_in")
-    rewards = result.rewards["reward_objects"]
-    assert len(rewards) == 1
-    assert rewards[0].reward_type.name == "RELIC"
+    assert result.finished
+    assert run_state.player.relics[-1] in TrashHeap._RELICS  # noqa: SLF001
+
+
+def test_trash_heap_uses_event_rng_fixed_relic_and_card_pools():
+    run_state = RunState(seed=1931, character_id="Ironclad")
+    run_state.initialize_run()
+    event = TrashHeap()
+    event.rng = _LastChoiceRng()
+    hp_before = run_state.player.current_hp
+    gold_before = run_state.player.gold
+    deck_before = len(run_state.player.deck)
+    up_front_counter = run_state.rng.up_front.counter
+    rewards_counter = run_state.rng.rewards.counter
+
+    dive = event.choose(run_state, "dive_in")
+    grab = event.choose(run_state, "grab")
+
+    assert dive.finished
+    assert grab.finished
+    assert run_state.player.current_hp == hp_before - 8
+    assert run_state.player.relics[-1] == "THE_BOOT"
+    assert run_state.player.gold == gold_before + 100
+    assert len(run_state.player.deck) == deck_before + 1
+    assert run_state.player.deck[-1].card_id == CardId.STACK
+    assert run_state.rng.up_front.counter == up_front_counter
+    assert run_state.rng.rewards.counter == rewards_counter
 
 
 def test_battleworn_dummy_setting_two_upgrades_two_random_cards():

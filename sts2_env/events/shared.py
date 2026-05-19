@@ -2083,6 +2083,25 @@ class TrashHeap(EventModel):
     """
 
     event_id = "TrashHeap"
+    _RELICS = (
+        RelicId.DARKSTONE_PERIAPT.name,
+        RelicId.DREAM_CATCHER.name,
+        RelicId.HAND_DRILL.name,
+        RelicId.MAW_BANK.name,
+        RelicId.THE_BOOT.name,
+    )
+    _CARDS = (
+        CardId.CALTROPS,
+        CardId.CLASH,
+        CardId.DISTRACTION,
+        CardId.DUAL_WIELD,
+        CardId.ENTRENCH,
+        CardId.HELLO_WORLD_CARD,
+        CardId.OUTMANEUVER,
+        CardId.REBOUND,
+        CardId.RIP_AND_TEAR,
+        CardId.STACK,
+    )
 
     def is_allowed(self, run_state: RunState) -> bool:
         return run_state.player.current_hp > 5
@@ -2096,17 +2115,23 @@ class TrashHeap(EventModel):
     def choose(self, run_state: RunState, option_id: str) -> EventResult:
         if option_id == "dive_in":
             run_state.player.lose_hp(8)
-            return EventResult(
-                finished=True,
-                description="Took 8 damage, gained a relic.",
-                rewards={"reward_objects": [RelicReward(run_state.player.player_id)]},
-            )
+            relic_id = self.get_rng(run_state).choice(list(self._RELICS))
+            if _should_defer_event_rewards(run_state):
+                return _event_result_with_rewards(
+                    "Took 8 damage, gained a relic.",
+                    [RelicReward(run_state.player.player_id, relic_id=relic_id)],
+                )
+            run_state.player.obtain_relic(relic_id)
+            return EventResult(finished=True, description="Took 8 damage, gained a relic.")
         run_state.player.gain_gold(100)
-        return EventResult(
-            finished=True,
-            description="Gained 100 gold and a card.",
-            rewards={"reward_objects": [CardReward(run_state.player.player_id, option_count=1)]},
-        )
+        card = create_card(self.get_rng(run_state).choice(list(self._CARDS)))
+        if _should_defer_event_rewards(run_state):
+            return _event_result_with_rewards(
+                "Gained 100 gold and a card.",
+                [AddCardsReward(run_state.player.player_id, [card])],
+            )
+        run_state.player.add_card_instance_to_deck(card)
+        return EventResult(finished=True, description="Gained 100 gold and a card.")
 
 
 register_event(TrashHeap())
