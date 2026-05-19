@@ -54,6 +54,23 @@ from sts2_env.encounters.act2 import (
     ELITE_ENCOUNTERS as ACT2_ELITE,
     BOSS_ENCOUNTERS as ACT2_BOSS,
     ALL_ACT2_ENCOUNTERS,
+    setup_bowlbugs_normal,
+    setup_bowlbugs_weak,
+    setup_chompers_normal,
+    setup_decimillipede_elite,
+    setup_entomancer_elite,
+    setup_exoskeletons_normal,
+    setup_exoskeletons_weak,
+    setup_hunter_killer_normal,
+    setup_knowledge_demon_boss,
+    setup_louse_progenitor_normal,
+    setup_ovicopter_normal,
+    setup_slumbering_beetle_normal,
+    setup_spiny_toad_normal,
+    setup_the_insatiable_boss,
+    setup_the_obscura_normal,
+    setup_thieving_hopper_weak,
+    setup_tunneler_weak,
 )
 
 # Act 3
@@ -72,6 +89,22 @@ from sts2_env.encounters.act4 import (
     ELITE_ENCOUNTERS as ACT4_ELITE,
     BOSS_ENCOUNTERS as ACT4_BOSS,
     ALL_ACT4_ENCOUNTERS,
+    setup_cultists_normal,
+    setup_fossil_stalker_normal,
+    setup_gremlin_merc_normal,
+    setup_haunted_ship_normal,
+    setup_living_fog_normal,
+    setup_punch_construct_normal,
+    setup_sewer_clam_normal,
+    setup_skulking_colony_elite,
+    setup_terror_eel_elite,
+)
+from sts2_env.encounters.events import (
+    setup_battleworn_dummy_v1,
+    setup_dense_vegetation,
+    setup_fake_merchant,
+    setup_mysterious_knight,
+    setup_the_architect,
 )
 
 
@@ -92,6 +125,61 @@ def test_punch_off_hp_reduction_uses_exclusive_upper_bound():
     setup_punch_off(combat, _ExclusiveHighRng())
 
     assert [enemy.current_hp for enemy in combat.enemies] == [46, 46]
+
+
+CS_ENCOUNTER_PARITY_CASES = [
+    ("BattlewornDummyEventEncounter", setup_battleworn_dummy_v1, ("BATTLE_FRIEND_V1",)),
+    ("BowlbugsNormal", setup_bowlbugs_normal, ("BOWLBUG_EGG", "BOWLBUG_ROCK", "BOWLBUG_SILK")),
+    ("BowlbugsWeak", setup_bowlbugs_weak, ("BOWLBUG_EGG", "BOWLBUG_NECTAR")),
+    ("ChompersNormal", setup_chompers_normal, ("CHOMPER", "CHOMPER")),
+    ("CultistsNormal", setup_cultists_normal, ("CALCIFIED_CULTIST", "DAMP_CULTIST")),
+    (
+        "DecimillipedeElite",
+        setup_decimillipede_elite,
+        ("DECIMILLIPEDE_SEGMENT", "DECIMILLIPEDE_SEGMENT", "DECIMILLIPEDE_SEGMENT"),
+    ),
+    ("DenseVegetationEventEncounter", setup_dense_vegetation, ("WRIGGLER", "WRIGGLER", "WRIGGLER", "WRIGGLER")),
+    ("EntomancerElite", setup_entomancer_elite, ("ENTOMANCER",)),
+    ("ExoskeletonsNormal", setup_exoskeletons_normal, ("EXOSKELETON", "EXOSKELETON", "EXOSKELETON")),
+    ("ExoskeletonsWeak", setup_exoskeletons_weak, ("EXOSKELETON", "EXOSKELETON")),
+    ("FakeMerchantEventEncounter", setup_fake_merchant, ("FAKE_MERCHANT_MONSTER",)),
+    ("FossilStalkerNormal", setup_fossil_stalker_normal, ("FOSSIL_STALKER",)),
+    ("GremlinMercNormal", setup_gremlin_merc_normal, ("GREMLIN_MERC", "SNEAKY_GREMLIN", "FAT_GREMLIN")),
+    ("HauntedShipNormal", setup_haunted_ship_normal, ("HAUNTED_SHIP",)),
+    ("HunterKillerNormal", setup_hunter_killer_normal, ("HUNTER_KILLER",)),
+    ("KnowledgeDemonBoss", setup_knowledge_demon_boss, ("KNOWLEDGE_DEMON",)),
+    ("LivingFogNormal", setup_living_fog_normal, ("LIVING_FOG",)),
+    ("LouseProgenitorNormal", setup_louse_progenitor_normal, ("LOUSE_PROGENITOR",)),
+    ("MysteriousKnightEventEncounter", setup_mysterious_knight, ("MYSTERIOUS_KNIGHT",)),
+    ("OvicopterNormal", setup_ovicopter_normal, ("OVICOPTER",)),
+    ("PunchConstructNormal", setup_punch_construct_normal, ("PUNCH_CONSTRUCT",)),
+    ("PunchOffEventEncounter", setup_punch_off, ("PUNCH_CONSTRUCT", "PUNCH_CONSTRUCT")),
+    ("SewerClamNormal", setup_sewer_clam_normal, ("SEWER_CLAM",)),
+    ("SkulkingColonyElite", setup_skulking_colony_elite, ("SKULKING_COLONY",)),
+    ("SlumberingBeetleNormal", setup_slumbering_beetle_normal, ("SLUMBERING_BEETLE",)),
+    ("SpinyToadNormal", setup_spiny_toad_normal, ("SPINY_TOAD",)),
+    ("TerrorEelElite", setup_terror_eel_elite, ("TERROR_EEL",)),
+    ("TheArchitectEventEncounter", setup_the_architect, ("ARCHITECT",)),
+    ("TheInsatiableBoss", setup_the_insatiable_boss, ("THE_INSATIABLE",)),
+    ("TheObscuraNormal", setup_the_obscura_normal, ("THE_OBSCURA",)),
+    ("ThievingHopperWeak", setup_thieving_hopper_weak, ("THIEVING_HOPPER",)),
+    ("TunnelerWeak", setup_tunneler_weak, ("TUNNELER",)),
+]
+
+
+@pytest.mark.parametrize(
+    "cs_name, setup, expected_monster_ids",
+    CS_ENCOUNTER_PARITY_CASES,
+    ids=[case[0] for case in CS_ENCOUNTER_PARITY_CASES],
+)
+def test_cs_named_encounter_setup_maps_to_expected_monsters(cs_name, setup, expected_monster_ids):
+    combat = _make_combat()
+
+    setup(combat, Rng(42))
+
+    assert cs_name
+    assert tuple(enemy.monster_id for enemy in combat.enemies) == expected_monster_ids
+    assert all(combat.enemy_ais[enemy.combat_id].current_move.is_move for enemy in combat.enemies)
 
 
 # ========================================================================

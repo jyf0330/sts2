@@ -50,12 +50,16 @@ from sts2_env.monsters.act1 import (
     create_eye_with_teeth,
     create_flyconid,
     create_fogmog,
+    create_inklet,
+    create_kin_follower,
+    create_kin_priest,
     create_mawler,
     create_parafright,
     create_phrog_parasite,
     create_slithering_strangler,
     create_tracker_ruby_raider,
 )
+from sts2_env.monsters.act1_weak import create_leaf_slime_m
 from sts2_env.monsters.act4 import (
     create_calcified_cultist,
     create_corpse_slug,
@@ -88,6 +92,9 @@ from sts2_env.monsters.act2 import (
     create_chomper,
     create_crusher,
     create_decimillipede_segment,
+    create_decimillipede_segment_back,
+    create_decimillipede_segment_front,
+    create_decimillipede_segment_middle,
     create_entomancer,
     create_exoskeleton,
     create_hunter_killer,
@@ -107,8 +114,16 @@ from sts2_env.monsters.act2 import (
     create_wriggler,
 )
 from sts2_env.monsters.shared import (
+    create_battle_friend_v2,
+    create_battle_friend_v3,
+    create_big_dummy,
     create_battle_friend_v1,
     create_dense_vegetation_wriggler,
+    create_fake_merchant_monster,
+    create_multi_attack_move_monster,
+    create_one_hp_monster,
+    create_single_attack_move_monster,
+    create_ten_hp_monster,
     create_the_adversary_mk_one,
     create_the_adversary_mk_two,
     create_the_adversary_mk_three,
@@ -187,6 +202,54 @@ def _make_combat(seed: int = 7) -> CombatState:
         rng_seed=seed,
         character_id="Ironclad",
     )
+
+
+CS_MONSTER_FACTORY_PARITY_CASES = [
+    ("BattleFriendV2", create_battle_friend_v2, "BATTLE_FRIEND_V2", "NOTHING_MOVE", 150, 150),
+    ("BattleFriendV3", create_battle_friend_v3, "BATTLE_FRIEND_V3", "NOTHING_MOVE", 300, 300),
+    ("BigDummy", create_big_dummy, "BIG_DUMMY", "NOTHING", 9999, 9999),
+    ("DecimillipedeSegmentBack", create_decimillipede_segment_back, "DECIMILLIPEDE_SEGMENT_BACK", "WRITHE_MOVE", 42, 48),
+    ("DecimillipedeSegmentFront", create_decimillipede_segment_front, "DECIMILLIPEDE_SEGMENT_FRONT", "WRITHE_MOVE", 42, 48),
+    (
+        "DecimillipedeSegmentMiddle",
+        create_decimillipede_segment_middle,
+        "DECIMILLIPEDE_SEGMENT_MIDDLE",
+        "WRITHE_MOVE",
+        42,
+        48,
+    ),
+    ("FakeMerchantMonster", create_fake_merchant_monster, "FAKE_MERCHANT_MONSTER", "SWIPE", 165, 165),
+    ("Inklet", create_inklet, "INKLET", "SPLATTER", 30, 33),
+    ("KinFollower", create_kin_follower, "KIN_FOLLOWER", "BASH", 65, 71),
+    ("KinPriest", create_kin_priest, "KIN_PRIEST", "CONVERSION", 119, 119),
+    ("LeafSlimeM", create_leaf_slime_m, "LEAF_SLIME_M", "STICKY_SHOT", 32, 35),
+    ("MultiAttackMoveMonster", create_multi_attack_move_monster, "MULTI_ATTACK_MOVE_MONSTER", "POKE", 999, 999),
+    ("OneHpMonster", create_one_hp_monster, "ONE_HP_MONSTER", "NOTHING", 1, 1),
+    ("SingleAttackMoveMonster", create_single_attack_move_monster, "SINGLE_ATTACK_MOVE_MONSTER", "POKE", 999, 999),
+    ("TenHpMonster", create_ten_hp_monster, "TEN_HP_MONSTER", "NOTHING", 10, 10),
+]
+
+
+@pytest.mark.parametrize(
+    "cs_name, factory, expected_monster_id, expected_initial_move, min_hp, max_hp",
+    CS_MONSTER_FACTORY_PARITY_CASES,
+    ids=[case[0] for case in CS_MONSTER_FACTORY_PARITY_CASES],
+)
+def test_cs_named_monster_factory_maps_to_expected_model(
+    cs_name,
+    factory,
+    expected_monster_id,
+    expected_initial_move,
+    min_hp,
+    max_hp,
+):
+    creature, ai = factory(Rng(42))
+
+    assert cs_name
+    assert creature.monster_id == expected_monster_id
+    assert min_hp <= creature.max_hp <= max_hp
+    assert creature.current_hp == creature.max_hp
+    assert ai.current_move.state_id == expected_initial_move
 
 
 # ========================================================================
