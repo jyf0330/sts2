@@ -613,21 +613,29 @@ class BattlewornDummy(EventModel):
             rewards = [PotionReward(run_state.player.player_id, potion_id=potion_id)] if potion_id is not None else []
             return EventResult(
                 finished=True,
-                description="Fought dummy (easy), gained a potion.",
+                description="Started dummy training.",
                 rewards={"reward_objects": rewards},
+                event_combat_setup="battleworn_dummy_v1",
             )
         if option_id == "setting_2":
-            _upgrade_n_cards(run_state, 2, rng=run_state.rng.niche)
-            return EventResult(finished=True, description="Fought dummy (medium), upgraded 2 cards.")
-        if _should_defer_event_rewards(run_state):
-            return _event_result_with_rewards(
-                "Fought dummy (hard), gained a relic.",
-                _roll_random_relic_rewards(run_state, 1),
+            candidates = run_state.player.upgradable_deck_cards()
+            candidates.sort(key=lambda card: (card.card_id.name, card.upgraded))
+            run_state.rng.niche.shuffle(candidates)
+            return EventResult(
+                finished=True,
+                description="Started dummy training.",
+                rewards={
+                    "reward_objects": [
+                        UpgradeCardsReward(run_state.player.player_id, count=2, cards=candidates[:2])
+                    ]
+                },
+                event_combat_setup="battleworn_dummy_v2",
             )
-        _obtain_random_relics(run_state, 1)
         return EventResult(
             finished=True,
-            description="Fought dummy (hard), gained a relic.",
+            description="Started dummy training.",
+            rewards={"reward_objects": [RelicReward(run_state.player.player_id)]},
+            event_combat_setup="battleworn_dummy_v3",
         )
 
 

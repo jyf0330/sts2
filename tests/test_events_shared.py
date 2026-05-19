@@ -8,6 +8,7 @@ from sts2_env.core.enums import CardId
 from sts2_env.cards.silent import make_backstab
 from sts2_env.cards.status import make_clumsy, make_decay, make_doubt, make_exterminate, make_greed, make_guilty, make_injury, make_lantern_key, make_metamorphosis, make_poor_sleep, make_regret, make_squash
 from sts2_env.run.run_manager import RunManager
+from sts2_env.run.reward_objects import UpgradeCardsReward
 from sts2_env.run.run_state import PlayerState, RunState
 from sts2_env.events.shared import BattlewornDummy, Bugslayer, ColorfulPhilosophers, ColossalFlower, Darv, DenseVegetation, DoorsOfLightAndDark, DrowningBeacon, GraveOfTheForgotten, HungryForMushrooms, InfestedAutomaton, LostWisp, Nonupeipe, Orobas, Pael, PunchOff, RoundTeaParty, SpiritGrafter, SunkenStatue, SunkenTreasury, Tanx, Tezcatara, TheLanternKey, ThisOrThat, Trial, TrashHeap, UnrestSite, Vakuu, Wellspring, _event_potion_options
 
@@ -197,6 +198,7 @@ def test_battleworn_dummy_and_trash_heap_surface_real_rewards():
     dummy = BattlewornDummy()
     result = dummy.choose(run_state, "setting_1")
     rewards = result.rewards["reward_objects"]
+    assert result.event_combat_setup == "battleworn_dummy_v1"
     assert len(rewards) == 1
     assert rewards[0].reward_type.name == "POTION"
 
@@ -244,7 +246,7 @@ def test_trash_heap_requires_all_players_above_spawn_hp_threshold():
     assert event.is_allowed(run_state) is True
 
 
-def test_battleworn_dummy_setting_two_upgrades_two_random_cards():
+def test_battleworn_dummy_setting_two_enters_combat_with_upgrade_reward():
     run_state = RunState(seed=191, character_id="Ironclad")
     run_state.initialize_run()
     run_state.player.deck = create_ironclad_starter_deck()
@@ -253,10 +255,15 @@ def test_battleworn_dummy_setting_two_upgrades_two_random_cards():
     result = dummy.choose(run_state, "setting_2")
 
     assert result.finished
-    assert sum(1 for card in run_state.player.deck if card.upgraded) >= 2
+    assert result.event_combat_setup == "battleworn_dummy_v2"
+    reward = result.rewards["reward_objects"][0]
+    assert isinstance(reward, UpgradeCardsReward)
+    assert reward.count == 2
+    assert len(reward.cards) == 2
+    assert sum(1 for card in run_state.player.deck if card.upgraded) == 0
 
 
-def test_battleworn_dummy_setting_three_obtains_relic_immediately():
+def test_battleworn_dummy_setting_three_enters_combat_with_relic_reward():
     run_state = RunState(seed=1903, character_id="Ironclad")
     run_state.initialize_run()
     dummy = BattlewornDummy()
@@ -265,8 +272,9 @@ def test_battleworn_dummy_setting_three_obtains_relic_immediately():
     result = dummy.choose(run_state, "setting_3")
 
     assert result.finished
-    assert len(run_state.player.relics) == starting_relics + 1
-    assert result.rewards == {}
+    assert result.event_combat_setup == "battleworn_dummy_v3"
+    assert len(run_state.player.relics) == starting_relics
+    assert result.rewards["reward_objects"][0].reward_type.name == "RELIC"
 
 
 def test_event_specific_potion_rewards_are_rolled_before_reward_population():
@@ -315,9 +323,12 @@ def test_battleworn_dummy_setting_two_uses_niche_rng_for_upgrade_selection():
     assert result.finished
     assert run_state.rng.niche.shuffle_calls == 1
     assert run_state.rng.rewards.counter == rewards_counter
-    assert first.upgraded is True
+    reward = result.rewards["reward_objects"][0]
+    assert isinstance(reward, UpgradeCardsReward)
+    assert reward.cards == [first, third]
+    assert first.upgraded is False
     assert second.upgraded is False
-    assert third.upgraded is True
+    assert third.upgraded is False
 
 
 def test_doors_of_light_and_dark_light_and_dark_apply_real_effects():
@@ -576,6 +587,11 @@ def test_shared_event_combat_branches_expose_event_combat_setups():
     run_state.initialize_run()
     run_state.player.deck = create_ironclad_starter_deck()
 
+    dummy = BattlewornDummy()
+    assert dummy.choose(run_state, "setting_1").event_combat_setup == "battleworn_dummy_v1"
+    assert dummy.choose(run_state, "setting_2").event_combat_setup == "battleworn_dummy_v2"
+    assert dummy.choose(run_state, "setting_3").event_combat_setup == "battleworn_dummy_v3"
+
     vegetation = DenseVegetation()
     rest = vegetation.choose(run_state, "rest")
     assert not rest.finished
@@ -595,6 +611,17 @@ def test_shared_event_combat_branches_expose_event_combat_setups():
 
 
 def test_run_manager_enters_combat_for_shared_event_combat_branches():
+    mgr = RunManager(seed=68, character_id="Ironclad")
+    mgr.run_state.player.deck = create_ironclad_starter_deck()
+    mgr._phase = RunManager.PHASE_EVENT
+    dummy = BattlewornDummy()
+    mgr._event_model = dummy
+    mgr._event_options = dummy.generate_initial_options(mgr.run_state)
+
+    dummy_result = mgr._do_event_choice({"option_id": "setting_2"})
+    assert dummy_result["phase"] == RunManager.PHASE_COMBAT
+    assert mgr._current_room.encounter_id == "battleworn_dummy_v2"
+
     mgr = RunManager(seed=68, character_id="Ironclad")
     mgr.run_state.player.deck = create_ironclad_starter_deck()
     mgr._phase = RunManager.PHASE_EVENT
