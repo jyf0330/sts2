@@ -1193,8 +1193,8 @@ class NostalgiaPower(PowerInstance):
       Draw (top position).
     StackType.Counter.
 
-    Simplified: The card-play system checks this power against prior cards
-    played this turn.
+    Uses card-play-start history, matching the original
+    CardPlayStartedEntry check.
     """
 
     power_type = PowerType.BUFF
@@ -1202,11 +1202,10 @@ class NostalgiaPower(PowerInstance):
 
     def __init__(self, amount: int):
         super().__init__(PowerId.NOSTALGIA, amount)
+
     def should_redirect_to_draw_pile(
         self, owner: Creature, card: object, combat: CombatState | None = None
     ) -> bool:
-        """Called by the card-play system. Returns True if this card should
-        go to the top of the draw pile instead of discard."""
         if getattr(card, "owner", None) is not owner:
             return False
         card_type = getattr(card, "card_type", None)
@@ -1214,14 +1213,14 @@ class NostalgiaPower(PowerInstance):
             return False
         if combat is None:
             return True
-        prior_qualifying = sum(
-            1
-            for played in getattr(combat, "_played_cards_this_turn", ())
-            if played is not card
-            and getattr(played, "owner", None) is owner
-            and getattr(played, "card_type", None) in (CardType.ATTACK, CardType.SKILL)
+        card_play_starts = getattr(combat, "count_card_play_starts_this_turn", None)
+        if not callable(card_play_starts):
+            return True
+        qualifying_starts = card_play_starts(owner, card_type=CardType.ATTACK) + card_play_starts(
+            owner,
+            card_type=CardType.SKILL,
         )
-        return prior_qualifying < self.amount
+        return qualifying_starts < self.amount
 
 
 # ---------------------------------------------------------------------------

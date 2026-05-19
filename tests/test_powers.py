@@ -1164,11 +1164,12 @@ class TestPowerAmountChangedHooks:
         simple_combat.apply_power_to(simple_combat.player, PowerId.NOSTALGIA, 1)
 
         assert simple_combat.play_card(0, 0)
-        assert simple_combat.draw_pile == [first]
+        assert first in simple_combat.discard_pile
+        assert simple_combat.draw_pile == []
 
         assert simple_combat.play_card(0)
         assert second in simple_combat.discard_pile
-        assert simple_combat.draw_pile == [first]
+        assert simple_combat.draw_pile == []
 
     def test_nostalgia_counts_qualifying_cards_played_before_it_was_applied(self, simple_combat):
         first = make_strike_ironclad()
@@ -1185,6 +1186,18 @@ class TestPowerAmountChangedHooks:
         assert simple_combat.play_card(0)
         assert second in simple_combat.discard_pile
         assert second not in simple_combat.draw_pile
+
+    def test_nostalgia_moves_card_when_under_card_play_start_limit(self, simple_combat):
+        strike = make_strike_ironclad()
+        simple_combat.hand = [strike]
+        simple_combat.draw_pile = []
+        simple_combat.discard_pile = []
+        simple_combat.energy = 1
+        simple_combat.apply_power_to(simple_combat.player, PowerId.NOSTALGIA, 2)
+
+        assert simple_combat.play_card(0, 0)
+
+        assert simple_combat.draw_pile == [strike]
 
     def test_block_next_turn_triggers_on_block_cleared_hook(self, simple_combat):
         simple_combat.player.apply_power(PowerId.BLOCK_NEXT_TURN, 6)
