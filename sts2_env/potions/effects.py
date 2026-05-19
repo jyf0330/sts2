@@ -504,9 +504,9 @@ def _essence_of_darkness(combat: CombatState, user: Creature, target: Creature |
 
     Defect mechanic; calls channel_orb if available.
     """
-    orb_capacity = getattr(user, "orb_capacity", 3)
-    if hasattr(combat, "channel_orb"):
-        for _ in range(orb_capacity):
+    orb_queue = getattr(combat.combat_player_state_for(user), "orb_queue", None)
+    if orb_queue is not None and hasattr(combat, "channel_orb"):
+        for _ in range(orb_queue.capacity):
             combat.channel_orb(user, "Dark")
 
 

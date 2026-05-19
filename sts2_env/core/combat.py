@@ -2709,6 +2709,12 @@ class CombatState:
 
         self.channel_orb(owner, self.combat_orbs_rng.choice(list(OrbType)))
 
+    def add_orb_slots(self, owner: Creature, amount: int) -> None:
+        state = self.combat_player_state_for(owner)
+        orb_queue = getattr(state, "orb_queue", None)
+        if orb_queue is not None and amount > 0:
+            orb_queue.capacity = min(orb_queue.capacity + amount, orb_queue.MAX_CAPACITY)
+
     def count_distinct_orb_types(self, owner: Creature) -> int:
         state = self.combat_player_state_for(owner)
         orb_queue = getattr(state, "orb_queue", None)

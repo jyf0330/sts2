@@ -6,13 +6,15 @@ Verifies potion registry, rarity counts, pool filtering, and instance behavior.
 import pytest
 
 import sts2_env.powers  # noqa: F401
-from sts2_env.cards.defect import make_tempest
+from sts2_env.cards.defect import create_defect_starter_deck, make_tempest
 from sts2_env.cards.ironclad import make_bash
+from sts2_env.cards.necrobinder import create_necrobinder_starter_deck
+from sts2_env.cards.regent import create_regent_starter_deck
 from sts2_env.cards.silent import create_silent_starter_deck
 from sts2_env.cards.silent import make_defend_silent, make_neutralize, make_strike_silent
 from sts2_env.cards.status import make_ascenders_bane, make_byrd_swoop, make_wound
 from sts2_env.core.combat import CombatState
-from sts2_env.core.enums import CardId, CombatSide, PowerId, PotionRarity, PotionUsageType, PotionTargetType
+from sts2_env.core.enums import CardId, CardType, CombatSide, OrbType, PowerId, PotionRarity, PotionUsageType, PotionTargetType
 from sts2_env.core.hooks import fire_after_turn_end
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle
@@ -56,6 +58,25 @@ def _make_silent_combat(
     for i in range(extra_enemies):
         extra_creature, extra_ai = create_shrinker_beetle(Rng(seed + i + 1))
         combat.add_enemy(extra_creature, extra_ai)
+    combat.start_combat()
+    return combat
+
+
+def _make_combat_for_character(
+    character_id: str,
+    deck,
+    *,
+    seed: int = 1810,
+) -> CombatState:
+    combat = CombatState(
+        player_hp=70,
+        player_max_hp=70,
+        deck=deck,
+        rng_seed=seed,
+        character_id=character_id,
+    )
+    creature, ai = create_shrinker_beetle(Rng(seed))
+    combat.add_enemy(creature, ai)
     combat.start_combat()
     return combat
 
@@ -501,6 +522,124 @@ class TestPotionInstance:
         drawn_card.end_of_turn_cleanup()
         assert hand_card.cost == 2
         assert drawn_card.cost == 1
+
+    def test_swift_potion_draws_three_cards(self):
+        combat = _make_silent_combat()
+        first = make_strike_silent()
+        second = make_defend_silent()
+        third = make_neutralize()
+        combat.hand = []
+        combat.draw_pile = [first, second, third]
+        combat.discard_pile = []
+        combat.potions = [create_potion("SwiftPotion"), None, None]
+
+        assert combat.use_potion(0)
+
+        assert combat.hand == [first, second, third]
+        assert combat.draw_pile == []
+
+    def test_cure_all_gains_energy_and_draws_two_cards(self):
+        combat = _make_silent_combat()
+        first = make_strike_silent()
+        second = make_defend_silent()
+        combat.energy = 0
+        combat.hand = []
+        combat.draw_pile = [first, second]
+        combat.discard_pile = []
+        combat.potions = [create_potion("CureAll"), None, None]
+
+        assert combat.use_potion(0)
+
+        assert combat.energy == 1
+        assert combat.hand == [first, second]
+        assert combat.draw_pile == []
+
+    def test_bottled_potential_moves_hand_into_draw_pile_then_draws_five(self):
+        combat = _make_silent_combat()
+        hand_cards = [make_strike_silent() for _ in range(3)]
+        draw_cards = [make_defend_silent() for _ in range(2)]
+        combat.hand = list(hand_cards)
+        combat.draw_pile = list(draw_cards)
+        combat.discard_pile = []
+        combat.potions = [create_potion("BottledPotential"), None, None]
+
+        assert combat.use_potion(0)
+
+        assert len(combat.hand) == 5
+        assert {id(card) for card in combat.hand} == {id(card) for card in hand_cards + draw_cards}
+        assert combat.draw_pile == []
+
+    def test_bone_brew_summons_osty_with_source_value(self):
+        combat = _make_combat_for_character("Necrobinder", create_necrobinder_starter_deck())
+        combat.potions = [create_potion("BoneBrew"), None, None]
+
+        assert combat.use_potion(0)
+
+        osty = combat.get_osty(combat.player)
+        assert osty is not None
+        assert osty.max_hp == 15
+        assert osty.current_hp == 15
+
+    def test_kings_courage_forges_sovereign_blade_by_source_value(self):
+        combat = _make_combat_for_character("Regent", create_regent_starter_deck())
+        combat.hand = []
+        combat.potions = [create_potion("KingsCourage"), None, None]
+
+        assert combat.use_potion(0)
+
+        blade = next(card for card in combat.hand if card.card_id == CardId.SOVEREIGN_BLADE)
+        assert blade.base_damage == 25
+
+    def test_potion_of_capacity_adds_two_orb_slots_up_to_cap(self):
+        combat = _make_combat_for_character("Defect", create_defect_starter_deck())
+        combat.orb_queue.capacity = 9
+        combat.potions = [create_potion("PotionOfCapacity"), None, None]
+
+        assert combat.use_potion(0)
+
+        assert combat.orb_queue.capacity == 10
+
+    def test_essence_of_darkness_channels_dark_orbs_equal_to_capacity(self):
+        combat = _make_combat_for_character("Defect", create_defect_starter_deck())
+        combat.orb_queue.capacity = 4
+        combat.potions = [create_potion("EssenceOfDarkness"), None, None]
+
+        assert combat.use_potion(0)
+
+        assert len(combat.orb_queue.orbs) == 4
+        assert all(orb.orb_type == OrbType.DARK for orb in combat.orb_queue.orbs)
+
+    def test_skill_potion_generates_three_free_skill_choices(self):
+        combat = _make_silent_combat()
+        combat.rng = _FirstRng()
+        combat.potions = [create_potion("SkillPotion"), None, None]
+
+        assert combat.use_potion(0)
+
+        assert combat.pending_choice is not None
+        assert len(combat.pending_choice.options) == 3
+        assert all(option.card.card_type == CardType.SKILL for option in combat.pending_choice.options)
+        assert all(option.card.cost == 0 for option in combat.pending_choice.options)
+        assert all(
+            "_turn_cost_override" in option.card.combat_vars
+            for option in combat.pending_choice.options
+        )
+
+    def test_power_potion_generates_three_free_power_choices(self):
+        combat = _make_silent_combat()
+        combat.rng = _FirstRng()
+        combat.potions = [create_potion("PowerPotion"), None, None]
+
+        assert combat.use_potion(0)
+
+        assert combat.pending_choice is not None
+        assert len(combat.pending_choice.options) == 3
+        assert all(option.card.card_type == CardType.POWER for option in combat.pending_choice.options)
+        assert all(option.card.cost == 0 for option in combat.pending_choice.options)
+        assert all(
+            "_turn_cost_override" in option.card.combat_vars
+            for option in combat.pending_choice.options
+        )
 
 
 class TestSpecificPotions:
