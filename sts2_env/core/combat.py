@@ -2318,6 +2318,9 @@ class CombatState:
             if logged_owner is owner and (card_type is None or card.card_type == card_type)
         )
 
+    def energy_spent_this_turn(self, owner: Creature) -> int:
+        return self._energy_spent_this_turn.get(owner, 0)
+
     def count_cards_drawn_this_combat(self, owner: Creature) -> int:
         return sum(1 for logged_owner in self._draw_events_combat if logged_owner is owner)
 

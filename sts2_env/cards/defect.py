@@ -782,7 +782,7 @@ def genetic_algorithm(card: CardInstance, combat: CombatState, target: Creature 
 def helix_drill(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
     owner = _owner(card, combat)
-    hits = getattr(combat, "_energy_spent_this_turn", {}).get(owner, 0)
+    hits = combat.energy_spent_this_turn(owner)
     state = combat.combat_player_state_for(owner)
     if state is not None and card in state.play:
         hits -= combat.modified_card_cost(owner, card)
