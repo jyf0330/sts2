@@ -264,10 +264,10 @@ class EndlessConveyor(EventModel):
         for dish, weight in weighted:
             roll -= weight
             if roll <= 0:
-                self._last_dish = self._current_dish
+                self._last_dish = dish
                 self._current_dish = dish
                 return
-        self._last_dish = self._current_dish
+        self._last_dish = weighted[-1][0]
         self._current_dish = weighted[-1][0]
 
     def _apply_dish(self, run_state: RunState) -> None:

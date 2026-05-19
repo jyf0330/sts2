@@ -172,6 +172,20 @@ def test_endless_conveyor_observe_and_targeted_dishes_apply_expected_effects():
     assert len(run_state.player.deck) == deck_before + 1
 
 
+def test_endless_conveyor_excludes_the_dish_it_just_rolled_next_time():
+    run_state = _make_run_state(9062)
+    run_state.player.gold = 200
+    event = EndlessConveyor()
+    event.rng = _SwapFirstTwoRng()
+
+    event._roll_dish(run_state)
+    first_dish = event._current_dish
+    event._roll_dish(run_state)
+
+    assert first_dish == "caviar"
+    assert event._current_dish == "spicy_snappy"
+
+
 def test_endless_conveyor_observe_uses_event_rng_for_upgrade_selection():
     run_state = _make_run_state(9051)
     run_state.player.gold = 200
