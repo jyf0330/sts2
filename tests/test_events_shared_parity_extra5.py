@@ -321,8 +321,8 @@ def test_lantern_key_and_tinker_time_yield_expected_reward_and_card_configuratio
     assert reward.cards[0].card_id == CardId.LANTERN_KEY
 
     skill_state = _make_run_state(620)
-    skill_state.rng.up_front.shuffle = lambda seq: None
     skill_event = TinkerTime()
+    skill_event.rng = _ReverseShuffleRng()
     assert [option.option_id for option in skill_event.generate_initial_options(skill_state)] == ["choose_card_type"]
     skill_first = skill_event.choose(skill_state, "choose_card_type")
     assert skill_first.finished is False
@@ -341,8 +341,8 @@ def test_lantern_key_and_tinker_time_yield_expected_reward_and_card_configuratio
     assert skill_card.effect_vars["rider"] in {4, 5, 6}
 
     power_state = _make_run_state(621)
-    power_state.rng.up_front.shuffle = lambda seq: seq.reverse()
     power_event = TinkerTime()
+    power_event.rng = _ReverseShuffleRng()
     assert [option.option_id for option in power_event.generate_initial_options(power_state)] == ["choose_card_type"]
     power_first = power_event.choose(power_state, "choose_card_type")
     assert power_first.finished is False

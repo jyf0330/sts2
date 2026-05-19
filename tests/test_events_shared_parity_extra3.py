@@ -31,6 +31,11 @@ class _ExclusiveRollsRng:
         return next(self._rolls)
 
 
+class _NoopShuffleRng:
+    def shuffle(self, seq) -> None:
+        pass
+
+
 def _count_card(deck, card_id: CardId) -> int:
     return sum(1 for card in deck if card.card_id == card_id)
 
@@ -163,6 +168,7 @@ def test_wellspring_bathe_pending_choice_removes_selected_card_and_adds_guilty()
 def test_tinker_time_creates_configured_mad_science_card():
     run_state = _make_run_state(409)
     event = TinkerTime()
+    event.rng = _NoopShuffleRng()
 
     initial = event.generate_initial_options(run_state)
     assert [option.option_id for option in initial] == ["choose_card_type"]
@@ -180,3 +186,17 @@ def test_tinker_time_creates_configured_mad_science_card():
     assert mad_science.card_id == CardId.MAD_SCIENCE
     assert mad_science.card_type.name == chosen_type.upper()
     assert mad_science.effect_vars["rider"] > 0
+
+
+def test_tinker_time_uses_event_rng_without_advancing_up_front_rng():
+    run_state = _make_run_state(410)
+    event = TinkerTime()
+    up_front_counter = run_state.rng.up_front.counter
+
+    first = event.choose(run_state, "choose_card_type")
+    chosen_type = first.next_options[0].option_id
+    second = event.choose(run_state, chosen_type)
+
+    assert first.finished is False
+    assert second.finished is False
+    assert run_state.rng.up_front.counter == up_front_counter

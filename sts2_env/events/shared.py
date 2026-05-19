@@ -1987,7 +1987,7 @@ class TinkerTime(EventModel):
     def choose(self, run_state: RunState, option_id: str) -> EventResult:
         if option_id == "choose_card_type":
             card_types = ["attack", "skill", "power"]
-            run_state.rng.up_front.shuffle(card_types)
+            self.get_rng(run_state).shuffle(card_types)
             chosen = card_types[:2]
             return EventResult(
                 finished=False,
@@ -2011,7 +2011,7 @@ class TinkerTime(EventModel):
                 riders.append(("chaos", "Chaos"))
             else:
                 riders.append(("improvement", "Improvement"))
-            run_state.rng.up_front.shuffle(riders)
+            self.get_rng(run_state).shuffle(riders)
             riders = riders[:2]
             self._rider_choices = [rider_id for rider_id, _ in riders]
             return EventResult(
