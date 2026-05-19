@@ -783,23 +783,50 @@ def create_kin_priest(rng: Rng) -> tuple[Creature, MonsterAI]:
     return creature, MonsterAI(states, "CONVERSION")
 
 
-def create_kin_follower(rng: Rng, slot: str = "first") -> tuple[Creature, MonsterAI]:
-    hp = rng.next_int(65, 71)
+def create_kin_follower(rng: Rng, *, starts_with_dance: bool = False) -> tuple[Creature, MonsterAI]:
+    min_initial_hp = 58
+    max_initial_hp = 59
+    hp = rng.next_int(min_initial_hp, max_initial_hp)
     creature = Creature(max_hp=hp, monster_id="KIN_FOLLOWER")
-    bash_dmg = 10
-    bite_dmg = 5
+    quick_slash_move = "QUICK_SLASH_MOVE"
+    boomerang_move = "BOOMERANG_MOVE"
+    power_dance_move = "POWER_DANCE_MOVE"
+    quick_slash_dmg = 5
+    boomerang_dmg = 2
+    boomerang_hits = 2
+    dance_strength = 2
+    minion_amount = 1
 
-    def bash(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, bash_dmg)
+    def quick_slash(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, quick_slash_dmg)
 
-    def bite(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, bite_dmg, hits=2)
-        combat.apply_power_to(combat.primary_player, PowerId.WEAK, 1)
+    def boomerang(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, boomerang_dmg, hits=boomerang_hits)
+
+    def power_dance(combat: CombatState) -> None:
+        combat.apply_power_to(creature, PowerId.STRENGTH, dance_strength, applier=creature)
 
     states: dict[str, MonsterState] = {
-        "BASH": MoveState("BASH", bash, [attack_intent(bash_dmg)], follow_up_id="BITE"),
-        "BITE": MoveState("BITE", bite, [multi_attack_intent(bite_dmg, 2), debuff_intent()], follow_up_id="BASH"),
+        quick_slash_move: MoveState(
+            quick_slash_move,
+            quick_slash,
+            [attack_intent(quick_slash_dmg)],
+            follow_up_id=boomerang_move,
+        ),
+        boomerang_move: MoveState(
+            boomerang_move,
+            boomerang,
+            [multi_attack_intent(boomerang_dmg, boomerang_hits)],
+            follow_up_id=power_dance_move,
+        ),
+        power_dance_move: MoveState(
+            power_dance_move,
+            power_dance,
+            [buff_intent()],
+            follow_up_id=quick_slash_move,
+        ),
     }
 
-    initial = "BASH" if slot != "third" else "BITE"
+    creature.apply_power(PowerId.MINION, minion_amount)
+    initial = power_dance_move if starts_with_dance else quick_slash_move
     return creature, MonsterAI(states, initial, rng)

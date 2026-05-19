@@ -339,6 +339,22 @@ class TestAct1BossEncounters:
         setup_the_kin_boss(combat, Rng(42))
         assert len(combat.enemies) == 3  # priest + 2 followers
 
+    def test_the_kin_followers_start_on_original_moves(self):
+        combat = _make_combat()
+
+        setup_the_kin_boss(combat, Rng(42))
+
+        assert [enemy.monster_id for enemy in combat.enemies] == [
+            "KIN_FOLLOWER",
+            "KIN_FOLLOWER",
+            "KIN_PRIEST",
+        ]
+        assert [combat.enemy_ais[enemy.combat_id].current_move.state_id for enemy in combat.enemies] == [
+            "POWER_DANCE_MOVE",
+            "QUICK_SLASH_MOVE",
+            "CONVERSION",
+        ]
+
 
 # ========================================================================
 # Act 1: Pool Counts

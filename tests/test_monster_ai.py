@@ -235,7 +235,7 @@ CS_MONSTER_FACTORY_PARITY_CASES = [
     ),
     ("FakeMerchantMonster", create_fake_merchant_monster, "FAKE_MERCHANT_MONSTER", "SWIPE", 165, 165),
     ("Inklet", create_inklet, "INKLET", "SPLATTER", 30, 33),
-    ("KinFollower", create_kin_follower, "KIN_FOLLOWER", "BASH", 65, 71),
+    ("KinFollower", create_kin_follower, "KIN_FOLLOWER", "QUICK_SLASH_MOVE", 58, 59),
     ("KinPriest", create_kin_priest, "KIN_PRIEST", "CONVERSION", 119, 119),
     ("LeafSlimeM", create_leaf_slime_m, "LEAF_SLIME_M", "STICKY_SHOT", 32, 35),
     ("MultiAttackMoveMonster", create_multi_attack_move_monster, "MULTI_ATTACK_MOVE_MONSTER", "POKE", 999, 999),
@@ -920,6 +920,45 @@ class TestFixedRotation:
         assert lethal_combat.is_over
         assert lethal_combat.player_won is False
         assert lethal_combat.discard_pile == []
+
+    def test_kin_follower_matches_original_cycle_and_setup_power(self):
+        rng_seed = 1251
+        player_hp = 80
+        quick_slash_damage = 5
+        boomerang_damage = 2
+        boomerang_hits = 2
+        dance_strength = 2
+        minion_amount = 1
+        no_weak = 0
+        combat = _make_combat(rng_seed)
+        creature, ai = create_kin_follower(Rng(rng_seed))
+        dance_creature, dance_ai = create_kin_follower(Rng(rng_seed), starts_with_dance=True)
+        combat.add_enemy(creature, ai)
+
+        assert 58 <= creature.max_hp <= 59
+        assert creature.get_power_amount(PowerId.MINION) == minion_amount
+        assert dance_creature.get_power_amount(PowerId.MINION) == minion_amount
+        assert _run_ai(ai, Rng(rng_seed), 4) == [
+            "QUICK_SLASH_MOVE",
+            "BOOMERANG_MOVE",
+            "POWER_DANCE_MOVE",
+            "QUICK_SLASH_MOVE",
+        ]
+        assert _run_ai(dance_ai, Rng(rng_seed), 4) == [
+            "POWER_DANCE_MOVE",
+            "QUICK_SLASH_MOVE",
+            "BOOMERANG_MOVE",
+            "POWER_DANCE_MOVE",
+        ]
+
+        combat.primary_player.current_hp = player_hp
+        ai.states["QUICK_SLASH_MOVE"].perform(combat)
+        ai.states["BOOMERANG_MOVE"].perform(combat)
+        ai.states["POWER_DANCE_MOVE"].perform(combat)
+
+        assert combat.primary_player.current_hp == player_hp - quick_slash_damage - boomerang_damage * boomerang_hits
+        assert combat.primary_player.get_power_amount(PowerId.WEAK) == no_weak
+        assert creature.get_power_amount(PowerId.STRENGTH) == dance_strength
 
     def test_cubex_initial_room_setup_triggers_after_block_gained_hook(self):
         combat = _make_combat(121)
