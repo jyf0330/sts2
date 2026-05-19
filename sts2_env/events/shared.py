@@ -1437,6 +1437,7 @@ class PunchOff(EventModel):
                 rewards={"reward_objects": [RelicReward(run_state.player.player_id)]},
             )
         if option_id == "fight":
+            run_state.player.can_remove_potions = True
             return EventResult(
                 finished=True,
                 description="Fought and earned relic + potion.",

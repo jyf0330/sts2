@@ -556,11 +556,14 @@ def test_shared_event_combat_branches_expose_event_combat_setups():
     assert fight.event_combat_setup == "dense_vegetation"
 
     punch = PunchOff()
+    punch.before_event_started(run_state)
+    assert run_state.player.can_remove_potions is False
     take_them = punch.choose(run_state, "take_them")
     assert not take_them.finished
     fight = punch.choose(run_state, "fight")
     assert fight.finished
     assert fight.event_combat_setup == "punch_off"
+    assert run_state.player.can_remove_potions is True
 
 
 def test_run_manager_enters_combat_for_shared_event_combat_branches():
