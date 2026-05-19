@@ -565,7 +565,7 @@ def scrape(card: CardInstance, combat: CombatState, target: Creature | None) -> 
         if c.cost != 0
         or c.has_energy_cost_x
         or int(c.combat_vars.get("_turn_star_cost_override", c.combat_vars.get("_combat_star_cost_override", c.star_cost))) > 0
-        or c.card_id == CardId.STARDUST
+        or c.has_star_cost_x
     ]
     for c in to_discard:
         combat.hand.remove(c)

@@ -101,6 +101,7 @@ class TestDefectParityExtra:
         star_cost.cost = 0
         star_cost.star_cost = 1
         star_x = make_stardust()
+        assert star_x.has_star_cost_x is True
         combat.hand = [make_scrape()]
         combat.draw_pile = [zero_cost, star_cost, star_x]
         combat.energy = 1

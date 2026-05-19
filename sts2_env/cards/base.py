@@ -106,6 +106,7 @@ class CardInstance:
     # X-cost and Star-cost support
     has_energy_cost_x: bool = False
     star_cost: int = 0
+    has_star_cost_x: bool = False
     # Persistent per-combat state (e.g. Rampage extra damage, Claw buff)
     combat_vars: dict[str, object] = field(default_factory=dict)
     # Original cost for cost-modification tracking
@@ -247,6 +248,7 @@ class CardInstance:
             instance_id=new_id,
             has_energy_cost_x=self.has_energy_cost_x,
             star_cost=self.star_cost,
+            has_star_cost_x=self.has_star_cost_x,
             combat_vars={**self.combat_vars, "_is_clone": 1},
             original_cost=self.original_cost,
             single_turn_retain=self.single_turn_retain,

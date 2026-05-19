@@ -116,10 +116,12 @@ class TestRegentParityExtra:
         combat = _make_combat()
         enemy = combat.enemies[0]
         starting_hp = enemy.current_hp
-        combat.hand = [make_stardust()]
+        stardust = make_stardust()
+        combat.hand = [stardust]
         combat.energy = 3
         combat.gain_stars(combat.player, 3)
 
+        assert stardust.has_star_cost_x is True
         assert combat.play_card(0, 0)
         assert combat.stars == 0
         assert enemy.current_hp == starting_hp - 15
@@ -135,3 +137,8 @@ class TestRegentParityExtra:
         assert combat.play_card(0, 0)
         assert combat.stars == 0
         assert enemy.current_hp == starting_hp - 10
+
+    def test_stardust_clone_preserves_star_x_cost_marker(self):
+        stardust = make_stardust()
+
+        assert stardust.clone(999).has_star_cost_x is True

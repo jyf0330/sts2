@@ -171,7 +171,7 @@ def crescent_spear(card: CardInstance, combat: CombatState, target: Creature | N
     count = sum(
         1
         for candidate in combat._all_cards_for_creature(owner)
-        if candidate.star_cost > 0 or candidate.card_id == CardId.STARDUST
+        if candidate.star_cost > 0 or candidate.has_star_cost_x
     )
     base = card.effect_vars.get("calc_base", card.base_damage or 6)
     extra = card.effect_vars.get("extra_damage", 2)
@@ -1345,6 +1345,7 @@ def make_stardust(upgraded: bool = False) -> CardInstance:
 
     card = create_reference_card(CardId.STARDUST, upgraded=upgraded, allow_generation=True)
     card.base_damage = 7 if upgraded else 5
+    card.has_star_cost_x = True
     return card
 
 
