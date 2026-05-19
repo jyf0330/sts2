@@ -166,6 +166,19 @@ def test_potion_courier_ranwid_and_whispering_hollow_change_inventory():
     assert before_ids != after_ids
 
 
+def test_whispering_hollow_requires_all_players_to_have_gold():
+    run_state = RunState(seed=3101, character_id="Ironclad")
+    run_state.initialize_run()
+    run_state.player.gold = 50
+    ally = run_state.add_player(PlayerState(player_id=2, character_id="Silent", gold=49))
+    event = WhisperingHollow()
+
+    assert event.is_allowed(run_state) is False
+
+    ally.gold = 50
+    assert event.is_allowed(run_state) is True
+
+
 def test_potion_courier_ransack_uses_event_specific_uncommon_pool_order():
     run_state = RunState(seed=311, character_id="Ironclad")
     run_state.initialize_run()
