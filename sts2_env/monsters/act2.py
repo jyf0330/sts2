@@ -58,7 +58,7 @@ def _gain_block(creature: Creature, amount: int, combat: CombatState) -> None:
     if gained > 0:
         from sts2_env.core.hooks import fire_after_block_gained
 
-        fire_after_block_gained(creature, gained, combat)
+        fire_after_block_gained(creature, gained, combat, ValueProp.MOVE, None)
 
 
 def _thieving_hopper_targets(combat: CombatState, creature: Creature) -> list[Creature]:

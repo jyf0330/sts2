@@ -264,12 +264,12 @@ def modify_block(
 
     # Step 2: Multiplicative
     for owner, power in _iter_power_listeners(combat):
-        multiplier = power.modify_block_multiplicative(owner, target, props, card_source, card_play)
+        multiplier = power.modify_block_multiplicative(owner, target, props, card_source, card_play, combat)
         block *= multiplier
         if multiplier != 1.0:
             modifier_ids.add(id(power))
     for owner, relic in _iter_relic_listeners(combat):
-        multiplier = relic.modify_block_multiplicative(owner, target, props, card_source, card_play)
+        multiplier = relic.modify_block_multiplicative(owner, target, props, card_source, card_play, combat)
         block *= multiplier
         if multiplier != 1.0:
             modifier_ids.add(id(relic))
@@ -926,8 +926,14 @@ def fire_after_damage_given(
 
 
 def fire_after_block_gained(
-    creature: Creature, amount: int, combat: CombatState
+    creature: Creature,
+    amount: int,
+    combat: CombatState,
+    props: ValueProp | None = None,
+    card_play: object | None = None,
 ) -> None:
+    if amount > 0 and props is not None:
+        combat.record_block_gained_event(creature, props, card_play)
     for owner, power in _iter_power_listeners(combat):
         power.after_block_gained(owner, creature, amount, combat)
     for owner, relic in _iter_relic_listeners(combat):

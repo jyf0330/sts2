@@ -112,7 +112,7 @@ def gain_block(
     target.gain_block(block)
     gained = target.block - before
     from sts2_env.core.hooks import fire_after_block_gained
-    fire_after_block_gained(target, gained, combat)
+    fire_after_block_gained(target, gained, combat, props, card_play)
     return gained
 
 

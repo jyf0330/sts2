@@ -62,6 +62,9 @@ if TYPE_CHECKING:
     from sts2_env.run.run_state import PlayerState
 
 
+_NO_CARD_PLAY_FILTER = object()
+
+
 class CombatState:
     """Full state of a single combat encounter."""
 
@@ -137,6 +140,7 @@ class CombatState:
         self.in_play_phase: bool = False
         self._damage_events_this_turn: list[tuple[Creature | None, Creature, ValueProp]] = []
         self._damage_events_combat: list[tuple[Creature | None, Creature, ValueProp, int]] = []
+        self._block_events_this_turn: list[tuple[Creature, ValueProp, object | None]] = []
         self._draw_events_this_turn: list[tuple[Creature, CardInstance, bool]] = []
         self._draw_events_combat: list[Creature] = []
         self._exhaust_events_this_turn: list[CardInstance] = []
@@ -340,6 +344,10 @@ class CombatState:
             return None
         target = self._pending_play.get("target")
         return target if isinstance(target, Creature) else None
+
+    @property
+    def active_card_play_token(self) -> object | None:
+        return self._pending_play
 
     @property
     def active_card_play_is_last_in_series(self) -> bool:
@@ -734,6 +742,7 @@ class CombatState:
         self._pending_retain_count = {}
         self._damage_events_this_turn = []
         self._damage_events_combat = []
+        self._block_events_this_turn = []
         self._draw_events_this_turn = []
         self._draw_events_combat = []
         self._exhaust_events_this_turn = []
@@ -773,6 +782,7 @@ class CombatState:
         self.turn_count += 1
         self._pending_retain_count = {}
         self._damage_events_this_turn = []
+        self._block_events_this_turn = []
         self._draw_events_this_turn = []
         self._exhaust_events_this_turn = []
         self._discard_events_this_turn = []
@@ -2235,6 +2245,29 @@ class CombatState:
             1
             for _, logged_target, _, unblocked in self._damage_events_combat
             if logged_target is target and unblocked > 0
+        )
+
+    def record_block_gained_event(
+        self,
+        target: Creature,
+        props: ValueProp,
+        card_play: object | None,
+    ) -> None:
+        self._block_events_this_turn.append((target, props, card_play))
+
+    def count_block_gained_events_this_turn(
+        self,
+        target: Creature,
+        *,
+        props_mask: ValueProp | None = None,
+        exclude_card_play: object | None = _NO_CARD_PLAY_FILTER,
+    ) -> int:
+        return sum(
+            1
+            for logged_target, props, card_play in self._block_events_this_turn
+            if logged_target is target
+            and (props_mask is None or bool(props & props_mask))
+            and (exclude_card_play is _NO_CARD_PLAY_FILTER or card_play is not exclude_card_play)
         )
 
     def count_non_hand_draws_this_turn(self, owner: Creature) -> int:

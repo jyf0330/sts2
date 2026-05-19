@@ -64,7 +64,7 @@ def _gain_resolved_block(creature: Creature, block: int, combat: CombatState) ->
     if gained > 0:
         from sts2_env.core.hooks import fire_after_block_gained
 
-        fire_after_block_gained(creature, gained, combat)
+        fire_after_block_gained(creature, gained, combat, ValueProp.MOVE, combat.active_card_play_token)
 
 
 # ---------------------------------------------------------------------------

@@ -91,6 +91,8 @@ def calculate_block(
     from sts2_env.core.hooks import modify_block
 
     if hasattr(combat_or_creatures, 'all_creatures'):
+        if card_source is not None and card_play is None:
+            card_play = getattr(combat_or_creatures, "active_card_play_token", None)
         return modify_block(base_block, target, props, combat_or_creatures,
                             card_source=card_source, card_play=card_play)
 

@@ -23,7 +23,8 @@ from sts2_env.cards.ironclad import (
 )
 import sts2_env.cards.registry as card_registry
 from sts2_env.core.combat import CombatState
-from sts2_env.core.enums import PowerId
+from sts2_env.core.enums import PowerId, ValueProp
+from sts2_env.core.hooks import fire_after_block_gained
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle
 from sts2_env.powers.base import PowerInstance
@@ -149,6 +150,33 @@ class TestIroncladParityExtra3:
         assert strike in combat.hand
         assert defend in combat.exhaust_pile
         assert inflame in combat.exhaust_pile
+
+    def test_second_wind_unmovable_counts_same_card_play_once(self):
+        combat = _make_combat()
+        strike = make_strike_ironclad()
+        defend = make_defend_ironclad()
+        inflame = make_inflame()
+        combat.hand = [make_second_wind(), strike, defend, inflame]
+        combat.energy = 1
+        combat.player.apply_power(PowerId.UNMOVABLE, 1)
+
+        assert combat.play_card(0)
+
+        assert combat.player.block == 20
+
+    def test_unmovable_stops_doubling_after_prior_card_play_block(self):
+        combat = _make_combat()
+        defend = make_defend_ironclad()
+        inflame = make_inflame()
+        combat.hand = [make_second_wind(), defend, inflame]
+        combat.energy = 1
+        combat.player.apply_power(PowerId.UNMOVABLE, 1)
+        combat.player.gain_block(5)
+        fire_after_block_gained(combat.player, 5, combat, ValueProp.MOVE, object())
+
+        assert combat.play_card(0)
+
+        assert combat.player.block == 15
 
     def test_second_wind_stops_after_exhaust_ends_combat(self):
         combat = _make_combat()

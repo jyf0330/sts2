@@ -86,7 +86,7 @@ def _gain_resolved_block(creature: Creature, block: int, combat: CombatState) ->
     creature.gain_block(block)
     gained = creature.block - before
     if gained > 0:
-        fire_after_block_gained(creature, gained, combat)
+        fire_after_block_gained(creature, gained, combat, ValueProp.MOVE, combat.active_card_play_token)
     return gained
 
 

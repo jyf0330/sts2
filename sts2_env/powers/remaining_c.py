@@ -566,6 +566,7 @@ class ShadowmeldPower(PowerInstance):
     def modify_block_multiplicative(
         self, owner: Creature, target: Creature, props: ValueProp,
         card_source: object | None = None, card_play: object | None = None,
+        combat: CombatState | None = None,
     ) -> float:
         if target is not owner:
             return 1.0
@@ -1773,8 +1774,8 @@ class UnmovablePower(PowerInstance):
       card/move, and fewer than Amount block gains this turn (per card play).
     StackType.Counter.
 
-    Simplified: Tracks block gain count per turn. First Amount block gains
-    are doubled.
+    Uses the combat block history so repeated block gains from the same card
+    play are counted like the original BlockGainedEntry check.
     """
 
     power_type = PowerType.BUFF
@@ -1782,11 +1783,11 @@ class UnmovablePower(PowerInstance):
 
     def __init__(self, amount: int):
         super().__init__(PowerId.UNMOVABLE, amount)
-        self._block_gains_this_turn: int = 0
 
     def modify_block_multiplicative(
         self, owner: Creature, target: Creature, props: ValueProp,
         card_source: object | None = None, card_play: object | None = None,
+        combat: CombatState | None = None,
     ) -> float:
         if target.side == CombatSide.ENEMY:
             return 1.0
@@ -1794,17 +1795,16 @@ class UnmovablePower(PowerInstance):
             return 1.0
         if card_source is not None and getattr(card_source, "owner", None) is not owner:
             return 1.0
-        if self._block_gains_this_turn >= self.amount:
+        if combat is None:
+            return 2.0
+        count = combat.count_block_gained_events_this_turn(
+            target,
+            props_mask=ValueProp.MOVE,
+            exclude_card_play=card_play,
+        )
+        if count >= self.amount:
             return 1.0
         return 2.0
-
-    def after_block_gained(self, owner: Creature, creature: Creature, amount: int, combat: CombatState) -> None:
-        if creature is not None and creature.side == CombatSide.PLAYER and amount > 0:
-            self._block_gains_this_turn += 1
-
-    def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side == owner.side:
-            self._block_gains_this_turn = 0
 
 
 # ---------------------------------------------------------------------------

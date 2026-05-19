@@ -47,7 +47,7 @@ def _gain_block(creature: Creature, amount: int, combat: CombatState) -> None:
     if gained > 0:
         from sts2_env.core.hooks import fire_after_block_gained
 
-        fire_after_block_gained(creature, gained, combat)
+        fire_after_block_gained(creature, gained, combat, ValueProp.MOVE, None)
 
 
 # ---- ShrinkerBeetle (HP 38-40) ----

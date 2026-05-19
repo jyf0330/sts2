@@ -76,7 +76,7 @@ def _gain_block(card: CardInstance, combat: CombatState) -> None:
     if gained > 0:
         from sts2_env.core.hooks import fire_after_block_gained
 
-        fire_after_block_gained(owner, gained, combat)
+        fire_after_block_gained(owner, gained, combat, ValueProp.MOVE, combat.active_card_play_token)
 
 def _self_hp_loss(card: CardInstance, combat: CombatState, amount: int) -> None:
     """Non-attack (unblockable, unpowered) self-damage."""
@@ -830,7 +830,7 @@ def demonic_shield(card: CardInstance, combat: CombatState, target: Creature | N
     if gained > 0:
         from sts2_env.core.hooks import fire_after_block_gained
 
-        fire_after_block_gained(target, gained, combat)
+        fire_after_block_gained(target, gained, combat, ValueProp.MOVE, combat.active_card_play_token)
 
 
 def make_demonic_shield(upgraded: bool = False) -> CardInstance:
@@ -1342,7 +1342,7 @@ def second_wind(card: CardInstance, combat: CombatState, target: Creature | None
         if gained > 0:
             from sts2_env.core.hooks import fire_after_block_gained
 
-            fire_after_block_gained(owner, gained, combat)
+            fire_after_block_gained(owner, gained, combat, ValueProp.MOVE, combat.active_card_play_token)
 
 
 def make_second_wind(upgraded: bool = False) -> CardInstance:

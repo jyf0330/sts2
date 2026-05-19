@@ -402,6 +402,7 @@ class RelicInstance:
     def modify_block_multiplicative(
         self, owner: Creature, target: Creature, props: ValueProp,
         card_source: object | None = None, card_play: object | None = None,
+        combat: CombatState | None = None,
     ) -> float:
         return 1.0
 

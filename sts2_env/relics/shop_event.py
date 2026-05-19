@@ -721,6 +721,7 @@ class VitruvianMinion(RelicInstance):
     def modify_block_multiplicative(
         self, owner: Creature, target: Creature, props: ValueProp,
         card_source: object | None = None, card_play: object | None = None,
+        combat: CombatState | None = None,
     ) -> float:
         if (
             card_source is not None
@@ -2590,6 +2591,7 @@ class PaelsLegion(RelicInstance):
         props: ValueProp,
         card_source: object | None = None,
         card_play: object | None = None,
+        combat: CombatState | None = None,
     ) -> float:
         if (
             target is owner

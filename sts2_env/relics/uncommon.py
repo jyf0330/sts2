@@ -853,6 +853,7 @@ class Vambrace(RelicInstance):
     def modify_block_multiplicative(
         self, owner: Creature, target: Creature, props: ValueProp,
         card_source: object | None = None, card_play: object | None = None,
+        combat: CombatState | None = None,
     ) -> float:
         if self._triggering_card is not None and self._triggering_card is not card_source:
             return 1.0

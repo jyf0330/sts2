@@ -117,6 +117,7 @@ class FrailPower(PowerInstance):
     def modify_block_multiplicative(
         self, owner: Creature, target: Creature, props: ValueProp,
         card_source: object | None = None, card_play: object | None = None,
+        combat: CombatState | None = None,
     ) -> float:
         if target is owner and props.is_powered():
             return FRAIL_MULTIPLIER
