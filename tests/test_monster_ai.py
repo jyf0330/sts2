@@ -1864,6 +1864,55 @@ class TestFixedRotation:
 
         assert set(moves) == {"ONE_TWO_MOVE", "SHARPEN_MOVE", "HAMMER_UPPERCUT_MOVE"}
 
+    def test_axebot_moves_use_original_player_targets_with_osty_redirect(self):
+        rng_seed = 136
+        ally_player_id = 2
+        ally_character_id = "Silent"
+        ally_hp = 70
+        osty_hp = 40
+        one_two_damage = 5
+        one_two_hits = 2
+        hammer_uppercut_damage = 8
+        hammer_uppercut_debuff = 1
+        no_debuff = 0
+        combat = _make_combat(rng_seed)
+        ally = combat.add_ally_player(
+            PlayerState(
+                player_id=ally_player_id,
+                character_id=ally_character_id,
+                max_hp=ally_hp,
+                current_hp=ally_hp,
+            )
+        )
+        osty = combat.summon_osty(combat.primary_player, osty_hp)
+        assert osty is not None
+        axebot, axebot_ai = create_axebot(Rng(rng_seed))
+        combat.add_enemy(axebot, axebot_ai)
+
+        primary_hp_before_one_two = combat.primary_player.current_hp
+        ally_hp_before_one_two = ally.current_hp
+        osty_hp_before_one_two = osty.current_hp
+        axebot_ai.states["ONE_TWO_MOVE"].perform(combat)
+
+        assert combat.primary_player.current_hp == primary_hp_before_one_two
+        assert ally.current_hp == ally_hp_before_one_two - one_two_damage * one_two_hits
+        assert osty.current_hp == osty_hp_before_one_two - one_two_damage * one_two_hits
+
+        primary_hp_before_uppercut = combat.primary_player.current_hp
+        ally_hp_before_uppercut = ally.current_hp
+        osty_hp_before_uppercut = osty.current_hp
+        axebot_ai.states["HAMMER_UPPERCUT_MOVE"].perform(combat)
+
+        assert combat.primary_player.current_hp == primary_hp_before_uppercut
+        assert ally.current_hp == ally_hp_before_uppercut - hammer_uppercut_damage
+        assert osty.current_hp == osty_hp_before_uppercut - hammer_uppercut_damage
+        assert combat.primary_player.get_power_amount(PowerId.WEAK) == hammer_uppercut_debuff
+        assert combat.primary_player.get_power_amount(PowerId.FRAIL) == hammer_uppercut_debuff
+        assert ally.get_power_amount(PowerId.WEAK) == hammer_uppercut_debuff
+        assert ally.get_power_amount(PowerId.FRAIL) == hammer_uppercut_debuff
+        assert osty.get_power_amount(PowerId.WEAK) == no_debuff
+        assert osty.get_power_amount(PowerId.FRAIL) == no_debuff
+
     def test_fabricator_bots_match_original_moves_and_powers(self):
         combat = _make_combat(36)
         fabricator, fabricator_ai = create_fabricator(Rng(36))
@@ -1950,6 +1999,39 @@ class TestFixedRotation:
         assert [card.card_id for card in primary_state.discard] == [CardId.DAZED]
         assert [card.card_id for card in ally_state.draw] == [CardId.DAZED]
         assert [card.card_id for card in ally_state.discard] == [CardId.DAZED]
+
+    def test_mecha_knight_flamethrower_adds_burns_to_each_player_not_osty(self):
+        rng_seed = 1237
+        osty_hp = 5
+        ally_player_id = 2
+        ally_character_id = "Silent"
+        ally_hp = 70
+        burn_count = 4
+        combat = _make_combat(rng_seed)
+        ally = combat.add_ally_player(
+            PlayerState(
+                player_id=ally_player_id,
+                character_id=ally_character_id,
+                max_hp=ally_hp,
+                current_hp=ally_hp,
+            )
+        )
+        ally_state = combat.combat_player_state_for(ally)
+        primary_state = combat.combat_player_state_for(combat.primary_player)
+        assert primary_state is not None
+        assert ally_state is not None
+        primary_state.hand.clear()
+        ally_state.hand.clear()
+        osty = combat.summon_osty(combat.primary_player, osty_hp)
+        assert osty is not None
+        mecha_knight, mecha_knight_ai = create_mecha_knight(Rng(rng_seed))
+        combat.add_enemy(mecha_knight, mecha_knight_ai)
+
+        mecha_knight_ai.states["FLAMETHROWER_MOVE"].perform(combat)
+
+        assert [card.card_id for card in primary_state.hand] == [CardId.BURN] * burn_count
+        assert [card.card_id for card in ally_state.hand] == [CardId.BURN] * burn_count
+        assert combat.combat_player_state_for(osty) is None
 
     def test_fabricator_disintegrates_when_four_teammates_are_alive(self):
         combat = _make_combat(37)

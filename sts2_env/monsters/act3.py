@@ -19,7 +19,7 @@ from sts2_env.monsters.intents import (
 from sts2_env.monsters.state_machine import (
     ConditionalBranchState, MonsterAI, MonsterState, MoveState, RandomBranchState,
 )
-from sts2_env.monsters.targets import living_player_targets
+from sts2_env.monsters.targets import apply_power_to_living_player_targets, living_player_targets
 from sts2_env.cards.status import make_burn, make_dazed, make_slimed
 
 if TYPE_CHECKING:
@@ -30,10 +30,12 @@ if TYPE_CHECKING:
 
 def _deal_damage_to_player(combat: CombatState, creature: Creature, base_dmg: int, hits: int = 1) -> None:
     for _ in range(hits):
-        if combat.primary_player.is_dead:
+        targets = living_player_targets(combat)
+        if not targets:
             break
-        dmg = calculate_damage(base_dmg, creature, combat.primary_player, ValueProp.MOVE, combat)
-        apply_damage(combat.primary_player, dmg, ValueProp.MOVE, combat, creature)
+        for target in targets:
+            dmg = calculate_damage(base_dmg, creature, target, ValueProp.MOVE, combat)
+            apply_damage(target, dmg, ValueProp.MOVE, combat, creature)
         combat._check_combat_end()  # noqa: SLF001
         if combat.is_over:
             break
@@ -143,22 +145,25 @@ def create_axebot(
     creature = Creature(max_hp=hp, monster_id="AXEBOT")
     one_two_dmg = 5
     hammer_uppercut_dmg = 8
+    hammer_uppercut_debuff = 1
     boot_up_block = 10
+    boot_up_strength = 1
+    sharpen_strength = 4
 
     def boot_up(combat: CombatState) -> None:
         _gain_block(creature, boot_up_block, combat)
-        creature.apply_power(PowerId.STRENGTH, 1)
+        creature.apply_power(PowerId.STRENGTH, boot_up_strength)
 
     def one_two(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, one_two_dmg, hits=2)
 
     def sharpen(combat: CombatState) -> None:
-        creature.apply_power(PowerId.STRENGTH, 4)
+        creature.apply_power(PowerId.STRENGTH, sharpen_strength)
 
     def hammer_uppercut(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, hammer_uppercut_dmg)
-        combat.apply_power_to(combat.primary_player, PowerId.WEAK, 1)
-        combat.apply_power_to(combat.primary_player, PowerId.FRAIL, 1)
+        apply_power_to_living_player_targets(combat, PowerId.WEAK, hammer_uppercut_debuff, applier=creature)
+        apply_power_to_living_player_targets(combat, PowerId.FRAIL, hammer_uppercut_debuff, applier=creature)
 
     rand = RandomBranchState("RAND_MOVE")
     rand.add_branch("ONE_TWO_MOVE", MoveRepeatType.CAN_REPEAT_FOREVER, weight=2.0)
@@ -202,10 +207,11 @@ def create_stabbot(rng: Rng) -> tuple[Creature, MonsterAI]:
     hp = rng.next_int(23, 28)
     creature = Creature(max_hp=hp, monster_id="STABBOT")
     stab_dmg = 11
+    stab_frail = 1
 
     def stab(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, stab_dmg)
-        combat.apply_power_to(combat.primary_player, PowerId.FRAIL, 1, applier=creature)
+        apply_power_to_living_player_targets(combat, PowerId.FRAIL, stab_frail, applier=creature)
 
     states: dict[str, MonsterState] = {
         "STAB_MOVE": MoveState("STAB_MOVE", stab, [attack_intent(stab_dmg), debuff_intent()], follow_up_id="STAB_MOVE"),
@@ -232,20 +238,24 @@ def create_guardbot(rng: Rng) -> tuple[Creature, MonsterAI]:
 def create_noisebot(rng: Rng) -> tuple[Creature, MonsterAI]:
     hp = rng.next_int(23, 28)
     creature = Creature(max_hp=hp, monster_id="NOISEBOT")
+    dazed_to_discard = 1
+    dazed_to_draw = 1
 
     def noise(combat: CombatState) -> None:
         for target in living_player_targets(combat):
-            combat.add_generated_card_to_creature_discard(
-                target,
-                make_dazed(),
-                added_by_player=False,
-            )
-            combat.add_generated_card_to_creature_draw_pile(
-                target,
-                make_dazed(),
-                added_by_player=False,
-                random_position=True,
-            )
+            for _ in range(dazed_to_discard):
+                combat.add_generated_card_to_creature_discard(
+                    target,
+                    make_dazed(),
+                    added_by_player=False,
+                )
+            for _ in range(dazed_to_draw):
+                combat.add_generated_card_to_creature_draw_pile(
+                    target,
+                    make_dazed(),
+                    added_by_player=False,
+                    random_position=True,
+                )
 
     states: dict[str, MonsterState] = {
         "NOISE_MOVE": MoveState("NOISE_MOVE", noise, [status_intent()], follow_up_id="NOISE_MOVE"),
@@ -324,19 +334,21 @@ def create_frog_knight(rng: Rng) -> tuple[Creature, MonsterAI]:
     creature = Creature(max_hp=hp, monster_id="FROG_KNIGHT")
     strike_down_evil_dmg = 21
     tongue_lash_dmg = 13
+    tongue_lash_frail = 2
     beetle_charge_dmg = 35
+    for_the_queen_strength = 5
 
     _state = {"beetle_charged": False}
 
     def tongue_lash(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, tongue_lash_dmg)
-        combat.apply_power_to(combat.primary_player, PowerId.FRAIL, 2)
+        apply_power_to_living_player_targets(combat, PowerId.FRAIL, tongue_lash_frail, applier=creature)
 
     def strike_down_evil(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, strike_down_evil_dmg)
 
     def for_the_queen(combat: CombatState) -> None:
-        creature.apply_power(PowerId.STRENGTH, 5)
+        creature.apply_power(PowerId.STRENGTH, for_the_queen_strength)
 
     def beetle_charge(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, beetle_charge_dmg)
@@ -368,19 +380,21 @@ def create_globe_head(rng: Rng) -> tuple[Creature, MonsterAI]:
     hp = 148
     creature = Creature(max_hp=hp, monster_id="GLOBE_HEAD")
     shocking_slap_dmg = 13
+    shocking_slap_frail = 2
     thunder_strike_dmg = 6
     galvanic_burst_dmg = 16
+    galvanic_burst_strength = 2
 
     def shocking_slap(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, shocking_slap_dmg)
-        combat.apply_power_to(combat.primary_player, PowerId.FRAIL, 2)
+        apply_power_to_living_player_targets(combat, PowerId.FRAIL, shocking_slap_frail, applier=creature)
 
     def thunder_strike(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, thunder_strike_dmg, hits=3)
 
     def galvanic_burst(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, galvanic_burst_dmg)
-        combat.apply_power_to(creature, PowerId.STRENGTH, 2, applier=creature)
+        combat.apply_power_to(creature, PowerId.STRENGTH, galvanic_burst_strength, applier=creature)
 
     states: dict[str, MonsterState] = {
         "SHOCKING_SLAP": MoveState("SHOCKING_SLAP", shocking_slap, [attack_intent(shocking_slap_dmg), debuff_intent()], follow_up_id="THUNDER_STRIKE"),
@@ -400,6 +414,8 @@ def create_owl_magistrate(rng: Rng) -> tuple[Creature, MonsterAI]:
     scrutiny_dmg = 16
     peck_assault_dmg = 4
     verdict_dmg = 33
+    judicial_flight_soar = 1
+    verdict_vulnerable = 4
 
     def magistrate_scrutiny(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, scrutiny_dmg)
@@ -408,11 +424,11 @@ def create_owl_magistrate(rng: Rng) -> tuple[Creature, MonsterAI]:
         _deal_damage_to_player(combat, creature, peck_assault_dmg, hits=6)
 
     def judicial_flight(combat: CombatState) -> None:
-        creature.apply_power(PowerId.SOAR, 1, applier=creature)
+        creature.apply_power(PowerId.SOAR, judicial_flight_soar, applier=creature)
 
     def verdict(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, verdict_dmg)
-        combat.apply_power_to(combat.primary_player, PowerId.VULNERABLE, 4, applier=creature)
+        apply_power_to_living_player_targets(combat, PowerId.VULNERABLE, verdict_vulnerable, applier=creature)
         creature.powers.pop(PowerId.SOAR, None)
 
     states: dict[str, MonsterState] = {
@@ -430,22 +446,26 @@ def create_slimed_berserker(rng: Rng) -> tuple[Creature, MonsterAI]:
     hp = 266
     creature = Creature(max_hp=hp, monster_id="SLIMED_BERSERKER")
     pummeling_dmg = 4
+    vomit_ichor_slimed = 10
+    leeching_hug_weak = 3
+    leeching_hug_strength = 3
     smother_dmg = 30
 
     def vomit_ichor(combat: CombatState) -> None:
-        for _ in range(10):
-            combat.add_generated_card_to_creature_discard(
-                combat.primary_player,
-                make_slimed(),
-                added_by_player=False,
-            )
+        for target in living_player_targets(combat):
+            for _ in range(vomit_ichor_slimed):
+                combat.add_generated_card_to_creature_discard(
+                    target,
+                    make_slimed(),
+                    added_by_player=False,
+                )
 
     def furious_pummeling(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, pummeling_dmg, hits=4)
 
     def leeching_hug(combat: CombatState) -> None:
-        combat.apply_power_to(combat.primary_player, PowerId.WEAK, 3, applier=creature)
-        creature.apply_power(PowerId.STRENGTH, 3)
+        apply_power_to_living_player_targets(combat, PowerId.WEAK, leeching_hug_weak, applier=creature)
+        creature.apply_power(PowerId.STRENGTH, leeching_hug_strength)
 
     def smother(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, smother_dmg)
@@ -464,11 +484,13 @@ def create_slimed_berserker(rng: Rng) -> tuple[Creature, MonsterAI]:
 def create_the_lost(rng: Rng) -> tuple[Creature, MonsterAI]:
     hp = 93
     creature = Creature(max_hp=hp, monster_id="THE_LOST")
+    debilitating_smog_strength = -2
+    debilitating_smog_self_strength = 2
     eye_lasers_dmg = 4
 
     def debilitating_smog(combat: CombatState) -> None:
-        combat.apply_power_to(combat.primary_player, PowerId.STRENGTH, -2, applier=creature)
-        creature.apply_power(PowerId.STRENGTH, 2, applier=creature)
+        apply_power_to_living_player_targets(combat, PowerId.STRENGTH, debilitating_smog_strength, applier=creature)
+        creature.apply_power(PowerId.STRENGTH, debilitating_smog_self_strength, applier=creature)
 
     def eye_lasers(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, eye_lasers_dmg, hits=2)
@@ -484,12 +506,15 @@ def create_the_lost(rng: Rng) -> tuple[Creature, MonsterAI]:
 def create_the_forgotten(rng: Rng) -> tuple[Creature, MonsterAI]:
     hp = 106
     creature = Creature(max_hp=hp, monster_id="THE_FORGOTTEN")
+    miasma_dexterity = -2
+    miasma_block = 8
+    miasma_self_dexterity = 2
     dread_dmg = 15
 
     def miasma(combat: CombatState) -> None:
-        combat.apply_power_to(combat.primary_player, PowerId.DEXTERITY, -2, applier=creature)
-        _gain_block(creature, 8, combat)
-        creature.apply_power(PowerId.DEXTERITY, 2, applier=creature)
+        apply_power_to_living_player_targets(combat, PowerId.DEXTERITY, miasma_dexterity, applier=creature)
+        _gain_block(creature, miasma_block, combat)
+        creature.apply_power(PowerId.DEXTERITY, miasma_self_dexterity, applier=creature)
 
     def dread(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, dread_dmg)
@@ -624,6 +649,7 @@ def create_magi_knight(rng: Rng) -> tuple[Creature, MonsterAI]:
     creature = Creature(max_hp=hp, monster_id="MAGI_KNIGHT")
     power_shield_dmg = 6
     power_shield_block = 5
+    dampen_amount = 1
     spear_dmg = 10
     bomb_dmg = 35
 
@@ -632,18 +658,19 @@ def create_magi_knight(rng: Rng) -> tuple[Creature, MonsterAI]:
         _gain_block(creature, power_shield_block, combat)
 
     def dampen(combat: CombatState) -> None:
-        power = combat.primary_player.powers.get(PowerId.DAMPEN)
-        if power is not None:
-            add_caster = getattr(power, "add_caster", None)
-            if callable(add_caster):
-                add_caster(creature)
-            return
-        combat.apply_power_to(combat.primary_player, PowerId.DAMPEN, 1, applier=creature)
-        power = combat.primary_player.powers.get(PowerId.DAMPEN)
-        if power is not None:
-            add_caster = getattr(power, "add_caster", None)
-            if callable(add_caster):
-                add_caster(creature)
+        for target in living_player_targets(combat):
+            power = target.powers.get(PowerId.DAMPEN)
+            if power is not None:
+                add_caster = getattr(power, "add_caster", None)
+                if callable(add_caster):
+                    add_caster(creature)
+                continue
+            combat.apply_power_to(target, PowerId.DAMPEN, dampen_amount, applier=creature)
+            power = target.powers.get(PowerId.DAMPEN)
+            if power is not None:
+                add_caster = getattr(power, "add_caster", None)
+                if callable(add_caster):
+                    add_caster(creature)
 
     def spear(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, spear_dmg)
@@ -667,11 +694,12 @@ def create_magi_knight(rng: Rng) -> tuple[Creature, MonsterAI]:
 def create_spectral_knight(rng: Rng) -> tuple[Creature, MonsterAI]:
     hp = 93
     creature = Creature(max_hp=hp, monster_id="SPECTRAL_KNIGHT")
+    hex_amount = 2
     soul_slash_dmg = 15
     soul_flame_dmg = 3
 
     def hex_player(combat: CombatState) -> None:
-        combat.apply_power_to(combat.primary_player, PowerId.HEX, 2, applier=creature)
+        apply_power_to_living_player_targets(combat, PowerId.HEX, hex_amount, applier=creature)
 
     def soul_slash(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, soul_slash_dmg)
@@ -700,21 +728,24 @@ def create_mecha_knight(rng: Rng) -> tuple[Creature, MonsterAI]:
     charge_dmg = 25
     heavy_cleave_dmg = 35
     windup_block = 15
+    flamethrower_burns = 4
+    windup_strength = 5
 
     def charge(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, charge_dmg)
 
     def flamethrower(combat: CombatState) -> None:
-        for _ in range(4):
-            combat.add_generated_card_to_creature_hand(
-                combat.primary_player,
-                make_burn(),
-                added_by_player=False,
-            )
+        for target in living_player_targets(combat):
+            for _ in range(flamethrower_burns):
+                combat.add_generated_card_to_creature_hand(
+                    target,
+                    make_burn(),
+                    added_by_player=False,
+                )
 
     def windup(combat: CombatState) -> None:
         _gain_block(creature, windup_block, combat)
-        creature.apply_power(PowerId.STRENGTH, 5)
+        creature.apply_power(PowerId.STRENGTH, windup_strength)
 
     def heavy_cleave(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, heavy_cleave_dmg)
@@ -749,6 +780,7 @@ def create_soul_nexus(rng: Rng) -> tuple[Creature, MonsterAI]:
     soul_burn_dmg = 29
     maelstrom_dmg = 6
     drain_life_dmg = 18
+    drain_life_debuff = 2
 
     def soul_burn(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, soul_burn_dmg)
@@ -758,8 +790,8 @@ def create_soul_nexus(rng: Rng) -> tuple[Creature, MonsterAI]:
 
     def drain_life(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, drain_life_dmg)
-        combat.apply_power_to(combat.primary_player, PowerId.VULNERABLE, 2, applier=creature)
-        combat.apply_power_to(combat.primary_player, PowerId.WEAK, 2, applier=creature)
+        apply_power_to_living_player_targets(combat, PowerId.VULNERABLE, drain_life_debuff, applier=creature)
+        apply_power_to_living_player_targets(combat, PowerId.WEAK, drain_life_debuff, applier=creature)
 
     rand = RandomBranchState("RAND")
     rand.add_branch("SOUL_BURN_MOVE", MoveRepeatType.CANNOT_REPEAT)
@@ -862,6 +894,11 @@ def create_queen(rng: Rng) -> tuple[Creature, MonsterAI]:
     creature = Creature(max_hp=hp, monster_id="QUEEN")
     off_with_your_head_dmg = 3
     execution_dmg = 15
+    chains_of_binding = 3
+    youre_mine_debuff = 99
+    burn_bright_strength = 1
+    burn_bright_block = 20
+    enrage_strength = 2
 
     def _has_amalgam_alive() -> bool:
         combat = creature.combat_state
@@ -870,18 +907,18 @@ def create_queen(rng: Rng) -> tuple[Creature, MonsterAI]:
         return any(enemy.monster_id == "TORCH_HEAD_AMALGAM" and enemy.is_alive for enemy in combat.enemies)
 
     def puppet_strings(combat: CombatState) -> None:
-        combat.apply_power_to(combat.primary_player, PowerId.CHAINS_OF_BINDING, 3, applier=creature)
+        apply_power_to_living_player_targets(combat, PowerId.CHAINS_OF_BINDING, chains_of_binding, applier=creature)
 
     def youre_mine(combat: CombatState) -> None:
-        combat.apply_power_to(combat.primary_player, PowerId.FRAIL, 99, applier=creature)
-        combat.apply_power_to(combat.primary_player, PowerId.WEAK, 99, applier=creature)
-        combat.apply_power_to(combat.primary_player, PowerId.VULNERABLE, 99, applier=creature)
+        apply_power_to_living_player_targets(combat, PowerId.FRAIL, youre_mine_debuff, applier=creature)
+        apply_power_to_living_player_targets(combat, PowerId.WEAK, youre_mine_debuff, applier=creature)
+        apply_power_to_living_player_targets(combat, PowerId.VULNERABLE, youre_mine_debuff, applier=creature)
 
     def burn_bright_for_me(combat: CombatState) -> None:
         for enemy in combat.alive_enemies:
             if enemy is not creature and enemy.side == creature.side:
-                enemy.apply_power(PowerId.STRENGTH, 1, applier=creature)
-        _gain_block(creature, 20, combat)
+                enemy.apply_power(PowerId.STRENGTH, burn_bright_strength, applier=creature)
+        _gain_block(creature, burn_bright_block, combat)
 
     def off_with_your_head(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, off_with_your_head_dmg, hits=5)
@@ -890,7 +927,7 @@ def create_queen(rng: Rng) -> tuple[Creature, MonsterAI]:
         _deal_damage_to_player(combat, creature, execution_dmg)
 
     def enrage(combat: CombatState) -> None:
-        creature.apply_power(PowerId.STRENGTH, 2, applier=creature)
+        creature.apply_power(PowerId.STRENGTH, enrage_strength, applier=creature)
 
     youre_mine_now_branch = ConditionalBranchState("YOURE_MINE_NOW_BRANCH")
     youre_mine_now_branch.add_branch(_has_amalgam_alive, "BURN_BRIGHT_FOR_ME_MOVE")
@@ -920,6 +957,7 @@ def create_test_subject(rng: Rng) -> tuple[Creature, MonsterAI]:
     creature = Creature(max_hp=hp, monster_id="TEST_SUBJECT")
     bite_dmg = 20
     skull_bash_dmg = 14
+    skull_bash_vulnerable = 1
     pounce_dmg = 30
     multi_claw_dmg = 10
     big_pounce_dmg = 45
@@ -958,7 +996,7 @@ def create_test_subject(rng: Rng) -> tuple[Creature, MonsterAI]:
 
     def skull_bash(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, skull_bash_dmg)
-        combat.apply_power_to(combat.primary_player, PowerId.VULNERABLE, 1)
+        apply_power_to_living_player_targets(combat, PowerId.VULNERABLE, skull_bash_vulnerable, applier=creature)
 
     def pounce(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, pounce_dmg)
@@ -975,9 +1013,8 @@ def create_test_subject(rng: Rng) -> tuple[Creature, MonsterAI]:
         _deal_damage_to_player(combat, creature, big_pounce_dmg)
 
     def burning_growl(combat: CombatState) -> None:
-        for target in combat.get_enemies_of(creature):
-            if getattr(target, "is_player", False):
-                combat.add_status_cards_to_discard(target, "BURN", burning_growl_burns)
+        for target in living_player_targets(combat):
+            combat.add_status_cards_to_discard(target, "BURN", burning_growl_burns)
         creature.apply_power(PowerId.STRENGTH, burning_growl_strength)
 
     revive_branch = ConditionalBranchState("REVIVE_BRANCH")
