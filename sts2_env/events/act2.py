@@ -751,10 +751,10 @@ class RanwidTheElder(EventModel):
         self._relic_id: str | None = None
 
     @staticmethod
-    def _tradable_relics(run_state: RunState) -> list[str]:
+    def _tradable_relics(player: PlayerState) -> list[str]:
         return [
             relic_id
-            for relic_id in run_state.player.relics
+            for relic_id in player.relics
             if relic_id not in {
                 "BURNING_BLOOD", "RING_OF_THE_SNAKE", "CRACKED_CORE", "BOUND_PHYLACTERY", "DIVINE_RIGHT",
                 "BLACK_BLOOD", "RING_OF_THE_DRAKE", "INFUSED_CORE", "PHYLACTERY_UNBOUND", "DIVINE_DESTINY",
@@ -764,9 +764,9 @@ class RanwidTheElder(EventModel):
     def is_allowed(self, run_state: RunState) -> bool:
         return (
             run_state.current_act_index > 0
-            and run_state.player.gold >= 100
-            and len(run_state.player.held_potions()) > 0
-            and bool(self._tradable_relics(run_state))
+            and all(player.gold >= 100 for player in run_state.players)
+            and all(len(player.held_potions()) > 0 for player in run_state.players)
+            and all(bool(self._tradable_relics(player)) for player in run_state.players)
         )
 
     def before_event_started(self, run_state: RunState) -> None:
@@ -776,7 +776,7 @@ class RanwidTheElder(EventModel):
         run_state.player.can_remove_potions = True
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
-        tradable_relics = self._tradable_relics(run_state)
+        tradable_relics = self._tradable_relics(run_state.player)
         held_potions = run_state.player.held_potions()
         rng = self.get_rng(run_state)
         chosen_potion = rng.choice(held_potions) if held_potions else None
@@ -811,7 +811,7 @@ class RanwidTheElder(EventModel):
             _obtain_random_relics(run_state, 1)
             return EventResult(finished=True,
                                description="Paid 100g, gained a relic.")
-        tradable_relics = self._tradable_relics(run_state)
+        tradable_relics = self._tradable_relics(run_state.player)
         if self._relic_id is not None and self._relic_id in tradable_relics:
             to_remove = self._relic_id
             if to_remove in run_state.player.relics:

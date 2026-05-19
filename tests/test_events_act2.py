@@ -166,6 +166,35 @@ def test_potion_courier_ranwid_and_whispering_hollow_change_inventory():
     assert before_ids != after_ids
 
 
+def test_ranwid_requires_all_players_to_have_gold_potion_and_tradable_relic():
+    run_state = RunState(seed=3106, character_id="Ironclad")
+    run_state.initialize_run()
+    run_state.current_act_index = 1
+    run_state.player.gold = 200
+    run_state.player.add_potion(create_potion("FirePotion"))
+    run_state.player.obtain_relic("ANCHOR")
+    ally = run_state.add_player(PlayerState(player_id=2, character_id="Silent", gold=99))
+    ally.add_potion(create_potion("FlexPotion"))
+    ally.obtain_relic("VAJRA")
+    event = RanwidTheElder()
+
+    assert event.is_allowed(run_state) is False
+
+    ally.gold = 100
+    assert event.is_allowed(run_state) is True
+
+    ally.potions.clear()
+    assert event.is_allowed(run_state) is False
+
+    ally.add_potion(create_potion("FlexPotion"))
+    ally.relics = ["RING_OF_THE_SNAKE"]
+    ally.relic_objects = []
+    assert event.is_allowed(run_state) is False
+
+    ally.obtain_relic("VAJRA")
+    assert event.is_allowed(run_state) is True
+
+
 def test_whispering_hollow_requires_all_players_to_have_gold():
     run_state = RunState(seed=3101, character_id="Ironclad")
     run_state.initialize_run()
