@@ -51,6 +51,15 @@ class _LastChoiceRng:
         return seq[-1]
 
 
+class _FirstChoiceCountingRng:
+    def __init__(self) -> None:
+        self.choice_calls = 0
+
+    def choice(self, seq):
+        self.choice_calls += 1
+        return seq[0]
+
+
 def test_the_architect_is_pool_disabled_and_has_single_proceed_option():
     run_state = _make_run_state(901)
     event = TheArchitect()
@@ -200,6 +209,27 @@ def test_endless_conveyor_spicy_snappy_uses_event_rng_for_upgrade_selection():
     assert run_state.rng.rewards.counter == rewards_counter
     assert first.upgraded is False
     assert second.upgraded is True
+
+
+def test_endless_conveyor_suspicious_condiment_rolls_specific_potion_reward():
+    run_state = _make_run_state(9053)
+    run_state.player.gold = 200
+    run_state.rng.rewards = _FirstChoiceCountingRng()
+    event = EndlessConveyor()
+    event._current_dish = "suspicious_condiment"  # noqa: SLF001
+
+    result = event.choose(run_state, "grab")
+
+    assert result.finished is False
+    assert len(run_state.pending_rewards) == 1
+    reward = run_state.pending_rewards[0]
+    assert reward.potion_id == "BloodPotion"
+    assert run_state.rng.rewards.choice_calls == 1
+
+    reward.populate(run_state, None)
+
+    assert reward.potion_id == "BloodPotion"
+    assert run_state.rng.rewards.choice_calls == 1
 
 
 def test_endless_conveyor_jelly_liver_uses_event_rng_for_transform_selection():

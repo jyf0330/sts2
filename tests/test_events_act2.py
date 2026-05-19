@@ -43,6 +43,15 @@ class _LastChoiceRng:
         return seq[-1]
 
 
+class _FirstChoiceCountingRng:
+    def __init__(self) -> None:
+        self.choice_calls = 0
+
+    def choice(self, seq):
+        self.choice_calls += 1
+        return seq[0]
+
+
 class _NoopShuffleRng(_LastChoiceRng):
     def shuffle(self, seq) -> None:
         pass
@@ -141,6 +150,25 @@ def test_potion_courier_ranwid_and_whispering_hollow_change_inventory():
     after_ids = [card.card_id for card in run_state.player.deck]
     assert run_state.player.current_hp == starting_hp - 9
     assert before_ids != after_ids
+
+
+def test_potion_courier_ransack_uses_event_specific_uncommon_pool_order():
+    run_state = RunState(seed=311, character_id="Ironclad")
+    run_state.initialize_run()
+    run_state.current_act_index = 1
+    run_state.rng.rewards = _FirstChoiceCountingRng()
+    courier = PotionCourier()
+
+    result = courier.choose(run_state, "ransack")
+    reward = result.rewards["reward_objects"][0]
+
+    assert reward.potion_id == "Ashwater"
+    assert run_state.rng.rewards.choice_calls == 1
+
+    reward.populate(run_state, None)
+
+    assert reward.potion_id == "Ashwater"
+    assert run_state.rng.rewards.choice_calls == 1
 
 
 def test_event_lifecycle_toggles_can_remove_potions_for_ranwid():

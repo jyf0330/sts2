@@ -9,7 +9,7 @@ from sts2_env.cards.silent import make_backstab
 from sts2_env.cards.status import make_clumsy, make_decay, make_doubt, make_exterminate, make_greed, make_guilty, make_injury, make_lantern_key, make_metamorphosis, make_poor_sleep, make_regret, make_squash
 from sts2_env.run.run_manager import RunManager
 from sts2_env.run.run_state import RunState
-from sts2_env.events.shared import BattlewornDummy, Bugslayer, ColorfulPhilosophers, ColossalFlower, Darv, DenseVegetation, DoorsOfLightAndDark, DrowningBeacon, GraveOfTheForgotten, HungryForMushrooms, InfestedAutomaton, LostWisp, Nonupeipe, Orobas, Pael, PunchOff, RoundTeaParty, SpiritGrafter, SunkenStatue, SunkenTreasury, Tanx, Tezcatara, TheLanternKey, ThisOrThat, Trial, TrashHeap, UnrestSite, Vakuu, Wellspring
+from sts2_env.events.shared import BattlewornDummy, Bugslayer, ColorfulPhilosophers, ColossalFlower, Darv, DenseVegetation, DoorsOfLightAndDark, DrowningBeacon, GraveOfTheForgotten, HungryForMushrooms, InfestedAutomaton, LostWisp, Nonupeipe, Orobas, Pael, PunchOff, RoundTeaParty, SpiritGrafter, SunkenStatue, SunkenTreasury, Tanx, Tezcatara, TheLanternKey, ThisOrThat, Trial, TrashHeap, UnrestSite, Vakuu, Wellspring, _event_potion_options
 
 
 class _ExclusiveHighRng:
@@ -54,6 +54,15 @@ class _SwapFirstTwoRng:
 class _LastChoiceRng:
     def choice(self, seq):
         return seq[-1]
+
+
+class _FirstChoiceCountingRng:
+    def __init__(self) -> None:
+        self.choice_calls = 0
+
+    def choice(self, seq):
+        self.choice_calls += 1
+        return seq[0]
 
 
 def test_shared_event_random_gold_uses_exclusive_upper_bounds():
@@ -232,6 +241,36 @@ def test_battleworn_dummy_setting_two_upgrades_two_random_cards():
 
     assert result.finished
     assert sum(1 for card in run_state.player.deck if card.upgraded) >= 2
+
+
+def test_event_specific_potion_rewards_are_rolled_before_reward_population():
+    run_state = RunState(seed=1910, character_id="Ironclad")
+    run_state.initialize_run()
+    run_state.rng.rewards = _FirstChoiceCountingRng()
+
+    assert [model.potion_id for model in _event_potion_options(run_state)[:4]] == [
+        "BloodPotion",
+        "SoldiersStew",
+        "Ashwater",
+        "AttackPotion",
+    ]
+
+    dummy = BattlewornDummy()
+    dummy_reward = dummy.choose(run_state, "setting_1").rewards["reward_objects"][0]
+    assert dummy_reward.potion_id == "BloodPotion"
+
+    spring = Wellspring()
+    spring_reward = spring.choose(run_state, "bottle").rewards["reward_objects"][0]
+    assert spring_reward.potion_id == "BloodPotion"
+
+    assert run_state.rng.rewards.choice_calls == 2
+
+    dummy_reward.populate(run_state, None)
+    spring_reward.populate(run_state, None)
+
+    assert dummy_reward.potion_id == "BloodPotion"
+    assert spring_reward.potion_id == "BloodPotion"
+    assert run_state.rng.rewards.choice_calls == 2
 
 
 def test_battleworn_dummy_setting_two_uses_niche_rng_for_upgrade_selection():

@@ -9,9 +9,8 @@ from typing import TYPE_CHECKING
 
 from sts2_env.cards.factory import create_card
 from sts2_env.core.enums import CardId, CardRarity
-from sts2_env.potions.base import normal_pool_models
 from sts2_env.run.events import EventModel, EventOption, EventResult, register_event
-from sts2_env.events.shared import _event_result_with_rewards, _should_defer_event_rewards
+from sts2_env.events.shared import _event_result_with_rewards, _roll_event_potion_id, _should_defer_event_rewards
 from sts2_env.run.reward_objects import AddCardsReward, CardReward, PotionReward, RelicReward
 
 if TYPE_CHECKING:
@@ -163,10 +162,9 @@ class TheLegendsWereTrue(EventModel):
             return EventResult(finished=True, description="Gained Spoils Map card.")
         run_state.player.lose_hp(8)
         reward_objects = []
-        models = normal_pool_models(in_combat=False, character_id=run_state.player.character_id)
-        if models:
-            model = run_state.rng.rewards.choice(models)
-            reward_objects.append(PotionReward(run_state.player.player_id, potion_id=model.potion_id))
+        potion_id = _roll_event_potion_id(run_state)
+        if potion_id is not None:
+            reward_objects.append(PotionReward(run_state.player.player_id, potion_id=potion_id))
         return EventResult(finished=True,
                            description="Took 8 damage, gained a potion.",
                            rewards={"reward_objects": reward_objects})

@@ -41,6 +41,15 @@ class _LastChoiceCountingRng:
         return low
 
 
+class _FirstChoiceCountingRng:
+    def __init__(self) -> None:
+        self.choice_calls = 0
+
+    def choice(self, seq):
+        self.choice_calls += 1
+        return seq[0]
+
+
 def test_the_legends_were_true_adds_spoils_map_and_returns_a_potion_reward():
     run_state = _make_run_state(401)
     event = TheLegendsWereTrue()
@@ -67,6 +76,23 @@ def test_the_legends_were_true_adds_spoils_map_and_returns_a_potion_reward():
     assert len(reward_objects) == 1
     assert isinstance(reward_objects[0], PotionReward)
     assert reward_objects[0].potion_id is not None
+
+
+def test_the_legends_were_true_potion_uses_event_specific_pool_order():
+    run_state = _make_run_state(4011)
+    run_state.rng.rewards = _FirstChoiceCountingRng()
+    event = TheLegendsWereTrue()
+
+    result = event.choose(run_state, "find_exit")
+    reward = result.rewards["reward_objects"][0]
+
+    assert reward.potion_id == "BloodPotion"
+    assert run_state.rng.rewards.choice_calls == 1
+
+    reward.populate(run_state, None)
+
+    assert reward.potion_id == "BloodPotion"
+    assert run_state.rng.rewards.choice_calls == 1
 
 
 def test_spoils_map_generates_act2_center_treasure_quest():

@@ -14,7 +14,9 @@ from sts2_env.core.enums import CardRarity, CardType, PotionRarity
 from sts2_env.events.shared import (
     _event_result_with_rewards,
     _downgrade_selected_cards,
+    _event_potion_options,
     _obtain_random_relics,
+    _roll_event_potion_id,
     _remove_n_cards,
     _remove_selected_cards,
     _should_defer_event_rewards,
@@ -22,7 +24,7 @@ from sts2_env.events.shared import (
     _transform_selected_cards,
     _upgrade_n_cards,
 )
-from sts2_env.potions.base import create_potion, normal_pool_models
+from sts2_env.potions.base import create_potion
 from sts2_env.relics.base import RelicId, RelicRarity
 from sts2_env.run.reward_objects import (
     AddCardsReward,
@@ -297,7 +299,9 @@ class EndlessConveyor(EventModel):
             else:
                 run_state.player.add_card_instance_to_deck(make_feeding_frenzy())
         elif dish == "suspicious_condiment":
-            run_state.player.offer_potion_reward()
+            potion_id = _roll_event_potion_id(run_state)
+            if potion_id is not None:
+                run_state.pending_rewards.append(PotionReward(run_state.player.player_id, potion_id=potion_id))
 
 
 register_event(EndlessConveyor())
@@ -715,7 +719,7 @@ class PotionCourier(EventModel):
                     ]
                 },
             )
-        uncommon_models = [model for model in normal_pool_models(in_combat=False, character_id=run_state.player.character_id) if model.rarity.name == "UNCOMMON"]
+        uncommon_models = [model for model in _event_potion_options(run_state) if model.rarity == PotionRarity.UNCOMMON]
         if uncommon_models:
             model = run_state.rng.rewards.choice(uncommon_models)
             return EventResult(

@@ -33,7 +33,7 @@ from sts2_env.cards.status import (
     make_spore_mind,
     make_squash,
 )
-from sts2_env.potions.base import create_potion
+from sts2_env.potions.base import all_potion_models, create_potion
 from sts2_env.relics.base import RelicId
 from sts2_env.run.reward_objects import (
     AddCardsReward,
@@ -83,6 +83,85 @@ def _roll_random_relic_rewards(run_state: RunState, count: int) -> list[RelicRew
         rolled.add(relic_id)
         rewards.append(RelicReward(run_state.player.player_id, relic_id=relic_id))
     return rewards
+
+
+_CHARACTER_POTION_IDS: dict[str, tuple[str, ...]] = {
+    "Ironclad": ("BloodPotion", "SoldiersStew", "Ashwater"),
+    "Silent": ("PoisonPotion", "GhostInAJar", "CunningPotion"),
+    "Defect": ("FocusPotion", "EssenceOfDarkness", "PotionOfCapacity"),
+    "Regent": ("StarPotion", "CosmicConcoction", "KingsCourage"),
+    "Necrobinder": ("PotionOfDoom", "PotOfGhouls", "BoneBrew"),
+}
+
+_SHARED_POTION_IDS: tuple[str, ...] = (
+    "AttackPotion",
+    "BeetleJuice",
+    "BlessingOfTheForge",
+    "BlockPotion",
+    "BottledPotential",
+    "Clarity",
+    "ColorlessPotion",
+    "CureAll",
+    "DexterityPotion",
+    "DistilledChaos",
+    "DropletOfPrecognition",
+    "Duplicator",
+    "EnergyPotion",
+    "EntropicBrew",
+    "ExplosiveAmpoule",
+    "FairyInABottle",
+    "FirePotion",
+    "FlexPotion",
+    "Fortifier",
+    "FruitJuice",
+    "FyshOil",
+    "GamblersBrew",
+    "GigantificationPotion",
+    "HeartOfIron",
+    "LiquidBronze",
+    "LiquidMemories",
+    "LuckyTonic",
+    "MazalethsGift",
+    "OrobicAcid",
+    "PotionOfBinding",
+    "PowderedDemise",
+    "PowerPotion",
+    "RadiantTincture",
+    "RegenPotion",
+    "ShacklingPotion",
+    "ShipInABottle",
+    "SkillPotion",
+    "SneckoOil",
+    "SpeedPotion",
+    "StableSerum",
+    "StrengthPotion",
+    "SwiftPotion",
+    "TouchOfInsanity",
+    "VulnerablePotion",
+    "WeakPotion",
+)
+
+
+def _event_potion_options(run_state: RunState):
+    by_id = {model.potion_id: model for model in all_potion_models()}
+    character = [
+        by_id[potion_id]
+        for potion_id in _CHARACTER_POTION_IDS.get(run_state.player.character_id, ())
+        if potion_id in by_id
+    ]
+    shared = [
+        by_id[potion_id]
+        for potion_id in _SHARED_POTION_IDS
+        if potion_id in by_id
+    ]
+    return [*character, *shared]
+
+
+def _roll_event_potion_id(run_state: RunState) -> str | None:
+    options = _event_potion_options(run_state)
+    if not options:
+        return None
+    return run_state.rng.rewards.choice(options).potion_id
 
 
 def _obtain_random_relics(run_state: RunState, count: int) -> list[str]:
@@ -535,10 +614,12 @@ class BattlewornDummy(EventModel):
 
     def choose(self, run_state: RunState, option_id: str) -> EventResult:
         if option_id == "setting_1":
+            potion_id = _roll_event_potion_id(run_state)
+            rewards = [PotionReward(run_state.player.player_id, potion_id=potion_id)] if potion_id is not None else []
             return EventResult(
                 finished=True,
                 description="Fought dummy (easy), gained a potion.",
-                rewards={"reward_objects": [PotionReward(run_state.player.player_id)]},
+                rewards={"reward_objects": rewards},
             )
         if option_id == "setting_2":
             _upgrade_n_cards(run_state, 2, rng=run_state.rng.niche)
@@ -2415,10 +2496,12 @@ class Wellspring(EventModel):
 
     def choose(self, run_state: RunState, option_id: str) -> EventResult:
         if option_id == "bottle":
+            potion_id = _roll_event_potion_id(run_state)
+            rewards = [PotionReward(run_state.player.player_id, potion_id=potion_id)] if potion_id is not None else []
             return EventResult(
                 finished=True,
                 description="Gained a random potion.",
-                rewards={"reward_objects": [PotionReward(run_state.player.player_id)]},
+                rewards={"reward_objects": rewards},
             )
         candidates = run_state.player.removable_deck_cards()
         if _should_defer_event_rewards(run_state):
