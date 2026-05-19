@@ -325,6 +325,16 @@ def test_tezcatara_and_vakuu_relic_selection_tracks_pool_rolls():
     assert vakuu._choices["relic_1"] == RelicId.FIDDLE.name
     assert vakuu._choices["relic_2"] == RelicId.DISTINGUISHED_CAPE.name
     assert vakuu._choices["relic_3"] == RelicId.JEWELED_MASK.name
+    cape_hp_before = vakuu_state.player.current_hp
+    cape_relics_before = len(vakuu_state.player.relics)
+    vakuu.choose(vakuu_state, "relic_2")
+    assert vakuu_state.player.current_hp == cape_hp_before - 9
+    assert len(vakuu_state.player.relics) == cape_relics_before + 1
+
+    vakuu_state = _make_run_state(6171)
+    vakuu = Vakuu()
+    vakuu.rng = _ReverseShuffleRng()
+    vakuu.generate_initial_options(vakuu_state)
     vakuu_relics_before = len(vakuu_state.player.relics)
     vakuu.choose(vakuu_state, "relic_3")
     assert len(vakuu_state.player.relics) == vakuu_relics_before + 1

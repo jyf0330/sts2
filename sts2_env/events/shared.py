@@ -2481,6 +2481,8 @@ class Vakuu(EventModel):
     def choose(self, run_state: RunState, option_id: str) -> EventResult:
         relic_id = self._choices.get(option_id)
         if relic_id is not None:
+            if relic_id == RelicId.DISTINGUISHED_CAPE.name:
+                run_state.player.lose_hp(9)
             if _should_defer_event_rewards(run_state):
                 return _event_result_with_rewards(
                     "Obtained a relic from Vakuu.",
