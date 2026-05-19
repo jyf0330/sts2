@@ -5,18 +5,24 @@ import sts2_env.powers  # noqa: F401
 from sts2_env.cards.base import CardInstance
 from sts2_env.cards.colorless import (
     make_beacon_of_hope,
+    make_catastrophe,
     make_coordinate_card,
     make_dark_shackles,
     make_equilibrium,
+    make_eternal_armor,
     make_finesse,
     make_fisticuffs,
     make_gold_axe,
     make_hidden_gem,
     make_impatience,
     make_intercept_card,
+    make_jackpot,
+    make_prep_time,
     make_production,
     make_prolong,
+    make_prowess,
     make_rend,
+    make_salvo,
 )
 from sts2_env.cards.ironclad import create_ironclad_starter_deck
 from sts2_env.cards.ironclad_basic import make_defend_ironclad, make_strike_ironclad
@@ -43,6 +49,93 @@ def _make_combat() -> CombatState:
 
 
 class TestColorlessParityExtra4:
+    def test_catastrophe_autoplays_two_draw_pile_cards_preferring_playable(self):
+        combat = _make_combat()
+        first = make_strike_ironclad()
+        second = make_defend_ironclad()
+        combat.hand = [make_catastrophe()]
+        combat.draw_pile = [first, second]
+        combat.energy = 2
+
+        assert combat.play_card(0)
+
+        assert first in combat.discard_pile
+        assert second in combat.discard_pile
+        assert combat.draw_pile == []
+
+    def test_eternal_armor_applies_plating(self):
+        combat = _make_combat()
+        combat.hand = [make_eternal_armor()]
+        combat.energy = 3
+
+        assert combat.play_card(0)
+
+        assert combat.player.get_power_amount(PowerId.PLATING) == 7
+
+    def test_jackpot_deals_damage_and_adds_three_zero_cost_cards(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = enemy.max_hp = 100
+        combat.hand = [make_jackpot()]
+        combat.energy = 3
+
+        assert combat.play_card(0, 0)
+
+        assert enemy.current_hp == 75
+        assert len(combat.hand) == 3
+        assert all(card.cost == 0 and not card.has_energy_cost_x for card in combat.hand)
+
+    def test_upgraded_jackpot_upgrades_generated_cards(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = enemy.max_hp = 100
+        combat.hand = [make_jackpot(upgraded=True)]
+        combat.energy = 3
+
+        assert combat.play_card(0, 0)
+
+        assert enemy.current_hp == 70
+        assert len(combat.hand) == 3
+        assert all(card.upgraded for card in combat.hand)
+
+    def test_prep_time_applies_start_of_turn_vigor_power(self):
+        combat = _make_combat()
+        combat.hand = [make_prep_time()]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.PREP_TIME) == 4
+
+        combat.end_player_turn()
+
+        assert combat.player.get_power_amount(PowerId.VIGOR) == 4
+
+    def test_prowess_grants_strength_and_dexterity(self):
+        combat = _make_combat()
+        combat.hand = [make_prowess()]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+
+        assert combat.player.get_power_amount(PowerId.STRENGTH) == 1
+        assert combat.player.get_power_amount(PowerId.DEXTERITY) == 1
+
+    def test_salvo_deals_damage_and_retains_remaining_hand(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        starting_hp = enemy.current_hp
+        retained = make_strike_ironclad()
+        combat.hand = [make_salvo(), retained]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+        assert enemy.current_hp == starting_hp - 12
+        assert combat.player.get_power_amount(PowerId.RETAIN_HAND) == 1
+
+        combat.end_player_turn()
+
+        assert retained in combat.hand
+
     def test_dark_shackles_applies_temporary_strength_loss_then_restores(self):
         combat = _make_combat()
         enemy = combat.enemies[0]

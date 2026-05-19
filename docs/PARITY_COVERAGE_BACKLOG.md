@@ -21,6 +21,10 @@ The detailed backlog sections below were captured as the pre-pass baseline. Afte
 
 Latest local pass also added direct coverage for:
 
+- Cards: `CATASTROPHE`, `ETERNAL_ARMOR`, `JACKPOT`, `PREP_TIME`, `PROWESS`, `SALVO`
+
+Latest local pass also added direct coverage for:
+
 - Cards: `BOOT_SEQUENCE`, `BULK_UP`, `DOUBLE_ENERGY`, `FUSION`, `GLASSWORK`, `LEAP`, `METEOR_STRIKE`, `MODDED`, `QUADCAST`, `SHADOW_SHIELD`, `SKIM`, `SYNTHESIS`, `UPROAR`
 
 This pass also exposed and fixed the following logic mismatch:
