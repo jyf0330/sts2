@@ -25,7 +25,7 @@ from sts2_env.cards.ironclad import (
 )
 from sts2_env.cards.ironclad_basic import make_bash, make_defend_ironclad, make_strike_ironclad
 from sts2_env.cards.silent import _make_shiv, make_afterimage, make_serpent_form
-from sts2_env.cards.status import make_rebound, make_sovereign_blade
+from sts2_env.cards.status import make_burn, make_dazed, make_rebound, make_sovereign_blade
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle, create_twig_slime_s
 from sts2_env.monsters.act3 import create_turret_operator
@@ -295,6 +295,28 @@ class TestPowerApplication:
         assert simple_combat.modified_card_cost(simple_combat.player, owner_power) == 0
         assert simple_combat.modified_card_cost(ally, ally_power) == 3
         assert simple_combat.modified_card_cost(simple_combat.player, attack) == 1
+
+    def test_iteration_uses_turn_draw_history_for_first_status(self, simple_combat):
+        iteration_amount = 2
+        first_status = make_dazed()
+        second_status = make_burn()
+        next_turn_status = make_dazed()
+        first_bonus = make_strike_ironclad()
+        second_bonus = make_defend_ironclad()
+        next_card = make_bash()
+        simple_combat.hand.clear()
+        simple_combat.draw_pile = [first_status, second_status, next_turn_status, first_bonus, second_bonus, next_card]
+
+        simple_combat.draw_cards(simple_combat.player, 1)
+        simple_combat.apply_power_to(simple_combat.player, PowerId.ITERATION, iteration_amount)
+        simple_combat.draw_cards(simple_combat.player, 1)
+
+        assert simple_combat.hand == [first_status, second_status]
+        assert simple_combat.draw_pile == [next_turn_status, first_bonus, second_bonus, next_card]
+
+        simple_combat._start_player_turn()  # noqa: SLF001
+
+        assert simple_combat.hand == [first_status, second_status, next_turn_status, first_bonus, second_bonus, next_card]
 
 
 class TestDebuffTicking:

@@ -137,7 +137,7 @@ class CombatState:
         self.in_play_phase: bool = False
         self._damage_events_this_turn: list[tuple[Creature | None, Creature, ValueProp]] = []
         self._damage_events_combat: list[tuple[Creature | None, Creature, ValueProp, int]] = []
-        self._draw_events_this_turn: list[tuple[Creature, bool]] = []
+        self._draw_events_this_turn: list[tuple[Creature, CardInstance, bool]] = []
         self._draw_events_combat: list[Creature] = []
         self._exhaust_events_this_turn: list[CardInstance] = []
         self._discard_events_this_turn: list[CardInstance] = []
@@ -1716,7 +1716,7 @@ class CombatState:
             setattr(card, "owner", owner)
             state.hand.append(card)
             drawn_cards.append(card)
-            self._draw_events_this_turn.append((owner, from_hand_draw))
+            self._draw_events_this_turn.append((owner, card, from_hand_draw))
             self._draw_events_combat.append(owner)
             self._apply_card_after_card_drawn_early(card, owner)
             fire_after_card_drawn(card, from_hand_draw, self)
@@ -2240,8 +2240,15 @@ class CombatState:
     def count_non_hand_draws_this_turn(self, owner: Creature) -> int:
         return sum(
             1
-            for logged_owner, from_hand_draw in self._draw_events_this_turn
+            for logged_owner, _, from_hand_draw in self._draw_events_this_turn
             if logged_owner is owner and not from_hand_draw
+        )
+
+    def count_drawn_cards_this_turn(self, owner: Creature, card_type: CardType | None = None) -> int:
+        return sum(
+            1
+            for logged_owner, card, _ in self._draw_events_this_turn
+            if logged_owner is owner and (card_type is None or card.card_type == card_type)
         )
 
     def count_cards_drawn_this_combat(self, owner: Creature) -> int:

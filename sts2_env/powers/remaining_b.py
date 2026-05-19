@@ -640,8 +640,7 @@ class IterationPower(PowerInstance):
       drawn this turn, draw Amount cards.
     StackType.Counter.
 
-    Simplified: The draw system should call on_card_drawn() when a card
-    is drawn. We track the first Status drawn per turn.
+    The draw system calls on_card_drawn() after recording the draw event.
     """
 
     power_type = PowerType.BUFF
@@ -649,20 +648,13 @@ class IterationPower(PowerInstance):
 
     def __init__(self, amount: int):
         super().__init__(PowerId.ITERATION, amount)
-        self._status_drawn_this_turn: int = 0
 
     def on_card_drawn(self, owner: Creature, card: object, combat: CombatState) -> None:
-        """Called by the draw system when a card is drawn."""
         if getattr(card, "owner", None) is not owner:
             return
         if getattr(card, "card_type", None) == CardType.STATUS:
-            self._status_drawn_this_turn += 1
-            if self._status_drawn_this_turn <= 1:
+            if combat.count_drawn_cards_this_turn(owner, CardType.STATUS) <= 1:
                 combat.draw_cards(owner, self.amount)
-
-    def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side == owner.side:
-            self._status_drawn_this_turn = 0
 
 
 # ---------------------------------------------------------------------------
