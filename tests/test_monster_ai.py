@@ -1163,6 +1163,97 @@ class TestFixedRotation:
         ovicopter_ai.roll_move(Rng(36))
         assert ovicopter_ai.current_move.state_id == "NUTRITIONAL_PASTE_MOVE"
 
+    def test_act2_debuff_moves_use_original_player_targets_not_pets(self):
+        rng_seed = 1247
+        ally_hp = 200
+        osty_hp = 200
+        toxic_spit_weak = 1
+        tenderizing_goop_tender = 1
+        web_frail = 2
+        tenderizer_vulnerable = 2
+        constrict_weak = 1
+        bug_sting_debuff = 2
+        no_debuff = 0
+        expected_weak = toxic_spit_weak + constrict_weak + bug_sting_debuff
+        expected_frail = web_frail + bug_sting_debuff
+        combat = _make_combat(rng_seed)
+        ally = _add_test_ally(combat, hp=ally_hp)
+        osty = combat.summon_osty(combat.primary_player, osty_hp)
+        assert osty is not None
+        bowlbug, bowlbug_ai = create_bowlbug_silk(Rng(rng_seed))
+        hunter, hunter_ai = create_hunter_killer(Rng(rng_seed))
+        louse, louse_ai = create_louse_progenitor(Rng(rng_seed))
+        ovicopter, ovicopter_ai = create_ovicopter(Rng(rng_seed))
+        segment, segment_ai = create_decimillipede_segment(Rng(rng_seed), starter_idx=2)
+        crusher, crusher_ai = create_crusher(Rng(rng_seed))
+        for enemy, enemy_ai in (
+            (bowlbug, bowlbug_ai),
+            (hunter, hunter_ai),
+            (louse, louse_ai),
+            (ovicopter, ovicopter_ai),
+            (segment, segment_ai),
+            (crusher, crusher_ai),
+        ):
+            combat.add_enemy(enemy, enemy_ai)
+
+        primary_hp_before = combat.primary_player.current_hp
+        ally_hp_before = ally.current_hp
+        osty_hp_before = osty.current_hp
+        bowlbug_ai.states["TOXIC_SPIT_MOVE"].perform(combat)
+        hunter_ai.states["TENDERIZING_GOOP_MOVE"].perform(combat)
+        louse_ai.states["WEB_CANNON_MOVE"].perform(combat)
+        ovicopter_ai.states["TENDERIZER_MOVE"].perform(combat)
+        segment_ai.states["CONSTRICT_MOVE"].perform(combat)
+        crusher_ai.states["BUG_STING_MOVE"].perform(combat)
+
+        assert combat.primary_player.current_hp == primary_hp_before
+        assert ally.current_hp < ally_hp_before
+        assert osty.current_hp < osty_hp_before
+        assert combat.primary_player.get_power_amount(PowerId.WEAK) == expected_weak
+        assert ally.get_power_amount(PowerId.WEAK) == expected_weak
+        assert osty.get_power_amount(PowerId.WEAK) == no_debuff
+        assert combat.primary_player.get_power_amount(PowerId.FRAIL) == expected_frail
+        assert ally.get_power_amount(PowerId.FRAIL) == expected_frail
+        assert osty.get_power_amount(PowerId.FRAIL) == no_debuff
+        assert combat.primary_player.get_power_amount(PowerId.TENDER) == tenderizing_goop_tender
+        assert ally.get_power_amount(PowerId.TENDER) == tenderizing_goop_tender
+        assert osty.get_power_amount(PowerId.TENDER) == no_debuff
+        assert combat.primary_player.get_power_amount(PowerId.VULNERABLE) == tenderizer_vulnerable
+        assert ally.get_power_amount(PowerId.VULNERABLE) == tenderizer_vulnerable
+        assert osty.get_power_amount(PowerId.VULNERABLE) == no_debuff
+
+    def test_act2_status_moves_add_cards_to_original_player_targets_not_pets(self):
+        rng_seed = 1248
+        ally_hp = 100
+        osty_hp = 100
+        screech_dazed = 3
+        toxic_count = 2
+        combat = _make_combat(rng_seed)
+        ally = _add_test_ally(combat, hp=ally_hp)
+        primary_state = combat.combat_player_state_for(combat.primary_player)
+        ally_state = combat.combat_player_state_for(ally)
+        assert primary_state is not None
+        assert ally_state is not None
+        primary_state.hand.clear()
+        primary_state.discard.clear()
+        ally_state.hand.clear()
+        ally_state.discard.clear()
+        osty = combat.summon_osty(combat.primary_player, osty_hp)
+        assert osty is not None
+        chomper, chomper_ai = create_chomper(Rng(rng_seed), scream_first=True)
+        myte, myte_ai = create_myte(Rng(rng_seed), slot="first")
+        combat.add_enemy(chomper, chomper_ai)
+        combat.add_enemy(myte, myte_ai)
+
+        chomper_ai.states["SCREECH_MOVE"].perform(combat)
+        myte_ai.states["TOXIC_MOVE"].perform(combat)
+
+        assert [card.card_id for card in primary_state.discard] == [CardId.DAZED] * screech_dazed
+        assert [card.card_id for card in ally_state.discard] == [CardId.DAZED] * screech_dazed
+        assert [card.card_id for card in primary_state.hand] == [CardId.TOXIC] * toxic_count
+        assert [card.card_id for card in ally_state.hand] == [CardId.TOXIC] * toxic_count
+        assert combat.combat_player_state_for(osty) is None
+
     def test_act2_slumbering_beetle_and_spiny_toad_match_original_moves(self):
         beetle, beetle_ai = create_slumbering_beetle(Rng(37))
         assert beetle.max_hp == 86

@@ -19,7 +19,12 @@ from sts2_env.monsters.intents import (
 from sts2_env.monsters.state_machine import (
     ConditionalBranchState, MonsterAI, MonsterState, MoveState, RandomBranchState,
 )
-from sts2_env.monsters.targets import living_player_targets, player_or_pet_owner
+from sts2_env.monsters.targets import (
+    add_generated_cards_to_living_player_discards,
+    apply_power_to_living_player_targets,
+    living_player_targets,
+    player_or_pet_owner,
+)
 from sts2_env.cards.status import (
     make_dazed,
     make_disintegration,
@@ -331,9 +336,10 @@ def create_bowlbug_silk(rng: Rng) -> tuple[Creature, MonsterAI]:
     hp = rng.next_int(40, 43)
     creature = Creature(max_hp=hp, monster_id="BOWLBUG_SILK")
     thrash_dmg = 4
+    toxic_spit_weak = 1
 
     def toxic_spit(combat: CombatState) -> None:
-        combat.apply_power_to(combat.primary_player, PowerId.WEAK, 1)
+        apply_power_to_living_player_targets(combat, PowerId.WEAK, toxic_spit_weak, applier=creature)
 
     def thrash(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, thrash_dmg, hits=2)
@@ -416,13 +422,13 @@ def create_chomper(rng: Rng, scream_first: bool = False) -> tuple[Creature, Mons
     hp = rng.next_int(60, 64)
     creature = Creature(max_hp=hp, monster_id="CHOMPER")
     clamp_dmg = 8
+    screech_dazed = 3
 
     def clamp(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, clamp_dmg, hits=2)
 
     def screech(combat: CombatState) -> None:
-        for _ in range(3):
-            combat.add_card_to_discard(make_dazed())
+        add_generated_cards_to_living_player_discards(combat, make_dazed, screech_dazed)
 
     states: dict[str, MonsterState] = {
         "CLAMP_MOVE": MoveState(
@@ -446,9 +452,10 @@ def create_hunter_killer(rng: Rng) -> tuple[Creature, MonsterAI]:
     creature = Creature(max_hp=hp, monster_id="HUNTER_KILLER")
     bite_dmg = 17
     puncture_dmg = 7
+    tenderizing_goop_tender = 1
 
     def tenderizing_goop(combat: CombatState) -> None:
-        combat.apply_power_to(combat.primary_player, PowerId.TENDER, 1)
+        apply_power_to_living_player_targets(combat, PowerId.TENDER, tenderizing_goop_tender, applier=creature)
 
     def bite(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, bite_dmg)
@@ -537,13 +544,14 @@ def create_louse_progenitor(rng: Rng) -> tuple[Creature, MonsterAI]:
     hp = rng.next_int(134, 136)
     creature = Creature(max_hp=hp, monster_id="LOUSE_PROGENITOR")
     web_dmg = 9
+    web_frail = 2
     pounce_dmg = 14
     curl_block = 14
     grow_str = 5
 
     def web(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, web_dmg)
-        combat.apply_power_to(combat.primary_player, PowerId.FRAIL, 2)
+        apply_power_to_living_player_targets(combat, PowerId.FRAIL, web_frail, applier=creature)
 
     def curl_and_grow(combat: CombatState) -> None:
         _gain_block(creature, curl_block, combat)
@@ -583,17 +591,19 @@ def create_myte(rng: Rng, slot: str = "first") -> tuple[Creature, MonsterAI]:
     creature = Creature(max_hp=hp, monster_id="MYTE")
     bite_dmg = 13
     suck_dmg = 4
+    toxic_count = 2
 
     def bite(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, bite_dmg)
 
     def toxic(combat: CombatState) -> None:
-        for _ in range(2):
-            combat.add_generated_card_to_creature_hand(
-                combat.primary_player,
-                make_toxic(),
-                added_by_player=False,
-            )
+        for target in living_player_targets(combat):
+            for _ in range(toxic_count):
+                combat.add_generated_card_to_creature_hand(
+                    target,
+                    make_toxic(),
+                    added_by_player=False,
+                )
 
     def suck(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, suck_dmg)
@@ -639,6 +649,7 @@ def create_ovicopter(rng: Rng) -> tuple[Creature, MonsterAI]:
     creature = Creature(max_hp=hp, monster_id="OVICOPTER")
     smash_dmg = 16
     tenderizer_dmg = 7
+    tenderizer_vulnerable = 2
     paste_str = 3
 
     def can_lay(combat: CombatState | None) -> bool:
@@ -656,7 +667,7 @@ def create_ovicopter(rng: Rng) -> tuple[Creature, MonsterAI]:
 
     def tenderizer(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, tenderizer_dmg)
-        combat.apply_power_to(combat.primary_player, PowerId.VULNERABLE, 2)
+        apply_power_to_living_player_targets(combat, PowerId.VULNERABLE, tenderizer_vulnerable, applier=creature)
 
     def nutritional_paste(combat: CombatState) -> None:
         creature.apply_power(PowerId.STRENGTH, paste_str)
@@ -830,6 +841,7 @@ def create_decimillipede_segment(rng: Rng, starter_idx: int = 0) -> tuple[Creatu
     creature = Creature(max_hp=hp, monster_id="DECIMILLIPEDE_SEGMENT")
     writhe_dmg = 5
     constrict_dmg = 8
+    constrict_weak = 1
     bulk_dmg = 6
 
     def writhe(combat: CombatState) -> None:
@@ -837,7 +849,7 @@ def create_decimillipede_segment(rng: Rng, starter_idx: int = 0) -> tuple[Creatu
 
     def constrict(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, constrict_dmg)
-        combat.apply_power_to(combat.primary_player, PowerId.WEAK, 1)
+        apply_power_to_living_player_targets(combat, PowerId.WEAK, constrict_weak, applier=creature)
 
     def bulk(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, bulk_dmg)
@@ -1216,6 +1228,7 @@ def create_crusher(rng: Rng) -> tuple[Creature, MonsterAI]:
     thrash_dmg = 12
     enlarging_dmg = 4
     bug_sting_dmg = 6
+    bug_sting_debuff = 2
     guarded_strike_dmg = 12
     guarded_block = 18
 
@@ -1227,8 +1240,8 @@ def create_crusher(rng: Rng) -> tuple[Creature, MonsterAI]:
 
     def bug_sting(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, bug_sting_dmg, hits=2)
-        combat.apply_power_to(combat.primary_player, PowerId.WEAK, 2)
-        combat.apply_power_to(combat.primary_player, PowerId.FRAIL, 2)
+        apply_power_to_living_player_targets(combat, PowerId.WEAK, bug_sting_debuff, applier=creature)
+        apply_power_to_living_player_targets(combat, PowerId.FRAIL, bug_sting_debuff, applier=creature)
 
     def adapt(combat: CombatState) -> None:
         creature.apply_power(PowerId.STRENGTH, 2)
