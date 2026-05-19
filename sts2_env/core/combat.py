@@ -3268,11 +3268,11 @@ class CombatState:
         from sts2_env.monsters.act4 import create_fat_gremlin, create_sneaky_gremlin
 
         spawned: list[Creature] = []
-        sneaky, sneaky_ai = create_sneaky_gremlin(Rng(self.rng.next_int(0, 2**31 - 1)))
+        sneaky, sneaky_ai = create_sneaky_gremlin(Rng(self.rng.next_int(0, INT_MAX)))
         self.add_enemy(sneaky, sneaky_ai)
         spawned.append(sneaky)
 
-        fat, fat_ai = create_fat_gremlin(Rng(self.rng.next_int(0, 2**31 - 1)))
+        fat, fat_ai = create_fat_gremlin(Rng(self.rng.next_int(0, INT_MAX)))
         thievery = owner.powers.get(PowerId.THIEVERY)
         gold_stolen = getattr(thievery, "gold_stolen", 0)
         if gold_stolen > 0:
@@ -3292,7 +3292,7 @@ class CombatState:
         spawned: list[Creature] = []
         for index in range(max(0, count)):
             wriggler, wriggler_ai = create_wriggler(
-                Rng(self.rng.next_int(0, 2**31 - 1)),
+                Rng(self.rng.next_int(0, INT_MAX)),
                 slot=f"wriggler{index + 1}",
                 start_stunned=True,
             )
@@ -3309,7 +3309,7 @@ class CombatState:
         )
         if existing is not None:
             return existing
-        doormaker, doormaker_ai = create_doormaker(Rng(self.rng.next_int(0, 2**31 - 1)))
+        doormaker, doormaker_ai = create_doormaker(Rng(self.rng.next_int(0, INT_MAX)))
         self.add_enemy(doormaker, doormaker_ai)
         return doormaker
 

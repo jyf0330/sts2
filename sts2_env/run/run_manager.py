@@ -30,7 +30,7 @@ from sts2_env.core.enums import (
     MapPointType,
     RoomType,
 )
-from sts2_env.core.rng import Rng
+from sts2_env.core.rng import INT_MAX, Rng
 from sts2_env.map.map_point import MapCoord
 from sts2_env.potions.base import PotionInstance, create_potion, roll_random_potion_model
 from sts2_env.encounters.events import get_event_encounter_setup
@@ -493,7 +493,7 @@ class RunManager:
         reset_instance_counter()
 
         player = self._run_state.player
-        combat_seed = self._rng.next_int(0, 2**31 - 1)
+        combat_seed = self._rng.next_int(0, INT_MAX)
         self._combat = CombatState(
             player_hp=player.current_hp,
             player_max_hp=player.max_hp,
@@ -522,7 +522,7 @@ class RunManager:
 
         if pool:
             setup_fn = self._rng.choice(pool)
-            encounter_rng = Rng(self._rng.next_int(0, 2**31 - 1))
+            encounter_rng = Rng(self._rng.next_int(0, INT_MAX))
             setup_fn(self._combat, encounter_rng)
 
         self._fire_modifiers_after_room_entered(RoomVisitContext(room_type), combat=self._combat)
@@ -549,7 +549,7 @@ class RunManager:
         reset_instance_counter()
 
         player = self._run_state.player
-        combat_seed = self._rng.next_int(0, 2**31 - 1)
+        combat_seed = self._rng.next_int(0, INT_MAX)
         self._combat = CombatState(
             player_hp=player.current_hp,
             player_max_hp=player.max_hp,
@@ -566,7 +566,7 @@ class RunManager:
         self._selected_combat_player_id = player.player_id
         setup_fn = get_event_encounter_setup(encounter_id)
         if setup_fn is not None:
-            encounter_rng = Rng(self._rng.next_int(0, 2**31 - 1))
+            encounter_rng = Rng(self._rng.next_int(0, INT_MAX))
             setup_fn(self._combat, encounter_rng)
         self._fire_modifiers_after_room_entered(RoomVisitContext(self._current_room.room_type), combat=self._combat)
         self._combat.start_combat()
