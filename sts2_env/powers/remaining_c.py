@@ -296,8 +296,7 @@ class RingingPower(PowerInstance):
                 return True
         elif getattr(card, "combat_vars", {}).get("_affliction") != self._AFFLICTION:
             return True
-        card_play_starts = getattr(combat, "count_card_play_starts_this_turn", None)
-        if callable(card_play_starts) and card_play_starts(owner) > 0:
+        if combat.count_card_play_starts_this_turn(owner) > 0:
             return False
         return True
 

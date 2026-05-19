@@ -1211,10 +1211,11 @@ class NostalgiaPower(PowerInstance):
             return False
         if combat is None:
             return True
-        card_play_starts = getattr(combat, "count_card_play_starts_this_turn", None)
-        if not callable(card_play_starts):
-            return True
-        qualifying_starts = card_play_starts(owner, card_type=CardType.ATTACK, exclude_card=card) + card_play_starts(
+        qualifying_starts = combat.count_card_play_starts_this_turn(
+            owner,
+            card_type=CardType.ATTACK,
+            exclude_card=card,
+        ) + combat.count_card_play_starts_this_turn(
             owner,
             card_type=CardType.SKILL,
             exclude_card=card,

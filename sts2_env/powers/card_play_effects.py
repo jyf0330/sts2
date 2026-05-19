@@ -87,26 +87,15 @@ class EchoFormPower(PowerInstance):
 
     def __init__(self, amount: int):
         super().__init__(PowerId.ECHO_FORM, amount)
-        self._cards_echoed_this_turn: int = 0
 
     def modify_card_play_count(self, owner: Creature, count: int, card: object) -> int:
         if getattr(card, "owner", None) is not owner:
             return count
-        combat = getattr(owner, "combat_state", None)
-        play_starts = getattr(combat, "count_card_play_starts_this_turn", None)
-        started_this_turn = (
-            play_starts(owner, first_in_series_only=True) if callable(play_starts) else self._cards_echoed_this_turn
-        )
+        combat = owner.combat_state
+        started_this_turn = combat.count_card_play_starts_this_turn(owner, first_in_series_only=True)
         if started_this_turn < self.amount:
-            self._cards_echoed_this_turn += 1
             return count + 1
         return count
-
-    def before_side_turn_start(
-        self, owner: Creature, side: CombatSide, combat: CombatState
-    ) -> None:
-        if side == owner.side:
-            self._cards_echoed_this_turn = 0
 
 
 # ---------------------------------------------------------------------------
