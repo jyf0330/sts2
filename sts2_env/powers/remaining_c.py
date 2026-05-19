@@ -1234,13 +1234,27 @@ class TagTeamPower(PowerInstance):
 
     def __init__(self, amount: int):
         super().__init__(PowerId.TAG_TEAM, amount)
-        self._triggered: bool = False
+        self._instances: list[tuple[int, Creature | None]] = [(amount, None)]
+        self._triggered_instances_by_card: dict[int, list[int]] = {}
+
+    def after_power_amount_changed(
+        self,
+        owner: Creature,
+        target: Creature,
+        power_id: PowerId,
+        amount: int,
+        applier: Creature | None,
+        source: object | None,
+        combat: CombatState,
+    ) -> None:
+        if owner is not target or power_id != self.power_id or amount <= 0:
+            return
+        if len(self._instances) == 1 and self._instances[0][1] is None:
+            self._instances[0] = (self._instances[0][0], applier)
+            return
+        self._instances.append((amount, applier))
 
     def modify_card_play_count(self, owner: Creature, count: int, card: object) -> int:
-        if self._triggered:
-            return count
-        if getattr(card, "owner", None) is self.applier:
-            return count
         card_type = getattr(card, "card_type", None) or getattr(card, "type", None)
         if card_type != CardType.ATTACK:
             return count
@@ -1248,12 +1262,31 @@ class TagTeamPower(PowerInstance):
         target = getattr(combat, "active_card_target", None) or getattr(card, "target", None)
         if target is not owner:
             return count
-        self._triggered = True
-        return count + self.amount
+        card_owner = getattr(card, "owner", None)
+        triggered_indices: list[int] = []
+        for index, (amount, applier) in enumerate(self._instances):
+            if card_owner is (applier or self.applier):
+                continue
+            count += amount
+            triggered_indices.append(index)
+        if triggered_indices:
+            self._triggered_instances_by_card[id(card)] = triggered_indices
+        return count
 
     def after_modifying_card_play_count(self, owner: Creature, card: object, combat: CombatState) -> None:
-        if self._triggered:
+        triggered_indices = self._triggered_instances_by_card.pop(id(card), None)
+        if triggered_indices is None:
+            return
+        triggered = set(triggered_indices)
+        self._instances = [
+            instance
+            for index, instance in enumerate(self._instances)
+            if index not in triggered
+        ]
+        if not self._instances:
             combat._remove_power(owner, self.power_id)
+            return
+        self.amount = sum(amount for amount, _ in self._instances)
 
 
 # ---------------------------------------------------------------------------

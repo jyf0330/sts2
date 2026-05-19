@@ -1393,6 +1393,28 @@ class TestPowerAmountChangedHooks:
         assert enemy.current_hp == starting_hp - 18
         assert not enemy.has_power(PowerId.TAG_TEAM)
 
+    def test_tag_team_keeps_separate_appliers_like_reference(self, simple_combat):
+        ally = simple_combat.add_ally_player(PlayerState(player_id=2, character_id="Ironclad", max_hp=70, current_hp=70))
+        ally_state = simple_combat.combat_player_state_for(ally)
+        assert ally_state is not None
+        enemy = simple_combat.enemies[0]
+        starting_hp = enemy.current_hp
+        simple_combat.hand = [make_strike_ironclad()]
+        simple_combat.energy = 1
+        ally_state.hand = [make_strike_ironclad()]
+        ally_state.zone_map["hand"] = ally_state.hand
+        ally_state.energy = 1
+        simple_combat.apply_power_to(enemy, PowerId.TAG_TEAM, 1, applier=simple_combat.player)
+        simple_combat.apply_power_to(enemy, PowerId.TAG_TEAM, 1, applier=ally)
+
+        assert simple_combat.play_card(0, 0)
+        assert enemy.current_hp == starting_hp - 12
+        assert enemy.get_power_amount(PowerId.TAG_TEAM) == 1
+
+        assert simple_combat.play_card_from_creature(ally, 0, 0)
+        assert enemy.current_hp == starting_hp - 24
+        assert not enemy.has_power(PowerId.TAG_TEAM)
+
     def test_echo_form_ignores_teammate_cards(self, simple_combat):
         ally = simple_combat.add_ally_player(PlayerState(player_id=2, character_id="Ironclad", max_hp=70, current_hp=70))
         ally_state = simple_combat.combat_player_state_for(ally)
