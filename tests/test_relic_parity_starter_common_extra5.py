@@ -136,6 +136,21 @@ class TestRelicParityStarterCommonExtra5:
         combat.deal_damage(combat.osty, enemy, 4, ValueProp.MOVE)
         assert combat.player.block == start_block + 2
 
+    def test_bone_flute_uses_osty_pet_owner(self):
+        """Matches BoneFlute.cs: check Osty's PetOwner, not a separate owner alias."""
+        combat = _make_necrobinder_combat(["BoneFlute"], seed=1209)
+        enemy = combat.enemies[0]
+        osty_hp = 5
+        attack_damage = 4
+        expected_block = 2
+        combat.summon_osty(combat.player, osty_hp)
+        assert combat.osty is not None
+        combat.osty.owner = None
+
+        combat.deal_damage(combat.osty, enemy, attack_damage, ValueProp.MOVE)
+
+        assert combat.player.block == expected_block
+
     def test_bone_flute_block_triggers_after_block_gained_hooks(self):
         combat = _make_necrobinder_combat(["BoneFlute"], seed=1208)
         enemy = combat.enemies[0]

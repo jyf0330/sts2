@@ -1175,12 +1175,11 @@ class DieForYouPower(PowerInstance):
         pet_owner = getattr(owner, "pet_owner", None)
         if pet_owner is None:
             return target
-        pet_owner_creature = getattr(pet_owner, "creature", pet_owner)
-        if target is not pet_owner_creature:
+        if target is not pet_owner:
             return target
         if not getattr(owner, "is_alive", True):
             return target
-        if not props.is_powered():
+        if not props.is_powered_attack():
             return target
         return owner
 

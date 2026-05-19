@@ -110,7 +110,7 @@ class BoneFlute(RelicInstance):
 
     def after_attack(self, owner: Creature, attack: object, combat: CombatState) -> None:
         dealer = getattr(attack, "attacker", None)
-        if getattr(dealer, "is_osty", False) and getattr(dealer, "owner", None) is owner:
+        if getattr(dealer, "is_osty", False) and getattr(dealer, "pet_owner", None) is owner:
             _gain_unpowered_block(owner, self.BLOCK, combat)
 
 

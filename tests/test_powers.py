@@ -794,6 +794,20 @@ class TestDieForYouPower:
         assert osty.is_dead
         assert player.current_hp == player.max_hp - 2
 
+    def test_osty_does_not_take_unpowered_damage_for_owner(self, simple_combat):
+        player = simple_combat.player
+        enemy = simple_combat.enemies[0]
+        osty_hp = 5
+        unpowered_damage = 3
+        simple_combat.summon_osty(player, osty_hp)
+        osty = simple_combat.get_osty(player)
+        assert osty is not None
+
+        apply_damage(player, unpowered_damage, ValueProp.MOVE | ValueProp.UNPOWERED, simple_combat, enemy)
+
+        assert player.current_hp == player.max_hp - unpowered_damage
+        assert osty.current_hp == osty.max_hp
+
     def test_hardened_shell_caps_damage_before_osty_redirect(self, simple_combat):
         player = simple_combat.player
         enemy = simple_combat.enemies[0]
