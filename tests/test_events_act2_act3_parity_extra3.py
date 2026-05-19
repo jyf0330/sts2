@@ -42,6 +42,15 @@ class _SwapFirstTwoRng:
         return 0.0
 
 
+class _LastChoiceRng:
+    def __init__(self) -> None:
+        self.choice_calls = 0
+
+    def choice(self, seq):
+        self.choice_calls += 1
+        return seq[-1]
+
+
 def test_the_architect_is_pool_disabled_and_has_single_proceed_option():
     run_state = _make_run_state(901)
     event = TheArchitect()
@@ -406,6 +415,30 @@ def test_welcome_to_wongos_thresholds_purchase_effects_and_leave_downgrade():
     assert leave.finished
     assert leave_state.player.deck[0].upgraded is False
     assert leave_state.rng.up_front.counter == up_front_counter
+
+
+def test_welcome_to_wongos_leave_uses_single_event_rng_choice():
+    run_state = _make_run_state(9141)
+    run_state.current_act_index = 1
+    run_state.player.gold = 300
+    first = create_card(CardId.BASH, upgraded=True)
+    second = create_card(CardId.STRIKE_IRONCLAD, upgraded=True)
+    run_state.player.deck = [first, second]
+    event = WelcomeToWongos()
+    event.rng = _LastChoiceRng()
+    up_front_counter = run_state.rng.up_front.counter
+    niche_counter = run_state.rng.niche.counter
+    rewards_counter = run_state.rng.rewards.counter
+
+    result = event.choose(run_state, "leave")
+
+    assert result.finished
+    assert event.rng.choice_calls == 1
+    assert run_state.rng.up_front.counter == up_front_counter
+    assert run_state.rng.niche.counter == niche_counter
+    assert run_state.rng.rewards.counter == rewards_counter
+    assert first.upgraded is True
+    assert second.upgraded is False
 
 
 def test_field_of_man_sized_holes_gate_resist_and_enter_behaviors():

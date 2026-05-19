@@ -1452,8 +1452,7 @@ class WelcomeToWongos(EventModel):
             )
         upgraded_cards = [card for card in run_state.player.deck if card.upgraded]
         if upgraded_cards:
-            self.get_rng(run_state).shuffle(upgraded_cards)
-            _downgrade_selected_cards([upgraded_cards[0]], run_state)
+            _downgrade_selected_cards([self.get_rng(run_state).choice(upgraded_cards)], run_state)
         return EventResult(finished=True,
                            description="Left Wongo's, downgraded a card.")
 
