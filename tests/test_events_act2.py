@@ -24,7 +24,7 @@ from sts2_env.events.act2 import (
 from sts2_env.run.reward_objects import EnchantCardsReward, RemoveCardReward, TransformCardsReward
 from sts2_env.potions.base import create_potion
 from sts2_env.run.run_manager import RunManager
-from sts2_env.run.run_state import RunState
+from sts2_env.run.run_state import PlayerState, RunState
 
 
 class _ExclusiveHighRng:
@@ -111,6 +111,19 @@ def test_luminous_choir_and_morphic_grove_apply_real_deck_changes():
     assert result.finished
     after_ids = [card.card_id for card in run_state.player.deck]
     assert before_ids != after_ids
+
+
+def test_morphic_grove_requires_all_players_to_have_gold():
+    run_state = RunState(seed=2901, character_id="Ironclad")
+    run_state.initialize_run()
+    run_state.player.gold = 100
+    ally = run_state.add_player(PlayerState(player_id=2, character_id="Silent", gold=99))
+    event = MorphicGrove()
+
+    assert event.is_allowed(run_state) is False
+
+    ally.gold = 100
+    assert event.is_allowed(run_state) is True
 
 
 def test_potion_courier_ranwid_and_whispering_hollow_change_inventory():
