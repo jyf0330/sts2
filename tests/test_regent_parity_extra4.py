@@ -417,3 +417,19 @@ class TestRegentParityExtra4:
         assert combat.play_card(0, 0)
         assert enemy.current_hp == 89
         assert card.base_damage == 11
+
+    def test_kingly_punch_upgrade_preserves_drawn_damage_growth(self):
+        combat = _make_combat()
+        card = make_kingly_punch()
+        card.owner = combat.player
+        combat.hand = []
+        combat.draw_pile = [card]
+
+        combat.draw_cards(combat.player, 1)
+        assert card.base_damage == 11
+
+        combat.upgrade_card(card)
+
+        assert card.upgraded is True
+        assert card.base_damage == 11
+        assert card.effect_vars["increase"] == 5

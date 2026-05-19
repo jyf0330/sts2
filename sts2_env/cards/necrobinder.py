@@ -6,7 +6,7 @@ Rare (26), Ancient (2).
 
 from __future__ import annotations
 
-from sts2_env.cards.base import CardInstance, _get_next_id
+from sts2_env.cards.base import CardInstance, _get_next_id, increase_base_damage
 from sts2_env.cards.registry import register_effect, register_late_effect
 from sts2_env.core.enums import (
     CardId, CardTag, CardType, TargetType, CardRarity, ValueProp, PowerId, PowerType, PowerStackType,
@@ -920,8 +920,7 @@ def the_scythe(card: CardInstance, combat: CombatState, target: Creature | None)
     assert target is not None
     _deal_damage_single(card, combat, target)
     increase = card.effect_vars.get("increase", 3)
-    if card.base_damage is not None:
-        card.base_damage += increase
+    increase_base_damage(card, increase)
 
 
 @register_effect(CardId.TIMES_UP)

@@ -6,7 +6,7 @@ Each card has a registered effect function and a make_*() factory.
 
 from __future__ import annotations
 
-from sts2_env.cards.base import CardInstance, _get_next_id
+from sts2_env.cards.base import CardInstance, _get_next_id, increase_base_damage
 from sts2_env.cards.registry import register_effect
 from sts2_env.core.enums import (
     CardId, CardTag, CardType, TargetType, CardRarity, ValueProp, PowerId, CombatSide,
@@ -1288,7 +1288,7 @@ def rampage(card: CardInstance, combat: CombatState, target: Creature | None) ->
     _deal_damage_to_target(card, combat, target)
     # Self-mutating: increase base damage for future plays
     increase = card.effect_vars.get("increase", 5)
-    card.base_damage += increase
+    increase_base_damage(card, increase)
 
 
 def make_rampage(upgraded: bool = False) -> CardInstance:
@@ -2139,7 +2139,7 @@ def thrash(card: CardInstance, combat: CombatState, target: Creature | None) -> 
     if attacks:
         exhausted = combat.combat_card_selection_rng.choice(attacks)
         bonus = _calculate_untargeted_card_damage(exhausted, owner, combat)
-        card.base_damage = (card.base_damage or 0) + bonus
+        increase_base_damage(card, bonus)
         combat.exhaust_card(exhausted)
 
 

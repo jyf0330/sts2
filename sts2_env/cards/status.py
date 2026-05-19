@@ -6,7 +6,7 @@ Pain and Parasite are legacy explicit-construction cards and are not in STS2 car
 
 from __future__ import annotations
 
-from sts2_env.cards.base import CardInstance, _get_next_id
+from sts2_env.cards.base import CardInstance, _get_next_id, increase_base_damage
 from sts2_env.cards.factory import create_character_cards
 from sts2_env.cards.registry import register_effect
 from sts2_env.core.enums import (
@@ -451,8 +451,9 @@ def maul_effect(card: CardInstance, combat: CombatState, target: Creature | None
             break
     # All Maul copies gain +increase damage permanently
     increase = card.effect_vars.get("increase", 1)
-    if card.base_damage is not None:
-        card.base_damage += increase
+    for maul in combat._all_cards_for_creature(_owner(card, combat)):
+        if maul.card_id == CardId.MAUL:
+            increase_base_damage(maul, increase)
 
 
 def make_maul(upgraded: bool = False) -> CardInstance:

@@ -871,6 +871,7 @@ class DampenPower(PowerInstance):
             self._downgrade_upgraded_cards(owner, combat)
 
     def _downgrade_upgraded_cards(self, owner: Creature, combat: CombatState) -> None:
+        from sts2_env.cards.base import capture_self_mutating_card_progress, restore_self_mutating_card_progress
         from sts2_env.cards.factory import create_card
 
         state = combat.combat_player_state_for(owner)
@@ -880,6 +881,7 @@ class DampenPower(PowerInstance):
             for card in pile:
                 if not getattr(card, "upgraded", False):
                     continue
+                progress = capture_self_mutating_card_progress(card)
                 try:
                     base = create_card(card.card_id, upgraded=False)
                 except KeyError:
@@ -902,6 +904,7 @@ class DampenPower(PowerInstance):
                 card.star_cost = base.star_cost
                 card.original_cost = base.original_cost
                 card.cost = current_cost if had_turn_override else base.cost
+                restore_self_mutating_card_progress(card, progress)
                 if owner.has_power(PowerId.HEX):
                     card.keywords = frozenset(set(card.keywords) | {"ethereal"})
 

@@ -9,6 +9,10 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
+from sts2_env.cards.base import (
+    capture_self_mutating_card_progress,
+    restore_self_mutating_card_progress,
+)
 from sts2_env.cards.enchantments import can_enchant_card
 from sts2_env.cards.factory import create_card, create_transform_card, eligible_character_cards
 from sts2_env.core.enums import CardId, CardRarity, CardType, TargetType
@@ -199,6 +203,7 @@ def _upgrade_selected_cards(cards: list, run_state: RunState) -> int:
     for card in cards:
         if card.upgraded:
             continue
+        progress = capture_self_mutating_card_progress(card)
         from sts2_env.cards.factory import create_card
 
         try:
@@ -220,6 +225,7 @@ def _upgrade_selected_cards(cards: list, run_state: RunState) -> int:
         card.can_be_generated_by_modifiers = upgraded_card.can_be_generated_by_modifiers
         card.effect_vars = dict(upgraded_card.effect_vars)
         card.original_cost = upgraded_card.original_cost
+        restore_self_mutating_card_progress(card, progress)
         upgraded += 1
     return upgraded
 
@@ -229,6 +235,7 @@ def _downgrade_selected_cards(cards: list, run_state: RunState) -> int:
     for card in cards:
         if not card.upgraded:
             continue
+        progress = capture_self_mutating_card_progress(card)
         try:
             base_card = create_card(card.card_id, upgraded=False)
         except KeyError:
@@ -246,6 +253,7 @@ def _downgrade_selected_cards(cards: list, run_state: RunState) -> int:
         card.can_be_generated_by_modifiers = base_card.can_be_generated_by_modifiers
         card.effect_vars = dict(base_card.effect_vars)
         card.original_cost = base_card.original_cost
+        restore_self_mutating_card_progress(card, progress)
         downgraded += 1
     return downgraded
 

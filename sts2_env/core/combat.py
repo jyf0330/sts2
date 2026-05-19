@@ -11,7 +11,12 @@ from __future__ import annotations
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Callable, Sequence
 
-from sts2_env.cards.base import CardInstance
+from sts2_env.cards.base import (
+    CardInstance,
+    capture_self_mutating_card_progress,
+    increase_base_damage,
+    restore_self_mutating_card_progress,
+)
 from sts2_env.cards.enchantments import (
     after_card_played as apply_enchantment_after_card_played,
     after_player_turn_start as apply_enchantment_after_player_turn_start,
@@ -2561,6 +2566,7 @@ class CombatState:
             return card
         if self._combat_started and self.is_over and self._is_card_in_combat(card):
             return card
+        progress = capture_self_mutating_card_progress(card)
         try:
             upgraded = create_card(card.card_id, upgraded=True)
         except KeyError:
@@ -2589,6 +2595,7 @@ class CombatState:
             card.cost = current_cost
         else:
             card.cost = upgraded.cost
+        restore_self_mutating_card_progress(card, progress)
         return card
 
     def transform_card(self, old_card: CardInstance | None, new_card: CardInstance | None) -> CardInstance | None:
@@ -3522,7 +3529,7 @@ class CombatState:
             card.set_combat_cost(max(0, card.cost - 1))
             return
         if card.card_id == CardId.KINGLY_PUNCH and card.base_damage is not None:
-            card.base_damage += card.effect_vars.get("increase", 3)
+            increase_base_damage(card, card.effect_vars.get("increase", 3))
             return
 
     def _apply_card_after_card_drawn_early(self, card: CardInstance, owner: Creature) -> None:

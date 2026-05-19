@@ -14,7 +14,7 @@ from sts2_env.core.hooks import (
     fire_before_combat_start,
     fire_before_turn_end,
 )
-from sts2_env.cards.defect import create_defect_starter_deck, make_beam_cell, make_feral, make_subroutine
+from sts2_env.cards.defect import create_defect_starter_deck, make_beam_cell, make_feral, make_genetic_algorithm, make_subroutine
 from sts2_env.cards.ironclad import create_ironclad_starter_deck, make_inflame, make_juggling, make_sword_boomerang
 from sts2_env.cards.ironclad_basic import make_bash, make_defend_ironclad, make_strike_ironclad
 from sts2_env.cards.silent import _make_shiv, make_afterimage, make_serpent_form
@@ -1637,6 +1637,33 @@ class TestPowerAmountChangedHooks:
         simple_combat._remove_power(simple_combat.player, PowerId.HEX)
 
         assert not bash.is_ethereal
+
+    def test_dampen_preserves_self_mutating_card_growth_when_downgrading_and_restoring(self, simple_combat):
+        enemy = simple_combat.enemies[0]
+        card = make_genetic_algorithm()
+        simple_combat.hand = [card]
+        simple_combat.energy = 1
+
+        assert simple_combat.play_card(0)
+        assert card.base_block == 4
+        assert card.effect_vars["block"] == 4
+
+        simple_combat.upgrade_card(card)
+        simple_combat.hand = [card]
+
+        simple_combat.apply_power_to(simple_combat.player, PowerId.DAMPEN, 1, applier=enemy)
+
+        assert card.upgraded is False
+        assert card.base_block == 4
+        assert card.effect_vars["block"] == 4
+        assert card.effect_vars["increase"] == 3
+
+        simple_combat._remove_power(simple_combat.player, PowerId.DAMPEN)
+
+        assert card.upgraded is True
+        assert card.base_block == 4
+        assert card.effect_vars["block"] == 4
+        assert card.effect_vars["increase"] == 4
 
     def test_galvanic_damages_only_galvanized_power_card_owner(self, simple_combat):
         player = simple_combat.player

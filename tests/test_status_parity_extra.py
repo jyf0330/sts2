@@ -21,6 +21,7 @@ from sts2_env.cards.status import (
     make_frantic_escape,
     make_infection,
     make_mad_science,
+    make_maul,
     make_normality,
     make_peck,
     make_regret,
@@ -78,6 +79,28 @@ class _FirstRng:
 
 
 class TestStatusParityExtra:
+    def test_maul_play_grows_all_owner_maul_copies_and_upgrade_preserves_growth(self):
+        combat = _make_combat()
+        played = make_maul()
+        in_draw = make_maul()
+        in_discard = make_maul()
+        combat.hand = [played]
+        combat.draw_pile = [in_draw]
+        combat.discard_pile = [in_discard]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+
+        assert played.base_damage == 6
+        assert in_draw.base_damage == 6
+        assert in_discard.base_damage == 6
+
+        combat.upgrade_card(in_draw)
+
+        assert in_draw.upgraded is True
+        assert in_draw.base_damage == 7
+        assert in_draw.effect_vars["increase"] == 2
+
     def test_feeding_frenzy_applies_temporary_strength_then_restores(self):
         combat = _make_combat()
         combat.hand = [make_feeding_frenzy(upgraded=True)]

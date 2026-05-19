@@ -7,6 +7,7 @@ from sts2_env.cards.defect import (
     make_all_for_one,
     make_biased_cognition,
     make_boost_away,
+    make_claw,
     make_cold_snap,
     make_consuming_shadow,
     make_creative_ai,
@@ -141,6 +142,43 @@ class TestDefectParityExtra3:
         assert combat.player.block == 1
         assert card.base_block == 5
         assert card.effect_vars["block"] == 5
+
+    def test_genetic_algorithm_upgrade_preserves_grown_block(self):
+        combat = _make_combat()
+        card = make_genetic_algorithm()
+        combat.hand = [card]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert card.base_block == 4
+
+        combat.upgrade_card(card)
+
+        assert card.upgraded is True
+        assert card.effect_vars["increase"] == 4
+        assert card.base_block == 4
+        assert card.effect_vars["block"] == 4
+
+    def test_claw_upgrade_preserves_shared_growth_for_all_owner_copies(self):
+        combat = _make_combat()
+        played = make_claw()
+        in_draw = make_claw()
+        in_discard = make_claw()
+        combat.hand = [played]
+        combat.draw_pile = [in_draw]
+        combat.discard_pile = [in_discard]
+
+        assert combat.play_card(0, 0)
+
+        assert played.base_damage == 5
+        assert in_draw.base_damage == 5
+        assert in_discard.base_damage == 5
+
+        combat.upgrade_card(in_draw)
+
+        assert in_draw.upgraded is True
+        assert in_draw.base_damage == 6
+        assert in_draw.effect_vars["increase"] == 3
 
     def test_hyperbeam_hits_only_hittable_enemies_and_loses_focus(self):
         combat = _make_combat(extra_enemies=1)

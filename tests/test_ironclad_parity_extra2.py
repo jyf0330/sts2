@@ -198,6 +198,21 @@ class TestIroncladParityExtra2:
         assert enemy.current_hp == start_hp - 23
         assert rampage.base_damage == 19
 
+    def test_rampage_upgrade_preserves_grown_damage(self):
+        combat = _make_combat()
+        rampage = make_rampage()
+        combat.hand = [rampage]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+        assert rampage.base_damage == 14
+
+        combat.upgrade_card(rampage)
+
+        assert rampage.upgraded is True
+        assert rampage.base_damage == 14
+        assert rampage.effect_vars["increase"] == 9
+
     def test_feel_no_pain_gives_block_when_owner_card_is_exhausted(self):
         """Matches FeelNoPain.cs + FeelNoPainPower.cs: owner gains block per exhausted card."""
         combat = _make_combat()

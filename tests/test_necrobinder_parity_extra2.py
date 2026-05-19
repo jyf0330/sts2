@@ -140,3 +140,18 @@ class TestNecrobinderParityExtra2:
         assert combat.play_card(0, 0)
         assert enemy.current_hp == 171
         assert card.base_damage == 19
+
+    def test_the_scythe_upgrade_preserves_grown_damage(self):
+        combat = _make_combat()
+        card = make_the_scythe()
+        combat.hand = [card]
+        combat.energy = 2
+
+        assert combat.play_card(0, 0)
+        assert card.base_damage == 16
+
+        combat.upgrade_card(card)
+
+        assert card.upgraded is True
+        assert card.base_damage == 16
+        assert card.effect_vars["increase"] == 4

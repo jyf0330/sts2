@@ -25,7 +25,11 @@ from sts2_env.map.generator import ActMap, generate_act_map, generate_spoils_act
 from sts2_env.map.acts import ActConfig, get_act_config, ALL_ACTS
 from sts2_env.potions.base import PotionInstance
 from sts2_env.relics.base import RelicRarity
-from sts2_env.cards.base import CardInstance
+from sts2_env.cards.base import (
+    CardInstance,
+    capture_self_mutating_card_progress,
+    restore_self_mutating_card_progress,
+)
 from sts2_env.run.odds import UnknownMapPointOdds, CardRarityOdds, PotionRewardOdds
 
 
@@ -321,6 +325,7 @@ class PlayerState:
     def upgrade_card_instance(self, card: CardInstance | None) -> CardInstance | None:
         if card is None or card.upgraded:
             return card
+        progress = capture_self_mutating_card_progress(card)
         try:
             upgraded_card = create_card(card.card_id, upgraded=True)
         except KeyError:
@@ -343,6 +348,7 @@ class PlayerState:
         card.original_cost = upgraded_card.original_cost
         card.has_energy_cost_x = upgraded_card.has_energy_cost_x
         card.star_cost = upgraded_card.star_cost
+        restore_self_mutating_card_progress(card, progress)
         return card
 
     def modify_card_being_added_to_deck(self, card: CardInstance) -> CardInstance:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sts2_env.cards.base import CardInstance, _get_next_id
+from sts2_env.cards.base import CardInstance, _get_next_id, increase_base_damage, increase_base_block
 from sts2_env.cards.factory import create_character_cards
 from sts2_env.cards.registry import register_effect
 from sts2_env.core.enums import (
@@ -225,10 +225,9 @@ def claw(card: CardInstance, combat: CombatState, target: Creature | None) -> No
     apply_damage(target, dmg, ValueProp.MOVE, combat, _owner(card, combat))
     # All Claw copies gain +Increase damage permanently
     increase = card.effect_vars.get("increase", 2)
-    for pile in [combat.hand, combat.draw_pile, combat.discard_pile, combat.exhaust_pile]:
-        for c in pile:
-            if c.card_id == CardId.CLAW:
-                c.base_damage = (c.base_damage or 0) + increase
+    for claw_card in combat._all_cards_for_creature(_owner(card, combat)):
+        if claw_card.card_id == CardId.CLAW:
+            increase_base_damage(claw_card, increase)
 
 
 @register_effect(CardId.COLD_SNAP)
@@ -752,11 +751,7 @@ def genetic_algorithm(card: CardInstance, combat: CombatState, target: Creature 
     blk = calculate_block(block_amt, owner, ValueProp.MOVE, combat, card_source=card)
     _gain_resolved_block(owner, blk, combat)
     increase = card.effect_vars.get("increase", 3)
-    card.effect_vars["block"] = block_amt + increase
-    if card.base_block is not None:
-        card.base_block += increase
-    else:
-        card.base_block = increase
+    increase_base_block(card, increase)
 
 
 @register_effect(CardId.HELIX_DRILL)

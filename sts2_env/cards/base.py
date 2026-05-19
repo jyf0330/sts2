@@ -83,6 +83,53 @@ _TAG_ALIASES = {
     "shiv": CardTag.SHIV,
 }
 
+_SELF_MUTATING_DAMAGE_BASES = {
+    CardId.CLAW: (3, 4),
+    CardId.KINGLY_PUNCH: (8, 8),
+    CardId.MAUL: (5, 6),
+    CardId.RAMPAGE: (9, 9),
+    CardId.THE_SCYTHE: (13, 13),
+    CardId.THRASH: (4, 6),
+}
+
+_SELF_MUTATING_BLOCK_BASES = {
+    CardId.GENETIC_ALGORITHM: (1, 1),
+}
+
+
+def increase_base_damage(card: CardInstance, amount: int) -> None:
+    card.base_damage = (card.base_damage or 0) + amount
+    if "damage" in card.effect_vars:
+        card.effect_vars["damage"] += amount
+
+
+def increase_base_block(card: CardInstance, amount: int) -> None:
+    card.base_block = (card.base_block or 0) + amount
+    if "block" in card.effect_vars:
+        card.effect_vars["block"] += amount
+
+
+def capture_self_mutating_card_progress(card: CardInstance) -> dict[str, int]:
+    progress: dict[str, int] = {}
+    upgraded_index = 1 if card.upgraded else 0
+    damage_bases = _SELF_MUTATING_DAMAGE_BASES.get(card.card_id)
+    if damage_bases is not None and card.base_damage is not None:
+        progress["damage"] = card.base_damage - damage_bases[upgraded_index]
+    block_bases = _SELF_MUTATING_BLOCK_BASES.get(card.card_id)
+    if block_bases is not None:
+        current_block = card.effect_vars.get("block", card.base_block or 0)
+        progress["block"] = current_block - block_bases[upgraded_index]
+    return progress
+
+
+def restore_self_mutating_card_progress(card: CardInstance, progress: dict[str, int]) -> None:
+    damage_bonus = progress.get("damage", 0)
+    if damage_bonus:
+        increase_base_damage(card, damage_bonus)
+    block_bonus = progress.get("block", 0)
+    if block_bonus:
+        increase_base_block(card, block_bonus)
+
 
 @dataclass
 class CardInstance:
