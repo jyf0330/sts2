@@ -743,6 +743,38 @@ class TestFixedRotation:
         assert rewards[0].card is uncommon
         assert rewards[0].encounter_source == "THIEVING_HOPPER"
 
+    def test_thieving_hopper_steals_from_pet_owner_when_targeting_pet(self):
+        rng_seed = 1212
+        osty_hp = 5
+        defeated_hp = 0
+        combat = _make_combat(rng_seed)
+        combat.room = CombatRoom(room_type=RoomType.MONSTER)
+        creature, ai = create_thieving_hopper(Rng(rng_seed))
+        combat.add_enemy(creature, ai)
+        combat.start_combat()
+        state = combat.combat_player_state_for(combat.primary_player)
+        assert state is not None
+        stolen_card = make_battle_trance()
+        stolen_card.owner = combat.primary_player
+        state.player_state.deck[:] = [stolen_card]
+        state.hand.clear()
+        state.draw[:] = [stolen_card]
+        state.discard.clear()
+        combat.summon_osty(combat.primary_player, osty_hp)
+        assert combat.osty is not None
+        combat.primary_player.current_hp = defeated_hp
+
+        ai.current_move.perform(combat)
+
+        assert stolen_card not in state.draw
+        assert stolen_card not in state.player_state.deck
+        assert creature.powers[PowerId.SWIPE].stolen_card is stolen_card
+
+        assert combat.kill_creature(creature)
+        assert stolen_card in state.player_state.deck
+        rewards = combat.room.extra_rewards[combat.player_id]
+        assert rewards[0].card is stolen_card
+
     def test_act2_tunneler_uses_original_burrow_cycle_and_unburrow_stun(self):
         combat = _make_combat(22)
         creature, ai = create_tunneler(Rng(22))

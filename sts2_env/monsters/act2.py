@@ -76,8 +76,13 @@ def _remove_card_instance(cards: list, card) -> None:
             return
 
 
+def _player_or_pet_owner(target: Creature) -> Creature:
+    return getattr(target, "pet_owner", None) or target
+
+
 def _thieving_hopper_steal_candidates(combat: CombatState, target: Creature) -> list:
-    state = combat.combat_player_state_for(target)
+    target_owner = _player_or_pet_owner(target)
+    state = combat.combat_player_state_for(target_owner)
     if state is None:
         return []
     return [
@@ -109,7 +114,8 @@ def _steal_card_with_swipe(combat: CombatState, creature: Creature, target: Crea
     if card is None:
         return
     combat._remove_card_from_piles(card)
-    state = combat.combat_player_state_for(target)
+    target_owner = _player_or_pet_owner(target)
+    state = combat.combat_player_state_for(target_owner)
     if state is not None:
         _remove_card_instance(state.player_state.deck, card)
     swipe = creature.powers.get(PowerId.SWIPE)
@@ -117,7 +123,7 @@ def _steal_card_with_swipe(combat: CombatState, creature: Creature, target: Crea
         swipe = SwipePower(0)
         creature.powers[PowerId.SWIPE] = swipe
     swipe.amount += 1
-    swipe.steal(card, target)
+    swipe.steal(card, target_owner)
 
 
 def _deal_damage_to_targets(
