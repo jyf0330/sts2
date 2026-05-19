@@ -2358,14 +2358,17 @@ class TestPendingChoiceFlow:
         assert sandpit.amount == 5
         assert card.cost == 2
 
-    def test_right_hand_hand_returns_to_hand_when_enough_energy_remains(self):
+    def test_right_hand_hand_returns_from_discard_when_card_spends_enough_energy(self):
         combat = _make_combat(create_necrobinder_starter_deck(), "Necrobinder")
-        combat.summon_osty(combat.player, 5)
         card = make_right_hand_hand()
-        combat.hand = [card]
-        combat.energy = 2
+        required_energy = card.effect_vars["energy"]
+        trigger = make_pull_aggro()
+        trigger.cost = required_energy
+        combat.discard_pile = [card]
+        combat.hand = [trigger]
+        combat.energy = required_energy
 
-        assert combat.play_card(0, 0)
+        assert combat.play_card(0)
         assert card in combat.hand
 
     def test_make_it_so_returns_from_discard_every_third_skill_played(self):

@@ -1410,15 +1410,14 @@ class CombatState:
             if ctx["awaiting_after_hook"]:
                 if self.pending_choice is not None:
                     return
+                self._finish_card_play(card, owner)
                 with self.acting_player_view(owner):
                     fire_after_card_played(card, self)
                     self._apply_card_after_skill_played(card, owner)
                     self._apply_card_after_card_played(card, owner)
                     apply_enchantment_on_card_played(card, self)
                     apply_enchantment_after_card_played(card)
-                self._played_cards_this_turn.append(card)
-                self._played_cards_combat.append(card)
-                self._record_finished_card_play(owner)
+                    self._fire_after_card_played_late(card)
                 ctx["awaiting_after_hook"] = False
                 if self.is_over:
                     self._pending_play = None
@@ -1442,7 +1441,6 @@ class CombatState:
                         owner_state.draw.insert(0, card)
                     else:
                         owner_state.discard.append(card)
-                self._fire_after_card_played_late(card)
                 self._pending_play = None
                 if self._end_turn_after_play and self.current_side == CombatSide.PLAYER and not self.is_over:
                     self._end_turn_after_play = False
@@ -1468,18 +1466,22 @@ class CombatState:
             if self.pending_choice is not None:
                 ctx["awaiting_after_hook"] = True
                 return
+            self._finish_card_play(card, owner)
             with self.acting_player_view(owner):
                 fire_after_card_played(card, self)
                 self._apply_card_after_skill_played(card, owner)
                 self._apply_card_after_card_played(card, owner)
                 apply_enchantment_on_card_played(card, self)
                 apply_enchantment_after_card_played(card)
-            self._played_cards_this_turn.append(card)
-            self._played_cards_combat.append(card)
-            self._record_finished_card_play(owner)
+                self._fire_after_card_played_late(card)
             if self.is_over:
                 self._pending_play = None
                 return
+
+    def _finish_card_play(self, card: CardInstance, owner: Creature) -> None:
+        self._played_cards_this_turn.append(card)
+        self._played_cards_combat.append(card)
+        self._record_finished_card_play(owner)
 
     def _record_finished_card_play(self, owner: Creature) -> None:
         key = (self.round_number, owner)

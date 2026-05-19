@@ -132,23 +132,38 @@ class TestNecrobinderParity:
         assert target_card.base_replay_count == 1
         assert target_card.cost == 2
 
-    def test_ally_right_hand_hand_returns_to_ally_hand_using_ally_energy(self):
+    def test_ally_right_hand_hand_returns_from_discard_using_ally_card_energy(self):
         combat = _make_combat()
         ally_state = PlayerState(player_id=2, character_id="Necrobinder", max_hp=45, current_hp=45)
         ally = combat.add_ally_player(ally_state)
         ally_combat_state = combat.combat_player_state_for(ally)
         assert ally_combat_state is not None
-        combat.summon_osty(ally, 5)
         card = make_right_hand_hand()
+        required_energy = card.effect_vars["energy"]
         card.owner = ally
-        ally_combat_state.hand = [card]
-        ally_combat_state.zone_map["hand"] = ally_combat_state.hand
-        ally_combat_state.energy = 2
+        trigger = make_pull_aggro()
+        trigger.cost = required_energy
+        ally_combat_state.hand[:] = [trigger]
+        ally_combat_state.discard[:] = [card]
+        ally_combat_state.energy = required_energy
         combat.energy = 0
 
-        assert combat.play_card_from_creature(ally, 0, 0)
+        assert combat.play_card_from_creature(ally, 0)
         assert card in ally_combat_state.hand
         assert card not in combat.hand
+
+    def test_right_hand_hand_self_play_does_not_return_before_entering_discard(self):
+        combat = _make_combat()
+        combat.summon_osty(combat.player, 5)
+        card = make_right_hand_hand()
+        required_energy = card.effect_vars["energy"]
+        card.cost = required_energy
+        combat.hand = [card]
+        combat.energy = required_energy
+
+        assert combat.play_card(0, 0)
+        assert card not in combat.hand
+        assert card in combat.discard_pile
 
     def test_undeath_gains_block_and_clones_itself_to_discard(self):
         """Matches Undeath.cs: gain block and add a generated clone of itself to discard."""

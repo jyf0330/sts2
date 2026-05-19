@@ -614,13 +614,13 @@ def right_hand_hand(card: CardInstance, combat: CombatState, target: Creature | 
 
 @register_late_effect(CardId.RIGHT_HAND_HAND)
 def right_hand_hand_late(watched: CardInstance, played: CardInstance, combat: CombatState) -> None:
-    if watched is not played:
-        return
     owner = getattr(watched, "owner", None) or combat.primary_player
+    if getattr(played, "owner", None) is not owner:
+        return
     owner_state = combat.combat_player_state_for(owner)
     if owner_state is None:
         return
-    if owner_state.energy < watched.effect_vars.get("energy", 2):
+    if getattr(played, "energy_spent", 0) < watched.effect_vars.get("energy", 2):
         return
     if watched not in owner_state.discard:
         return
