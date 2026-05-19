@@ -227,6 +227,19 @@ class TestPowerApplication:
         assert simple_combat.can_play_card(simple_combat.hand[0]) is False
         assert simple_combat.play_card(0, 0) is False
 
+    def test_ringing_counts_card_play_starts_before_after_card_played(self, simple_combat):
+        first = make_strike_ironclad()
+        second = make_strike_ironclad()
+        first.owner = simple_combat.player
+        second.owner = simple_combat.player
+        first.afflict("ringing")
+        second.afflict("ringing")
+        simple_combat.hand = [first, second]
+        simple_combat._card_play_starts_this_turn.append(first)  # noqa: SLF001
+        simple_combat.apply_power_to(simple_combat.player, PowerId.RINGING, 1)
+
+        assert simple_combat.can_play_card(second) is False
+
     def test_ringing_only_blocks_cards_it_afflicted(self, simple_combat):
         ringed = make_strike_ironclad()
         already_afflicted = make_strike_ironclad()

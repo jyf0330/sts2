@@ -227,7 +227,8 @@ class RingingPower(PowerInstance):
     - AfterRemoved: clear afflictions.
     StackType.Single.
 
-    Simplified: We track a flag limiting the owner to 1 card play per turn.
+    Uses the combat card-play-start history to match the original
+    CardPlayStartedEntry check.
     """
 
     power_type = PowerType.DEBUFF
@@ -236,7 +237,6 @@ class RingingPower(PowerInstance):
 
     def __init__(self, amount: int = 1):
         super().__init__(PowerId.RINGING, amount)
-        self._card_played_this_turn: bool = False
 
     def _afflict_card(self, owner: Creature, card: object) -> None:
         if (getattr(card, "owner", None) or owner) is not owner:
@@ -296,19 +296,10 @@ class RingingPower(PowerInstance):
                 return True
         elif getattr(card, "combat_vars", {}).get("_affliction") != self._AFFLICTION:
             return True
-        cards_played = getattr(combat, "count_cards_played_this_turn", None)
-        if callable(cards_played) and cards_played(owner) > 0:
+        card_play_starts = getattr(combat, "count_card_play_starts_this_turn", None)
+        if callable(card_play_starts) and card_play_starts(owner) > 0:
             return False
-        return not self._card_played_this_turn
-
-    def after_card_played(self, owner: Creature, card: object, combat: CombatState) -> None:
-        card_owner = getattr(card, "owner", None)
-        if card_owner is owner:
-            self._card_played_this_turn = True
-
-    def before_side_turn_start(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
-        if side == owner.side:
-            self._card_played_this_turn = False
+        return True
 
     def after_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         if side == owner.side:
