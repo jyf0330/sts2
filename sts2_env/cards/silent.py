@@ -370,11 +370,7 @@ def expose(card: CardInstance, combat: CombatState, target: Creature | None) -> 
 def finisher(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
     assert target is not None
     owner = _owner(card, combat)
-    hits = sum(
-        1
-        for played in combat._played_cards_this_turn
-        if played.card_type == CardType.ATTACK and getattr(played, "owner", None) is owner
-    )
+    hits = combat.count_card_plays_finished_this_turn(owner, card_type=CardType.ATTACK)
     for _ in range(hits):
         if owner.is_dead or target.is_dead:
             break

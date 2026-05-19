@@ -470,10 +470,7 @@ class PhantomBladesPower(PowerInstance):
         if dealer is not owner or not props.is_powered() or self._shiv_played_this_turn:
             return 0
         combat = getattr(owner, "combat_state", None)
-        if combat is not None and any(
-            getattr(card, "owner", None) is owner and getattr(card, "is_shiv", False)
-            for card in getattr(combat, "_played_cards_this_turn", ())
-        ):
+        if combat is not None and combat.has_card_with_tag_finished_this_turn(owner, CardTag.SHIV):
             return 0
         card = getattr(owner.combat_state, "active_card_source", None)
         tags = getattr(card, "tags", set())

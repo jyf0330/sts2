@@ -604,15 +604,14 @@ class TestDefectParityExtra3:
     def test_ftl_draws_only_before_owner_has_finished_three_card_plays(self):
         """Matches Ftl.cs: draw is gated by owner card plays finished this turn."""
         combat = _make_combat()
-        previous = [make_strike_defect(), make_defend_defect(), make_strike_defect()]
-        for card in previous:
-            card.owner = combat.player
         drawn = make_strike_defect()
-        combat._played_cards_this_turn = previous  # noqa: SLF001
-        combat.hand = [make_ftl()]
+        combat.hand = [make_claw(), make_go_for_the_eyes(), make_boost_away(), make_ftl()]
         combat.draw_pile = [drawn]
         combat.energy = 0
 
+        assert combat.play_card(0, 0)
+        assert combat.play_card(0, 0)
+        assert combat.play_card(0)
         assert combat.play_card(0, 0)
         assert drawn in combat.draw_pile
         assert drawn not in combat.hand

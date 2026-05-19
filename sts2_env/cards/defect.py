@@ -470,7 +470,7 @@ def ftl(card: CardInstance, combat: CombatState, target: Creature | None) -> Non
     owner = _owner(card, combat)
     dmg = calculate_damage(card.base_damage, owner, target, ValueProp.MOVE, combat)
     apply_damage(target, dmg, ValueProp.MOVE, combat, owner)
-    previous_plays = sum(1 for played in combat._played_cards_this_turn if getattr(played, "owner", None) is owner)
+    previous_plays = combat.count_card_plays_finished_this_turn(owner)
     if previous_plays < card.effect_vars.get("play_max", 4 if card.upgraded else 3):
         combat.draw_cards(owner, card.effect_vars.get("cards", 1))
 

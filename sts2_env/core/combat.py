@@ -972,17 +972,9 @@ class CombatState:
         if card.is_shiv and owner.get_power_amount(PowerId.PHANTOM_BLADES) > 0:
             card.keywords = frozenset(set(card.keywords) | {"retain"})
         if card.card_id == CardId.STOMP:
-            amount = sum(
-                1
-                for played in self._played_cards_this_turn
-                if played.card_type == CardType.ATTACK and getattr(played, "owner", None) is owner
-            )
+            amount = self.count_card_plays_finished_this_turn(owner, card_type=CardType.ATTACK)
         elif card.card_id == CardId.PINPOINT:
-            amount = sum(
-                1
-                for played in self._played_cards_this_turn
-                if played.card_type == CardType.SKILL and getattr(played, "owner", None) is owner
-            )
+            amount = self.count_card_plays_finished_this_turn(owner, card_type=CardType.SKILL)
         elif card.card_id == CardId.BANSHEES_CRY:
             amount = sum(
                 1
@@ -2271,6 +2263,17 @@ class CombatState:
             if logged_dealer is dealer and props.is_powered()
         )
 
+    def count_allied_powered_hits_on_target_this_turn(self, owner: Creature, target: Creature) -> int:
+        return sum(
+            1
+            for logged_dealer, logged_target, props in self._damage_events_this_turn
+            if logged_target is target
+            and logged_dealer is not None
+            and logged_dealer is not owner
+            and logged_dealer.side == owner.side
+            and props.is_powered()
+        )
+
     def count_unblocked_hits_received_this_combat(self, target: Creature) -> int:
         return sum(
             1
@@ -3115,7 +3118,7 @@ class CombatState:
             cards.extend(state.exhaust)
         return cards
 
-    def count_cards_played_this_turn(
+    def count_card_plays_finished_this_turn(
         self,
         owner: Creature,
         *,
@@ -3126,6 +3129,23 @@ class CombatState:
             for card in self._played_cards_this_turn
             if getattr(card, "owner", None) is owner
             and (card_type is None or card.card_type == card_type)
+        )
+
+    def count_cards_played_this_turn(
+        self,
+        owner: Creature,
+        *,
+        card_type: CardType | None = None,
+    ) -> int:
+        return self.count_card_plays_finished_this_turn(owner, card_type=card_type)
+
+    def has_card_play_finished_this_turn(self, card: CardInstance) -> bool:
+        return any(played is card for played in self._played_cards_this_turn)
+
+    def has_card_with_tag_finished_this_turn(self, owner: Creature, tag: CardTag) -> bool:
+        return any(
+            getattr(card, "owner", None) is owner and tag in getattr(card, "tags", ())
+            for card in self._played_cards_this_turn
         )
 
     def count_card_play_starts_this_turn(
@@ -3180,6 +3200,21 @@ class CombatState:
             1
             for entry in self._card_play_finished_entries_combat
             if entry.was_ethereal and getattr(entry.card, "owner", None) is owner
+        )
+
+    def has_unblocked_damage_received_this_turn(
+        self,
+        target: Creature,
+        *,
+        side: CombatSide | None = None,
+    ) -> bool:
+        if side is not None and self.current_side != side:
+            return False
+        event_count = len(self._damage_events_this_turn)
+        current_turn_events = self._damage_events_combat[-event_count:] if event_count else ()
+        return any(
+            logged_target is target and unblocked > 0
+            for _, logged_target, _, unblocked in current_turn_events
         )
 
     def last_finished_attack_or_skill_from_previous_round(self, owner: Creature) -> CardInstance | None:

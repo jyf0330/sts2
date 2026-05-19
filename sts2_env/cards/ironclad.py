@@ -1365,13 +1365,7 @@ def spite(card: CardInstance, combat: CombatState, target: Creature | None) -> N
     owner = _owner(card, combat)
     _deal_damage_to_target(card, combat, target)
     draw = card.effect_vars.get("cards", 1)
-    event_count = len(combat._damage_events_this_turn)
-    current_turn_events = combat._damage_events_combat[-event_count:] if event_count else []
-    took_unblocked_damage = any(
-        damaged_target is owner and unblocked > 0
-        for _, damaged_target, _, unblocked in current_turn_events
-    )
-    if combat.current_side == CombatSide.PLAYER and took_unblocked_damage:
+    if combat.has_unblocked_damage_received_this_turn(owner, side=CombatSide.PLAYER):
         _draw_cards(combat, draw, owner)
 
 
@@ -1693,11 +1687,7 @@ def conflagration(card: CardInstance, combat: CombatState, target: Creature | No
     calc_base = card.effect_vars.get("calc_base", 8)
     extra = card.effect_vars.get("extra_damage", 2)
     owner = _owner(card, combat)
-    attack_count = sum(
-        1
-        for played in combat._played_cards_this_turn
-        if played.card_type == CardType.ATTACK and getattr(played, "owner", None) is owner
-    )
+    attack_count = combat.count_card_plays_finished_this_turn(owner, card_type=CardType.ATTACK)
     base = calc_base + extra * attack_count
     if owner.is_dead:
         return

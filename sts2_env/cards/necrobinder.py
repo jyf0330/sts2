@@ -495,7 +495,7 @@ def fetch(card: CardInstance, combat: CombatState, target: Creature | None) -> N
         return
     assert target is not None
     _deal_osty_damage_single(card, combat, target, 3)
-    if all(played is not card for played in combat._played_cards_this_turn):
+    if not combat.has_card_play_finished_this_turn(card):
         cards = card.effect_vars.get("cards", 1)
         combat._draw_cards(cards)
 

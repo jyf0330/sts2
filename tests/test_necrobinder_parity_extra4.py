@@ -635,7 +635,6 @@ class TestNecrobinderParityExtra4:
         combat.energy = 1
 
         assert combat.play_card(0)
-        combat._played_cards_this_turn = []
 
         combat.hand = [make_pull_from_below()]
         combat.energy = 1

@@ -193,15 +193,7 @@ def gang_up(card: CardInstance, combat: CombatState, target: Creature | None) ->
     """Scales with allies in combat."""
     assert target is not None
     owner = _owner(card, combat)
-    count = sum(
-        1
-        for dealer, damaged_target, props in combat._damage_events_this_turn
-        if damaged_target is target
-        and dealer is not None
-        and dealer is not owner
-        and dealer.side == owner.side
-        and props.is_powered()
-    )
+    count = combat.count_allied_powered_hits_on_target_this_turn(owner, target)
     base = card.effect_vars.get("calc_base", card.base_damage or 5)
     extra = card.effect_vars.get("extra_damage", 5)
     total_damage = base + extra * count
