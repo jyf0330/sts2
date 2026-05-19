@@ -459,7 +459,10 @@ class FieldOfManSizedHoles(EventModel):
     event_id = "FieldOfManSizedHoles"
 
     def is_allowed(self, run_state: RunState) -> bool:
-        return any(can_enchant_card(card, "PerfectFit") for card in run_state.player.deck)
+        return all(
+            any(can_enchant_card(card, "PerfectFit") for card in player.deck)
+            for player in run_state.players
+        )
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
         return [

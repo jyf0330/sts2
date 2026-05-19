@@ -555,3 +555,15 @@ def test_field_of_man_sized_holes_gate_resist_and_enter_behaviors():
     resolved = event.resolve_pending_choice(0)
     assert resolved.finished
     assert target.enchantments.get("PerfectFit") == 1
+
+
+def test_field_of_man_sized_holes_requires_all_players_to_have_enchantable_cards():
+    run_state = _make_run_state(9171)
+    ally = run_state.add_player(PlayerState(player_id=2, character_id="Silent"))
+    ally.deck = [make_spore_mind()]
+    event = FieldOfManSizedHoles()
+
+    assert event.is_allowed(run_state) is False
+
+    ally.deck = [create_card(CardId.STRIKE_IRONCLAD)]
+    assert event.is_allowed(run_state) is True
