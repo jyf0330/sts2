@@ -1175,10 +1175,7 @@ class CombatState:
         ]
         if any(self.count_cards_played_this_turn(owner) >= limit for limit in normality_limits):
             return False
-        if (
-            CardTag.OSTY_ATTACK in getattr(card, "tags", ())
-            or "osty_attack" in getattr(card, "tags", ())
-        ):
+        if card.card_id == CardId.HIGH_FIVE:
             osty = self.get_osty(owner)
             if osty is None or not osty.is_alive:
                 return False

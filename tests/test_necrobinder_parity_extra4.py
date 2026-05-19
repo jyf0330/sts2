@@ -8,10 +8,15 @@ from sts2_env.cards.necrobinder import (
     create_necrobinder_starter_deck,
     make_blight_strike,
     make_bodyguard,
+    make_bury,
+    make_calcify_card,
     make_call_of_the_void,
     make_deathbringer,
     make_deaths_door,
+    make_defy,
     make_defend_necrobinder,
+    make_demesne,
+    make_devour_life_card,
     make_enfeebling_touch,
     make_end_of_days,
     make_fear,
@@ -21,6 +26,7 @@ from sts2_env.cards.necrobinder import (
     make_hang,
     make_high_five,
     make_invoke,
+    make_lethality_card,
     make_misery,
     make_negative_pulse,
     make_neurosurge,
@@ -28,8 +34,12 @@ from sts2_env.cards.necrobinder import (
     make_poke,
     make_pull_from_below,
     make_sculpting_strike,
+    make_scourge,
     make_sentry_mode,
+    make_shared_fate,
     make_sic_em,
+    make_squeeze,
+    make_times_up,
     make_unleash,
     make_veilpiercer,
 )
@@ -68,6 +78,159 @@ def _make_combat(*, extra_enemies: int = 0) -> CombatState:
 
 
 class TestNecrobinderParityExtra4:
+    def test_bury_deals_large_single_target_damage(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = enemy.max_hp = 100
+        combat.hand = [make_bury()]
+        combat.energy = 4
+
+        assert combat.play_card(0, 0)
+        assert enemy.current_hp == 48
+
+    def test_upgraded_bury_damage_matches_reference(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = enemy.max_hp = 100
+        combat.hand = [make_bury(upgraded=True)]
+        combat.energy = 4
+
+        assert combat.play_card(0, 0)
+        assert enemy.current_hp == 37
+
+    def test_calcify_applies_owner_power_amount(self):
+        combat = _make_combat()
+        combat.hand = [make_calcify_card(upgraded=True)]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.CALCIFY) == 6
+
+    def test_defy_gains_block_and_applies_weak(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        combat.hand = [make_defy(upgraded=True)]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+        assert combat.player.block == 7
+        assert enemy.get_power_amount(PowerId.WEAK) == 2
+
+    def test_demesne_applies_power_and_upgrade_only_changes_cost(self):
+        combat = _make_combat()
+        card = make_demesne(upgraded=True)
+        combat.hand = [card]
+        combat.energy = 2
+
+        assert card.cost == 2
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.DEMESNE) == 1
+
+    def test_devour_life_applies_owner_power_amount(self):
+        combat = _make_combat()
+        combat.hand = [make_devour_life_card(upgraded=True)]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.DEVOUR_LIFE) == 2
+
+    def test_lethality_applies_owner_power_amount(self):
+        combat = _make_combat()
+        combat.hand = [make_lethality_card(upgraded=True)]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.LETHALITY) == 75
+
+    def test_scourge_applies_doom_then_draws_cards(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        first = make_defend_necrobinder()
+        second = make_defend_necrobinder()
+        combat.hand = [make_scourge(upgraded=True)]
+        combat.draw_pile = [first, second]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+        assert enemy.get_power_amount(PowerId.DOOM) == 16
+        assert first in combat.hand
+        assert second in combat.hand
+
+    def test_shared_fate_lowers_owner_and_target_strength_and_exhausts(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        card = make_shared_fate(upgraded=True)
+        combat.hand = [card]
+        combat.energy = 0
+
+        assert combat.play_card(0, 0)
+        assert combat.player.get_power_amount(PowerId.STRENGTH) == -2
+        assert enemy.get_power_amount(PowerId.STRENGTH) == -3
+        assert card in combat.exhaust_pile
+
+    def test_squeeze_counts_other_osty_attack_cards_across_combat_piles(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = enemy.max_hp = 100
+        combat.summon_osty(combat.player, 5)
+        hand_osty_attack = make_poke()
+        draw_osty_attack = make_unleash()
+        discard_osty_attack = make_flatten()
+        non_osty_attack = make_defend_necrobinder()
+        combat.hand = [make_squeeze(), hand_osty_attack]
+        combat.draw_pile = [draw_osty_attack, non_osty_attack]
+        combat.discard_pile = [discard_osty_attack]
+        combat.energy = 3
+
+        assert combat.play_card(0, 0)
+        assert enemy.current_hp == 60
+        assert combat.count_powered_hits_by_dealer_this_turn(combat.get_osty(combat.player)) == 1
+
+    def test_squeeze_is_playable_without_osty_but_has_no_effect(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = enemy.max_hp = 100
+        card = make_squeeze()
+        combat.hand = [card]
+        combat.energy = 3
+
+        assert combat.can_play_card(card) is True
+        assert combat.play_card(0, 0)
+        assert enemy.current_hp == 100
+        assert combat.energy == 0
+        assert card in combat.discard_pile
+
+    def test_high_five_is_not_playable_without_osty(self):
+        combat = _make_combat()
+        card = make_high_five()
+        combat.hand = [card]
+        combat.energy = 2
+
+        assert combat.can_play_card(card) is False
+        assert combat.play_card(0, 0) is False
+        assert combat.energy == 2
+        assert combat.hand == [card]
+
+    def test_times_up_damage_scales_with_target_doom(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = enemy.max_hp = 100
+        combat.apply_power_to(enemy, PowerId.DOOM, 7, applier=combat.player)
+        combat.hand = [make_times_up()]
+        combat.energy = 2
+
+        assert combat.play_card(0, 0)
+        assert enemy.current_hp == 93
+
+    def test_upgraded_times_up_adds_retain_only(self):
+        card = make_times_up(upgraded=True)
+
+        assert card.cost == 2
+        assert card.base_damage == 0
+        assert card.effect_vars["extra_damage"] == 1
+        assert card.is_retain
+        assert card.exhausts
+
     def test_blight_strike_applies_doom_equal_to_damage_dealt(self):
         combat = _make_combat()
         enemy = combat.enemies[0]

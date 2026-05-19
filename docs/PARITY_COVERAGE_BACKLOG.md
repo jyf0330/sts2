@@ -21,6 +21,14 @@ The detailed backlog sections below were captured as the pre-pass baseline. Afte
 
 Latest local pass also added direct coverage for:
 
+- Cards: `BURY`, `CALCIFY_CARD`, `DEFY`, `DEMESNE`, `DEVOUR_LIFE_CARD`, `LETHALITY_CARD`, `SCOURGE`, `SHARED_FATE`, `SQUEEZE`, `TIMES_UP`
+
+This pass also exposed and fixed the following logic mismatch:
+
+- OstyAttack cards: missing Osty now blocks only `HighFive`; other Osty attack cards remain playable and simply do nothing, matching the original card-specific `IsPlayable` behavior.
+
+Latest local pass also added direct coverage for:
+
 - Cards: `CELESTIAL_MIGHT`, `CRESCENT_SPEAR`, `DEVASTATE`, `GAMMA_BLAST`, `GLITTERSTREAM`, `HEGEMONY`, `KNOW_THY_PLACE`, `LUNAR_BLAST`, `NEUTRON_AEGIS`, `PROPHESIZE`, `THE_SEALED_THRONE`
 
 This pass also exposed and fixed the following logic mismatch:
