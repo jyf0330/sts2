@@ -11,7 +11,11 @@ from sts2_env.core.enums import CardId, CardRarity, CardType, RoomType
 from sts2_env.potions.base import create_potion, roll_random_potion_model
 from sts2_env.relics.base import RelicPool, RelicRarity
 from sts2_env.relics.registry import RELIC_REGISTRY, load_all_relics
-from sts2_env.run.rewards import CardRewardGenerationOptions, generate_combat_reward_cards
+from sts2_env.run.rewards import (
+    CardRewardGenerationOptions,
+    generate_combat_reward_cards,
+    generate_noncombat_reward_cards,
+)
 
 if TYPE_CHECKING:
     from sts2_env.run.rooms import CombatRoom, Room
@@ -270,18 +274,30 @@ class CardReward(Reward):
                 run_state,
             )
         if not self.cards:
-            self.cards = generate_combat_reward_cards(
-                run_state,
-                context=options.context,
-                num_cards=options.num_cards,
-                character_ids=None if options.use_default_character_pool and not options.character_ids else options.character_ids,
-                forced_rarities=options.forced_rarities,
-                include_colorless=options.include_colorless,
-                generation_context=options.generation_context,
-                roll_upgrade=options.roll_upgrade,
-                card_type=options.card_type,
-                custom_card_ids=options.custom_card_ids,
-            )
+            character_ids = None if options.use_default_character_pool and not options.character_ids else options.character_ids
+            if options.card_creation_source == "other":
+                self.cards = generate_noncombat_reward_cards(
+                    run_state,
+                    num_cards=options.num_cards,
+                    character_ids=character_ids,
+                    forced_rarities=options.forced_rarities,
+                    include_colorless=options.include_colorless,
+                    card_type=options.card_type,
+                    custom_card_ids=options.custom_card_ids,
+                )
+            else:
+                self.cards = generate_combat_reward_cards(
+                    run_state,
+                    context=options.context,
+                    num_cards=options.num_cards,
+                    character_ids=character_ids,
+                    forced_rarities=options.forced_rarities,
+                    include_colorless=options.include_colorless,
+                    generation_context=options.generation_context,
+                    roll_upgrade=options.roll_upgrade,
+                    card_type=options.card_type,
+                    custom_card_ids=options.custom_card_ids,
+                )
         self.include_colorless = options.include_colorless
         self.use_default_character_pool = options.use_default_character_pool
         self.generation_context = options.generation_context

@@ -2270,15 +2270,20 @@ class Trial(EventModel):
                     "Condemned the drifter, gained Doubt and two card rewards.",
                     [
                         AddCardsReward(run_state.player.player_id, [make_doubt()]),
-                        CardReward(run_state.player.player_id),
-                        CardReward(run_state.player.player_id),
+                        CardReward(run_state.player.player_id, generation_context=None, card_creation_source="other"),
+                        CardReward(run_state.player.player_id, generation_context=None, card_creation_source="other"),
                     ],
                 )
             run_state.player.add_card_instance_to_deck(make_doubt())
             return EventResult(
                 finished=True,
                 description="Condemned the drifter, gained Doubt and two card rewards.",
-                rewards={"reward_objects": [CardReward(run_state.player.player_id), CardReward(run_state.player.player_id)]},
+                rewards={
+                    "reward_objects": [
+                        CardReward(run_state.player.player_id, generation_context=None, card_creation_source="other"),
+                        CardReward(run_state.player.player_id, generation_context=None, card_creation_source="other"),
+                    ]
+                },
             )
         if option_id == "nondescript_innocent":
             if _should_defer_event_rewards(run_state):

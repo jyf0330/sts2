@@ -316,6 +316,7 @@ def generate_noncombat_reward_cards(
     card_type: CardType | None = None,
     cost: int | None = None,
     costs_x: bool | None = None,
+    custom_card_ids: tuple[CardId, ...] = (),
 ) -> list[CardInstance]:
     if character_ids is None:
         character_ids = (run_state.player.character_id,)
@@ -337,6 +338,7 @@ def generate_noncombat_reward_cards(
             card_type=card_type,
             cost=cost,
             costs_x=costs_x,
+            custom_card_ids=custom_card_ids,
         )
         if card is not None:
             cards.append(card)

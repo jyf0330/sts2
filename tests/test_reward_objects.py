@@ -93,6 +93,43 @@ def test_card_reward_upgrade_after_generation_runs_after_late_reward_modifiers()
     assert added.upgraded
 
 
+def test_other_source_card_reward_uses_noncombat_base_odds_without_changing_pity():
+    run_state = RunState(seed=2, character_id="Ironclad")
+    run_state.initialize_run()
+    run_state.card_rarity_odds.current_value = 0.4
+    reward = CardReward(
+        run_state.player.player_id,
+        option_count=1,
+        generation_context=None,
+        card_creation_source="other",
+    )
+
+    reward.populate(run_state, None)
+
+    assert len(reward.cards) == 1
+    assert reward.cards[0].rarity == CardRarity.UNCOMMON
+    assert run_state.card_rarity_odds.current_value == 0.4
+
+
+def test_other_source_card_reward_filters_custom_pool_before_selection():
+    run_state = RunState(seed=1, character_id="Ironclad")
+    run_state.initialize_run()
+    reward = CardReward(
+        run_state.player.player_id,
+        option_count=1,
+        forced_rarities=(CardRarity.COMMON,),
+        generation_context=None,
+        card_creation_source="other",
+        use_default_character_pool=False,
+        has_custom_card_pool=True,
+        custom_card_ids=(CardId.BASH, CardId.BLOODLETTING),
+    )
+
+    reward.populate(run_state, None)
+
+    assert [card.card_id for card in reward.cards] == [CardId.BLOODLETTING]
+
+
 def test_calling_bell_adds_curse_and_queues_three_relic_rewards():
     run_state = RunState(seed=42, character_id="Ironclad")
     run_state.initialize_run()
