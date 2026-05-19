@@ -455,6 +455,16 @@ class TestDamageModifierInteractions:
         assert PowerId.FLANKING not in enemy.powers
         assert calculate_damage(10, ally, enemy, ValueProp.MOVE, simple_combat) == 10
 
+    def test_flanking_keeps_separate_appliers_like_reference(self, simple_combat):
+        player = simple_combat.player
+        ally = simple_combat.add_ally_player(PlayerState(player_id=2, character_id="Ironclad", max_hp=70, current_hp=70))
+        enemy = simple_combat.enemies[0]
+        simple_combat.apply_power_to(enemy, PowerId.FLANKING, 2, applier=player)
+        simple_combat.apply_power_to(enemy, PowerId.FLANKING, 3, applier=ally)
+
+        assert calculate_damage(10, player, enemy, ValueProp.MOVE, simple_combat) == 30
+        assert calculate_damage(10, ally, enemy, ValueProp.MOVE, simple_combat) == 20
+
     def test_knockdown_is_removed_at_target_turn_end(self, simple_combat):
         player = simple_combat.player
         ally = simple_combat.add_ally_player(PlayerState(player_id=2, character_id="Ironclad", max_hp=70, current_hp=70))

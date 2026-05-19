@@ -1491,20 +1491,38 @@ class FlankingPower(PowerInstance):
 
     def __init__(self, amount: int):
         super().__init__(PowerId.FLANKING, amount)
-        self.applier: Creature | None = None
+        self._instances: list[tuple[int, Creature | None]] = [(amount, None)]
+
+    def after_power_amount_changed(
+        self,
+        owner: Creature,
+        target: Creature,
+        power_id: PowerId,
+        amount: int,
+        applier: Creature | None,
+        source: object | None,
+        combat: CombatState,
+    ) -> None:
+        if owner is not target or power_id != self.power_id or amount <= 0:
+            return
+        if len(self._instances) == 1 and self._instances[0][1] is None:
+            self._instances[0] = (self._instances[0][0], applier)
+            return
+        self._instances.append((amount, applier))
 
     def modify_damage_multiplicative(
         self, owner: Creature, dealer: Creature | None, target: Creature, props: ValueProp
     ) -> float:
-        if self.amount <= 0:
-            return 1.0
         if target is not owner:
             return 1.0
         if not props.is_powered():
             return 1.0
-        if dealer is self.applier:
-            return 1.0
-        return float(self.amount)
+        multiplier = 1.0
+        for amount, applier in self._instances:
+            if amount <= 0 or dealer is (applier or self.applier):
+                continue
+            multiplier *= float(amount)
+        return multiplier
 
     def after_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         if side == owner.side:
