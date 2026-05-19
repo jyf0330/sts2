@@ -38,7 +38,7 @@ from sts2_env.run.reward_objects import (
 from sts2_env.run.events import EventModel, EventOption, EventResult, register_event
 
 if TYPE_CHECKING:
-    from sts2_env.run.run_state import RunState
+    from sts2_env.run.run_state import PlayerState, RunState
 
 
 # ── CrystalSphere ─────────────────────────────────────────────────────
@@ -844,19 +844,22 @@ class RelicTrader(EventModel):
         self._new_relic_choices: list[str] = []
 
     @staticmethod
-    def _tradable_relics(run_state: RunState) -> list[str]:
+    def _tradable_relics(player: PlayerState) -> list[str]:
         return [
-            relic_id for relic_id in run_state.player.relics if relic_id not in {
+            relic_id for relic_id in player.relics if relic_id not in {
                 "BURNING_BLOOD", "RING_OF_THE_SNAKE", "CRACKED_CORE", "BOUND_PHYLACTERY", "DIVINE_RIGHT",
                 "BLACK_BLOOD", "RING_OF_THE_DRAKE", "INFUSED_CORE", "PHYLACTERY_UNBOUND", "DIVINE_DESTINY",
             }
         ]
 
     def is_allowed(self, run_state: RunState) -> bool:
-        return run_state.current_act_index > 0 and len(self._tradable_relics(run_state)) >= 5
+        return (
+            run_state.current_act_index > 0
+            and all(len(self._tradable_relics(player)) >= 5 for player in run_state.players)
+        )
 
     def generate_initial_options(self, run_state: RunState) -> list[EventOption]:
-        owned = self._tradable_relics(run_state)
+        owned = self._tradable_relics(run_state.player)
         self.get_rng(run_state).shuffle(owned)
         self._owned_relic_choices = owned[:3]
         self._new_relic_choices = []

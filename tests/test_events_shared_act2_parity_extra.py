@@ -9,7 +9,7 @@ from sts2_env.cards.status import make_bad_luck, make_spore_mind
 from sts2_env.core.enums import CardId
 from sts2_env.events.act2 import RelicTrader, SlipperyBridge, Symbiote
 from sts2_env.events.shared import LostWisp, Reflections
-from sts2_env.run.run_state import RunState
+from sts2_env.run.run_state import PlayerState, RunState
 
 
 def _make_run_state(seed: int = 91) -> RunState:
@@ -78,6 +78,24 @@ def test_relic_trader_uses_event_rng_without_advancing_up_front_rng():
 
     assert len(options) == 3
     assert run_state.rng.up_front.counter == up_front_counter
+
+
+def test_relic_trader_requires_all_players_to_have_five_tradable_relics():
+    run_state = _make_run_state(912)
+    run_state.current_act_index = 1
+    for relic_id in ("ANCHOR", "VAJRA", "PEAR", "JUZU_BRACELET", "LANTERN"):
+        run_state.player.obtain_relic(relic_id)
+    ally = run_state.add_player(PlayerState(player_id=2, character_id="Silent"))
+    for relic_id in ("BAG_OF_PREPARATION", "AKABEKO", "ART_OF_WAR", "BAG_OF_MARBLES"):
+        ally.obtain_relic(relic_id)
+
+    event = RelicTrader()
+
+    assert event.is_allowed(run_state) is False
+
+    ally.obtain_relic("CENTENNIAL_PUZZLE")
+
+    assert event.is_allowed(run_state) is True
 
 
 def test_slippery_bridge_hold_on_escalates_damage_and_overcome_removes_card():
