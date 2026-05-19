@@ -515,6 +515,21 @@ class TestPowerTurnHooks:
 
         assert combat.energy == initial_energy + 4
 
+    def test_automation_keeps_separate_draw_counters_like_reference(self):
+        combat = _make_combat()
+        combat.player.apply_power(PowerId.AUTOMATION, 1)
+        combat.draw_pile = [make_strike_ironclad() for _ in range(20)]
+        combat.hand.clear()
+
+        initial_energy = combat.energy
+        combat.draw_cards(combat.player, 9)
+        combat.player.apply_power(PowerId.AUTOMATION, 1)
+        combat.hand.clear()
+
+        combat.draw_cards(combat.player, 1)
+
+        assert combat.energy == initial_energy + 1
+
     def test_hellraiser_auto_plays_drawn_strike_before_normal_draw_hooks(self):
         combat = _make_combat()
         enemy = combat.enemies[0]

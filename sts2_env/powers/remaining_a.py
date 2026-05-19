@@ -218,17 +218,43 @@ class AutomationPower(PowerInstance):
     def __init__(self, amount: int):
         super().__init__(PowerId.AUTOMATION, amount)
         self.cards_left: int = self._BASE_CARDS
+        self._instances: list[tuple[int, int]] = [(amount, self._BASE_CARDS)]
+
+    def _add_instance(self, amount: int) -> None:
+        self._instances.append((amount, self._BASE_CARDS))
+        self.amount = amount
+
+    def after_power_amount_changed(
+        self,
+        owner: Creature,
+        target: Creature,
+        power_id: PowerId,
+        amount: int,
+        applier: Creature | None,
+        source: object | None,
+        combat: CombatState,
+    ) -> None:
+        if owner is target and power_id == self.power_id and amount > 0 and self.amount != amount:
+            self._add_instance(amount)
 
     def on_card_drawn(self, owner: Creature, card: object, combat: CombatState) -> None:
         """Called by the draw pipeline when a card is drawn."""
         card_owner = getattr(card, "owner", None)
         if card_owner is not owner:
             return
-        self.cards_left -= 1
-        if self.cards_left <= 0:
-            combat.gain_energy(owner, self.amount)
-            self.cards_left = self._BASE_CARDS
-            self.cards_left = self._BASE_CARDS
+        updated_instances: list[tuple[int, int]] = []
+        total_energy = 0
+        for amount, cards_left in self._instances:
+            cards_left -= 1
+            if cards_left <= 0:
+                total_energy += amount
+                cards_left = self._BASE_CARDS
+            updated_instances.append((amount, cards_left))
+        self._instances = updated_instances
+        if total_energy > 0:
+            combat.gain_energy(owner, total_energy)
+        if self._instances:
+            _, self.cards_left = self._instances[-1]
 
 
 # =====================================================================
