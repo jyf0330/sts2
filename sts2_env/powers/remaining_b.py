@@ -107,6 +107,24 @@ class GuardedPower(PowerInstance):
 
     def __init__(self, amount: int = 1):
         super().__init__(PowerId.GUARDED, amount)
+        self._appliers: list[Creature | None] = [None]
+
+    def after_power_amount_changed(
+        self,
+        owner: Creature,
+        target: Creature,
+        power_id: PowerId,
+        amount: int,
+        applier: Creature | None,
+        source: object | None,
+        combat: CombatState,
+    ) -> None:
+        if owner is not target or power_id != self.power_id or amount <= 0:
+            return
+        if len(self._appliers) == 1 and self._appliers[0] is None:
+            self._appliers[0] = applier
+            return
+        self._appliers.append(applier)
 
     def modify_damage_multiplicative(
         self, owner: Creature, dealer: Creature | None, target: Creature, props: ValueProp
@@ -115,7 +133,7 @@ class GuardedPower(PowerInstance):
             return 1.0
         if not props.is_powered():
             return 1.0
-        return 0.5
+        return 0.5 ** len(self._appliers)
 
     def after_death(
         self,
@@ -124,8 +142,18 @@ class GuardedPower(PowerInstance):
         combat: CombatState,
         was_removal_prevented: bool = False,
     ) -> None:
-        if not was_removal_prevented and creature is self.applier:
+        if was_removal_prevented:
+            return
+        fallback_applier = self.applier
+        self._appliers = [
+            applier
+            for applier in self._appliers
+            if creature is not (applier or fallback_applier)
+        ]
+        if not self._appliers:
             owner.powers.pop(self.power_id, None)
+            return
+        self.amount = len(self._appliers)
 
 
 # ---------------------------------------------------------------------------
