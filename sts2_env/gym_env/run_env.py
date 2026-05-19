@@ -72,6 +72,7 @@ from sts2_env.gym_env.action_space import (
     is_potion_action,
 )
 from sts2_env.gym_env.observation import OBS_SIZE as COMBAT_OBS_SIZE, encode_observation
+from sts2_env.core.rng import INT_MAX_EXCLUSIVE
 from sts2_env.run.run_manager import RunManager
 
 @dataclass(frozen=True)
@@ -273,7 +274,7 @@ class STS2RunEnv(gymnasium.Env):
     ) -> tuple[np.ndarray, dict[str, Any]]:
         super().reset(seed=seed)
 
-        run_seed = int(self.np_random.integers(0, 2**31))
+        run_seed = int(self.np_random.integers(0, INT_MAX_EXCLUSIVE))
         self._mgr = RunManager(
             seed=run_seed,
             character_id=self._character_id,

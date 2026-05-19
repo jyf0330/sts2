@@ -9,7 +9,7 @@ from sts2_env.cards.base import CardInstance, reset_instance_counter
 from sts2_env.cards.ironclad import create_ironclad_starter_deck
 from sts2_env.core.combat import CombatState
 from sts2_env.core.enums import TargetType
-from sts2_env.core.rng import Rng
+from sts2_env.core.rng import INT_MAX, Rng
 from sts2_env.encounters.act1 import ALL_ACT1_ENCOUNTERS
 
 
@@ -208,7 +208,7 @@ def main():
 
     # Create combat
     reset_instance_counter()
-    seed = random.randint(0, 2**31 - 1)
+    seed = random.randint(0, INT_MAX)
     rng = Rng(seed)
     deck = create_ironclad_starter_deck()
 

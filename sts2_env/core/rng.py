@@ -6,6 +6,8 @@ import math
 
 
 INT_MAX = 2_147_483_647
+INT_MIN = -2_147_483_648
+INT_MAX_EXCLUSIVE = INT_MAX + 1
 UINT_MASK = 0xFFFFFFFF
 
 
@@ -44,7 +46,7 @@ class _DotNetCompatRandom:
         self._initialize(seed)
 
     def _initialize(self, seed: int) -> None:
-        subtraction = INT_MAX if seed == -2_147_483_648 else abs(seed)
+        subtraction = INT_MAX if seed == INT_MIN else abs(seed)
         mj = _to_int32(161_803_398 - subtraction)
         self._seed_array[55] = mj
         mk = 1
@@ -204,4 +206,4 @@ class Rng:
 
     def fork(self) -> Rng:
         """Create a child RNG with a derived seed."""
-        return Rng(self.next_int(0, 2**31))
+        return Rng(self.next_int(0, INT_MAX_EXCLUSIVE))

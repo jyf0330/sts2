@@ -13,7 +13,7 @@ from sts2_env.cards.ironclad import create_ironclad_starter_deck
 from sts2_env.core.combat import CombatState
 from sts2_env.core.constants import ACTION_END_TURN, ACTION_SPACE_SIZE, IRONCLAD_STARTING_HP
 from sts2_env.encounters.act1 import ALL_ACT1_ENCOUNTERS, EncounterSetup
-from sts2_env.core.rng import Rng
+from sts2_env.core.rng import INT_MAX_EXCLUSIVE, Rng
 from sts2_env.gym_env.action_space import (
     action_to_card_and_target,
     action_to_potion_and_target,
@@ -60,7 +60,7 @@ class STS2CombatEnv(gymnasium.Env):
         super().reset(seed=seed)
         reset_instance_counter()
 
-        rng_seed = int(self.np_random.integers(0, 2**31))
+        rng_seed = int(self.np_random.integers(0, INT_MAX_EXCLUSIVE))
         rng = Rng(rng_seed)
 
         # Create deck
