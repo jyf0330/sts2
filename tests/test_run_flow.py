@@ -20,6 +20,7 @@ from sts2_env.run.rooms import create_room, CombatRoom, ShopRoom, RestSiteRoom, 
 from sts2_env.run.rest_site import generate_rest_site_options, HealOption, SmithOption
 from sts2_env.run.odds import UnknownMapPointOdds, PotionRewardOdds
 from sts2_env.run.run_manager import RunManager
+from sts2_env.run.modifiers import FlightModifier
 
 
 class TestRunStateInitialization:
@@ -250,6 +251,15 @@ class TestMapNavigation:
         next_coords = rs.get_available_next_coords()
         for c in next_coords:
             assert c.row == 2
+
+    def test_flight_modifier_allows_any_next_row_room(self):
+        rs = RunState(seed=42)
+        rs.initialize_run()
+        rs.modifiers = [FlightModifier()]
+        first_coord = rs.get_available_next_coords()[0]
+        rs.add_visited_coord(first_coord)
+
+        assert set(rs.get_available_next_coords()) == {point.coord for point in rs.map.get_row(2)}
 
     def test_full_path_to_boss(self):
         """Walk a full path from start to boss."""

@@ -173,6 +173,11 @@ class TerminalModifier(ModifierModel):
             combat.apply_power_to(state.creature, PowerId.PLATING, 5)
 
 
+class FlightModifier(ModifierModel):
+    def __init__(self) -> None:
+        super().__init__("flight")
+
+
 class HoarderModifier(ModifierModel):
     def __init__(self) -> None:
         super().__init__("hoarder")

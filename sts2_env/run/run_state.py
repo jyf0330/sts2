@@ -1556,6 +1556,8 @@ class RunState:
         last_point = self.map.get_point(last_coord)
         if last_point is None:
             return []
+        if any(getattr(modifier, "modifier_id", None) == "flight" for modifier in self.modifiers):
+            return [point.coord for point in self.map.get_row(last_coord.row + 1)]
         return [c.coord for c in last_point.children]
 
     def resolve_room_type(self, point_type: MapPointType) -> RoomType:
