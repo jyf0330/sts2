@@ -1203,6 +1203,20 @@ class TestPowerAmountChangedHooks:
 
         assert simple_combat.energy == 1
 
+    def test_orbit_keeps_separate_energy_counters_like_reference(self, simple_combat):
+        card = make_defend_ironclad()
+        card.owner = simple_combat.player
+        simple_combat.apply_power_to(simple_combat.player, PowerId.ORBIT, 1)
+        orbit = simple_combat.player.powers[PowerId.ORBIT]
+
+        orbit.after_energy_spent(simple_combat.player, card, 3, simple_combat)
+        simple_combat.apply_power_to(simple_combat.player, PowerId.ORBIT, 1)
+        start_energy = simple_combat.energy
+
+        orbit.after_energy_spent(simple_combat.player, card, 1, simple_combat)
+
+        assert simple_combat.energy == start_energy + 1
+
     def test_chains_of_binding_allows_only_one_bound_card_per_turn(self, simple_combat):
         first = make_strike_ironclad()
         second = make_strike_ironclad()

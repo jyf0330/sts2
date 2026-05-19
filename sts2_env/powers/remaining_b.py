@@ -1240,6 +1240,24 @@ class OrbitPower(PowerInstance):
         super().__init__(PowerId.ORBIT, amount)
         self._energy_spent: int = 0
         self._trigger_count: int = 0
+        self._instances: list[tuple[int, int, int]] = [(amount, 0, 0)]
+
+    def _add_instance(self, amount: int) -> None:
+        self._instances.append((amount, 0, 0))
+        self.amount = amount
+
+    def after_power_amount_changed(
+        self,
+        owner: Creature,
+        target: Creature,
+        power_id: PowerId,
+        amount: int,
+        applier: Creature | None,
+        source: object | None,
+        combat: CombatState,
+    ) -> None:
+        if owner is target and power_id == self.power_id and amount > 0 and self.amount != amount:
+            self._add_instance(amount)
 
     def after_energy_spent(
         self, owner: Creature, card: object, amount: int, combat: CombatState
@@ -1251,11 +1269,20 @@ class OrbitPower(PowerInstance):
         """Called by the energy system when energy is spent."""
         if energy_amount <= 0:
             return
-        self._energy_spent += energy_amount
-        triggers = self._energy_spent // self.ENERGY_INCREMENT - self._trigger_count
-        if triggers > 0:
-            combat.gain_energy(owner, self.amount * triggers)
-            self._trigger_count += triggers
+        updated_instances: list[tuple[int, int, int]] = []
+        total_energy = 0
+        for amount, energy_spent, trigger_count in self._instances:
+            energy_spent += energy_amount
+            triggers = energy_spent // self.ENERGY_INCREMENT - trigger_count
+            if triggers > 0:
+                total_energy += amount * triggers
+                trigger_count += triggers
+            updated_instances.append((amount, energy_spent, trigger_count))
+        self._instances = updated_instances
+        if total_energy > 0:
+            combat.gain_energy(owner, total_energy)
+        if self._instances:
+            _, self._energy_spent, self._trigger_count = self._instances[-1]
 
 
 # ---------------------------------------------------------------------------
