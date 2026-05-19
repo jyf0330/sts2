@@ -283,7 +283,14 @@ class TestAct1NormalEncounters:
     def test_overgrowth_crawlers_count(self):
         combat = _make_combat()
         setup_overgrowth_crawlers(combat, Rng(42))
-        assert len(combat.enemies) == 2
+        assert [enemy.monster_id for enemy in combat.enemies] == [
+            "SHRINKER_BEETLE",
+            "FUZZY_WURM_CRAWLER",
+        ]
+        assert [combat.enemy_ais[enemy.combat_id].current_move.state_id for enemy in combat.enemies] == [
+            "SHRINKER_MOVE",
+            "FIRST_ACID_GOOP",
+        ]
 
     def test_ruby_raiders_count(self):
         combat = _make_combat()

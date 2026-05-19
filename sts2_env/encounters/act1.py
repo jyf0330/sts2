@@ -124,10 +124,10 @@ def setup_nibbits_normal(combat: CombatState, rng: Rng) -> None:
 
 
 def setup_overgrowth_crawlers(combat: CombatState, rng: Rng) -> None:
-    creature, ai = create_fuzzy_wurm_crawler(rng)
-    combat.add_enemy(creature, ai)
-    c2, a2 = create_nibbit(rng, is_alone=False, is_front=True)
-    combat.add_enemy(c2, a2)
+    shrinker, shrinker_ai = create_shrinker_beetle(rng)
+    combat.add_enemy(shrinker, shrinker_ai)
+    crawler, crawler_ai = create_fuzzy_wurm_crawler(rng)
+    combat.add_enemy(crawler, crawler_ai)
 
 
 def setup_ruby_raiders_normal(combat: CombatState, rng: Rng) -> None:
