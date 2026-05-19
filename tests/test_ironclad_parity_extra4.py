@@ -47,6 +47,7 @@ from sts2_env.cards.ironclad import (
     make_sword_boomerang,
     make_thunderclap,
     make_thrash,
+    make_unmovable,
     make_uppercut,
     make_whirlwind,
 )
@@ -203,6 +204,31 @@ class TestIroncladParityExtra4:
         assert combat.play_card(0, 0)
         assert combat.is_over
         assert ally.block == 0
+
+    def test_unmovable_doubles_owners_card_block(self):
+        combat = _make_combat()
+        combat.hand = [make_unmovable(), make_defend_ironclad()]
+        combat.energy = 3
+
+        assert combat.play_card(0)
+        assert combat.play_card(0)
+        assert combat.player.block == 10
+
+    def test_unmovable_does_not_double_other_players_card_block(self):
+        combat = _make_combat()
+        ally = combat.add_ally_player(
+            PlayerState(player_id=2, character_id="Ironclad", max_hp=60, current_hp=60)
+        )
+        ally_state = combat.combat_player_state_for(ally)
+        assert ally_state is not None
+        defend = make_defend_ironclad()
+        defend.owner = ally
+        ally_state.hand = [defend]
+        combat.player.apply_power(PowerId.UNMOVABLE, 1)
+        ally_state.energy = 1
+
+        assert combat.play_card_from_creature(ally, 0)
+        assert ally.block == 5
 
     def test_cinder_exhausts_top_draw_card_after_shuffle_if_needed(self):
         combat = _make_combat()

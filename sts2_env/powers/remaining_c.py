@@ -1788,11 +1788,11 @@ class UnmovablePower(PowerInstance):
         self, owner: Creature, target: Creature, props: ValueProp,
         card_source: object | None = None, card_play: object | None = None,
     ) -> float:
-        if target is owner:
-            return 1.0  # Does not apply to monsters
         if target.side == CombatSide.ENEMY:
             return 1.0
         if not bool(props & ValueProp.MOVE):
+            return 1.0
+        if card_source is not None and getattr(card_source, "owner", None) is not owner:
             return 1.0
         if self._block_gains_this_turn >= self.amount:
             return 1.0
