@@ -1872,8 +1872,6 @@ class TabletOfTruth(EventModel):
         if final_decipher:
             for card in run_state.player.upgradable_deck_cards():
                 run_state.player.upgrade_card_instance(card)
-            run_state.player.current_hp = 0
-            run_state.lose_run()
         else:
             _upgrade_n_cards(run_state, 1, rng=self.get_rng(run_state))
         self._decipher_count += 1

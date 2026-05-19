@@ -144,8 +144,8 @@ def test_tablet_of_truth_decipher_chain_costs_max_hp_and_ends_with_no_upgradable
     fifth = event.choose(run_state, "decipher")
     assert fifth.finished
     assert run_state.player.max_hp == 1
-    assert run_state.player.current_hp == 0
-    assert run_state.is_over
+    assert run_state.player.current_hp == 1
+    assert run_state.is_over is False
     assert run_state.player.upgradable_deck_cards() == []
 
 
