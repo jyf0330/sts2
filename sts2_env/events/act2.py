@@ -54,7 +54,7 @@ class CrystalSphere(EventModel):
         self._cost = 50
 
     def is_allowed(self, run_state: RunState) -> bool:
-        return run_state.player.gold >= 100 and run_state.current_act_index > 0
+        return all(player.gold >= 100 for player in run_state.players) and run_state.current_act_index > 0
 
     def calculate_vars(self, run_state: RunState) -> None:
         extra = self.get_rng(run_state).next_int_exclusive(1, 50)

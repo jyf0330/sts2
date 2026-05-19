@@ -133,6 +133,19 @@ def test_crystal_sphere_thresholds_and_choices_apply_cost_or_debt():
     assert debt_state.player.deck[-1].card_id == CardId.DEBT
 
 
+def test_crystal_sphere_requires_all_players_to_have_entry_gold():
+    run_state = _make_run_state(9041)
+    run_state.current_act_index = 1
+    run_state.player.gold = 100
+    ally = run_state.add_player(PlayerState(player_id=2, character_id="Silent", gold=99))
+    event = CrystalSphere()
+
+    assert event.is_allowed(run_state) is False
+
+    ally.gold = 100
+    assert event.is_allowed(run_state) is True
+
+
 def test_endless_conveyor_observe_and_targeted_dishes_apply_expected_effects():
     observe_state = _make_run_state(905)
     observe_state.player.gold = 200
