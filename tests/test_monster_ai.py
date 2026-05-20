@@ -9,6 +9,7 @@ from sts2_env.core.combat import CombatState
 from sts2_env.core.damage import apply_damage
 from sts2_env.core.enums import CardId, CombatSide, PowerId, RoomType, ValueProp
 from sts2_env.core.enums import MoveRepeatType
+from sts2_env.core.hooks import fire_after_turn_end
 from sts2_env.core.rng import Rng
 from sts2_env.encounters.act2 import (
     setup_infested_prisms_elite,
@@ -1460,6 +1461,7 @@ class TestFixedRotation:
         assert 124 <= ovicopter.max_hp <= 130
         assert ovicopter_ai.current_move.state_id == "LAY_EGGS_MOVE"
 
+        combat.current_side = CombatSide.ENEMY
         ovicopter_ai.current_move.perform(combat)
         assert [enemy.monster_id for enemy in combat.enemies] == [
             "OVICOPTER",
@@ -1467,6 +1469,9 @@ class TestFixedRotation:
             "TOUGH_EGG",
             "TOUGH_EGG",
         ]
+        assert [enemy.get_power_amount(PowerId.HATCH) for enemy in combat.enemies[1:]] == [2, 2, 2]
+        fire_after_turn_end(CombatSide.ENEMY, combat)
+        assert [enemy.get_power_amount(PowerId.HATCH) for enemy in combat.enemies[1:]] == [1, 1, 1]
 
         expected_moves = ["SMASH_MOVE", "TENDERIZER_MOVE", "LAY_EGGS_MOVE"]
         actual_moves = []

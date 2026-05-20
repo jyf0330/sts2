@@ -622,7 +622,7 @@ def create_myte(rng: Rng, slot: str = "first") -> tuple[Creature, MonsterAI]:
 
 # ---- Ovicopter (HP 67-72 / 70-75 asc) + ToughEgg ----
 
-def create_tough_egg(rng: Rng) -> tuple[Creature, MonsterAI]:
+def create_tough_egg(rng: Rng, combat: CombatState | None = None) -> tuple[Creature, MonsterAI]:
     hp = rng.next_int(14, 18)
     creature = Creature(max_hp=hp, monster_id="TOUGH_EGG")
     nibble_dmg = 4
@@ -641,7 +641,8 @@ def create_tough_egg(rng: Rng) -> tuple[Creature, MonsterAI]:
         "NIBBLE_MOVE": MoveState("NIBBLE_MOVE", nibble, [attack_intent(nibble_dmg)], follow_up_id="NIBBLE_MOVE"),
     }
     creature.apply_power(PowerId.MINION, 1)
-    creature.apply_power(PowerId.HATCH, 1)
+    hatch_duration = 2 if combat is not None and combat.current_side == CombatSide.ENEMY else 1
+    creature.apply_power(PowerId.HATCH, hatch_duration)
     return creature, MonsterAI(states, "HATCH_MOVE")
 
 
@@ -660,7 +661,7 @@ def create_ovicopter(rng: Rng) -> tuple[Creature, MonsterAI]:
 
     def lay_eggs(combat: CombatState) -> None:
         for _ in range(3):
-            egg, egg_ai = create_tough_egg(rng)
+            egg, egg_ai = create_tough_egg(rng, combat)
             combat.add_enemy(egg, egg_ai)
 
     def smash(combat: CombatState) -> None:
