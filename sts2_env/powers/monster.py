@@ -30,6 +30,10 @@ if TYPE_CHECKING:
     from sts2_env.core.combat import CombatState
 
 
+_TERROR_EEL_ID = "TERROR_EEL"
+_TERROR_EEL_TERROR_MOVE_ID = "TERROR_MOVE"
+
+
 def _gain_unpowered_block(owner: Creature, amount: int, combat: CombatState) -> int:
     before = owner.block
     owner.gain_block(amount, unpowered=True)
@@ -858,13 +862,8 @@ class ShriekPower(PowerInstance):
         combat: CombatState,
     ) -> None:
         if target is owner and damage > 0 and owner.current_hp <= self.amount:
-            if owner.monster_id == "TERROR_EEL":
-                ai = combat.enemy_ais.get(owner.combat_id)
-                if ai is not None and "STUN_MOVE" in ai.states:
-                    ai._current_state_id = "STUN_MOVE"  # noqa: SLF001
-                    ai._performed_first_move = True  # noqa: SLF001
-                else:
-                    combat.stun_enemy(owner)
+            if owner.monster_id == _TERROR_EEL_ID:
+                combat.stun_enemy(owner, _TERROR_EEL_TERROR_MOVE_ID)
             else:
                 combat.stun_enemy(owner)
             owner.powers.pop(self.power_id, None)

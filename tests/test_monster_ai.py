@@ -3443,13 +3443,36 @@ class TestFixedRotation:
         eel_shriek_combat.add_enemy(eel_shriek, eel_shriek_ai)
         apply_damage(eel_shriek, 80, ValueProp.MOVE, eel_shriek_combat, eel_shriek_combat.player)
         assert eel_shriek.get_power_amount(PowerId.SHRIEK) == 0
-        assert eel_shriek_ai.current_move.state_id == "STUN_MOVE"
+        assert eel_shriek_ai.current_move.state_id == "STUNNED"
         eel_shriek_ai.current_move.perform(eel_shriek_combat)
         eel_shriek_ai.on_move_performed()
         eel_shriek_ai.roll_move(Rng(82))
         assert eel_shriek_ai.current_move.state_id == "TERROR_MOVE"
         eel_shriek_ai.current_move.perform(eel_shriek_combat)
         assert eel_shriek_combat.player.get_power_amount(PowerId.VULNERABLE) == 99
+
+    def test_terror_eel_shriek_stuns_before_terror_move(self):
+        rng_seed = 1082
+        shriek_break_damage = 80
+        stunned_move_id = "STUNNED"
+        terror_move_id = "TERROR_MOVE"
+        terror_vulnerable = 99
+        eel, eel_ai = create_terror_eel(Rng(rng_seed))
+        combat = _make_combat(rng_seed)
+        combat.add_enemy(eel, eel_ai)
+
+        apply_damage(eel, shriek_break_damage, ValueProp.MOVE, combat, combat.player)
+
+        assert eel.get_power_amount(PowerId.SHRIEK) == 0
+        assert eel_ai.current_move.state_id == stunned_move_id
+
+        eel_ai.current_move.perform(combat)
+        eel_ai.on_move_performed()
+        eel_ai.roll_move(Rng(rng_seed))
+
+        assert eel_ai.current_move.state_id == terror_move_id
+        eel_ai.current_move.perform(combat)
+        assert combat.player.get_power_amount(PowerId.VULNERABLE) == terror_vulnerable
 
     def test_act4_bosses_match_original_moves_and_setup(self):
         giant, giant_ai = create_waterfall_giant(Rng(83))
