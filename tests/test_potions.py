@@ -92,6 +92,12 @@ class _CannotHitPower(PowerInstance):
 
 FIRST_ALLY_PLAYER_TARGET_INDEX = 1
 INVALID_PLAYER_TARGET_INDEX = 2
+ENERGY_POTION_ENERGY_GAIN = 2
+SWIFT_POTION_DRAW_COUNT = 3
+CURE_ALL_ENERGY_GAIN = 1
+CURE_ALL_DRAW_COUNT = 2
+RADIANT_TINCTURE_ENERGY_GAIN = 1
+RADIANT_TINCTURE_RADIANCE = 3
 
 
 class TestPotionRegistry:
@@ -390,6 +396,84 @@ class TestPotionInstance:
         assert combat.draw_pile == [primary_marker]
         assert ally.get_power_amount(PowerId.CLARITY) == 3
         assert combat.player.get_power_amount(PowerId.CLARITY) == 0
+
+    def test_energy_potion_gives_energy_to_selected_player_like_reference(self):
+        combat = _make_silent_combat()
+        ally = combat.add_ally_player(PlayerState(player_id=2, character_id="Silent", max_hp=70, current_hp=70))
+        ally_state = combat.combat_player_state_for(ally)
+        assert ally_state is not None
+        combat.energy = 0
+        ally_state.energy = 0
+        combat.potions = [create_potion("EnergyPotion"), None, None]
+
+        assert combat.use_potion(0, target_index=FIRST_ALLY_PLAYER_TARGET_INDEX)
+
+        assert ally_state.energy == ENERGY_POTION_ENERGY_GAIN
+        assert combat.energy == 0
+
+    def test_swift_potion_draws_from_selected_player_pile_like_reference(self):
+        combat = _make_silent_combat()
+        ally = combat.add_ally_player(PlayerState(player_id=2, character_id="Silent", max_hp=70, current_hp=70))
+        ally_state = combat.combat_player_state_for(ally)
+        assert ally_state is not None
+        primary_marker = make_strike_silent()
+        ally_cards = [make_defend_silent(), make_neutralize(), make_strike_silent()]
+        combat.hand = []
+        combat.draw_pile = [primary_marker]
+        ally_state.hand = []
+        ally_state.draw = list(ally_cards)
+        ally_state.zone_map["hand"] = ally_state.hand
+        ally_state.zone_map["draw"] = ally_state.draw
+        combat.potions = [create_potion("SwiftPotion"), None, None]
+
+        assert combat.use_potion(0, target_index=FIRST_ALLY_PLAYER_TARGET_INDEX)
+
+        assert ally_state.hand == ally_cards[:SWIFT_POTION_DRAW_COUNT]
+        assert ally_state.draw == []
+        assert combat.hand == []
+        assert combat.draw_pile == [primary_marker]
+
+    def test_cure_all_resources_apply_to_selected_player_like_reference(self):
+        combat = _make_silent_combat()
+        ally = combat.add_ally_player(PlayerState(player_id=2, character_id="Silent", max_hp=70, current_hp=70))
+        ally_state = combat.combat_player_state_for(ally)
+        assert ally_state is not None
+        primary_marker = make_strike_silent()
+        ally_cards = [make_defend_silent(), make_neutralize()]
+        combat.energy = 0
+        combat.hand = []
+        combat.draw_pile = [primary_marker]
+        ally_state.energy = 0
+        ally_state.hand = []
+        ally_state.draw = list(ally_cards)
+        ally_state.zone_map["hand"] = ally_state.hand
+        ally_state.zone_map["draw"] = ally_state.draw
+        combat.potions = [create_potion("CureAll"), None, None]
+
+        assert combat.use_potion(0, target_index=FIRST_ALLY_PLAYER_TARGET_INDEX)
+
+        assert ally_state.energy == CURE_ALL_ENERGY_GAIN
+        assert ally_state.hand == ally_cards[:CURE_ALL_DRAW_COUNT]
+        assert ally_state.draw == []
+        assert combat.energy == 0
+        assert combat.hand == []
+        assert combat.draw_pile == [primary_marker]
+
+    def test_radiant_tincture_resources_apply_to_selected_player_like_reference(self):
+        combat = _make_silent_combat()
+        ally = combat.add_ally_player(PlayerState(player_id=2, character_id="Silent", max_hp=70, current_hp=70))
+        ally_state = combat.combat_player_state_for(ally)
+        assert ally_state is not None
+        combat.energy = 0
+        ally_state.energy = 0
+        combat.potions = [create_potion("RadiantTincture"), None, None]
+
+        assert combat.use_potion(0, target_index=FIRST_ALLY_PLAYER_TARGET_INDEX)
+
+        assert ally_state.energy == RADIANT_TINCTURE_ENERGY_GAIN
+        assert combat.energy == 0
+        assert ally.get_power_amount(PowerId.RADIANCE) == RADIANT_TINCTURE_RADIANCE
+        assert combat.player.get_power_amount(PowerId.RADIANCE) == 0
 
     def test_block_potion_block_triggers_after_block_gained_hooks(self):
         combat = _make_silent_combat()

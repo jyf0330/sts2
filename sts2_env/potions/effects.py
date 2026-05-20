@@ -63,6 +63,13 @@ _SOURCE_CARD_RARITY_ORDER = {
     CardRarity.QUEST: 9,
 }
 
+ENERGY_POTION_ENERGY_GAIN = 2
+SWIFT_POTION_DRAW_COUNT = 3
+CURE_ALL_ENERGY_GAIN = 1
+CURE_ALL_DRAW_COUNT = 2
+RADIANT_TINCTURE_ENERGY_GAIN = 1
+RADIANT_TINCTURE_RADIANCE = 3
+
 
 def _source_card_order(card) -> tuple[int, str]:
     return (_SOURCE_CARD_RARITY_ORDER[card.rarity], card.card_id.name)
@@ -138,7 +145,8 @@ def _dexterity_potion(combat: CombatState, user: Creature, target: Creature | No
 
 def _energy_potion(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Target gains 2 energy."""
-    combat.energy += 2
+    t = target if target is not None else user
+    combat.gain_energy(t, ENERGY_POTION_ENERGY_GAIN)
 
 
 def _explosive_ampoule(combat: CombatState, user: Creature, target: Creature | None) -> None:
@@ -245,7 +253,8 @@ def _strength_potion(combat: CombatState, user: Creature, target: Creature | Non
 
 def _swift_potion(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Target draws 3 cards."""
-    combat._draw_cards(3)  # noqa: SLF001
+    t = target if target is not None else user
+    combat.draw_cards(t, SWIFT_POTION_DRAW_COUNT)
 
 
 def _vulnerable_potion(combat: CombatState, user: Creature, target: Creature | None) -> None:
@@ -313,8 +322,9 @@ def _cunning_potion(combat: CombatState, user: Creature, target: Creature | None
 
 def _cure_all(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Target gains 1 energy and draws 2 cards."""
-    combat.energy += 1
-    combat._draw_cards(2)  # noqa: SLF001
+    t = target if target is not None else user
+    combat.gain_energy(t, CURE_ALL_ENERGY_GAIN)
+    combat.draw_cards(t, CURE_ALL_DRAW_COUNT)
 
 
 def _duplicator(combat: CombatState, user: Creature, target: Creature | None) -> None:
@@ -403,8 +413,8 @@ def _powdered_demise(combat: CombatState, user: Creature, target: Creature | Non
 def _radiant_tincture(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Target gains 1 energy and 3 Radiance."""
     t = target if target is not None else user
-    combat.energy += 1
-    combat.apply_power_to(t, PowerId.RADIANCE, 3, applier=user)
+    combat.gain_energy(t, RADIANT_TINCTURE_ENERGY_GAIN)
+    combat.apply_power_to(t, PowerId.RADIANCE, RADIANT_TINCTURE_RADIANCE, applier=user)
 
 
 def _regen_potion(combat: CombatState, user: Creature, target: Creature | None) -> None:
