@@ -91,6 +91,8 @@ _REFERENCE_VAR_ALIASES: dict[str, str] = {
     "sleight_of_flesh_power": "sleight_of_flesh",
     "devour_life_power": "devour_life",
     "vigor_power": "vigor",
+    "knockdown_power": "knockdown",
+    "rolling_boulder_power": "rolling_boulder",
     "arsenal_power": "arsenal",
     "black_hole_power": "black_hole",
     "parry_power": "parry",

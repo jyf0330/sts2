@@ -5,6 +5,7 @@ import sts2_env.powers  # noqa: F401
 from sts2_env.cards.base import CardInstance
 from sts2_env.cards.colorless import (
     make_anointed,
+    make_automation,
     make_beacon_of_hope,
     make_calamity_card,
     make_catastrophe,
@@ -21,12 +22,14 @@ from sts2_env.cards.colorless import (
     make_impatience,
     make_intercept_card,
     make_jackpot,
+    make_knockdown,
     make_nostalgia_card,
     make_prep_time,
     make_production,
     make_prolong,
     make_prowess,
     make_rend,
+    make_rolling_boulder,
     make_salvo,
     make_scrawl,
 )
@@ -42,6 +45,15 @@ from sts2_env.run.run_state import PlayerState
 
 CALAMITY_POWER_AMOUNT = 1
 NOSTALGIA_POWER_AMOUNT = 1
+AUTOMATION_DRAW_THRESHOLD = 10
+AUTOMATION_ENERGY_GAIN = 1
+KNOCKDOWN_BASE_DAMAGE = 10
+KNOCKDOWN_BASE_MULTIPLIER = 2
+KNOCKDOWN_PLUS_DAMAGE = 14
+KNOCKDOWN_PLUS_MULTIPLIER = 3
+ROLLING_BOULDER_BASE_DAMAGE = 5
+ROLLING_BOULDER_PLUS_DAMAGE = 10
+ROLLING_BOULDER_INCREMENT = 5
 
 
 def _make_combat() -> CombatState:
@@ -83,6 +95,23 @@ class TestColorlessParityExtra4:
     def test_anointed_plus_adds_retain(self):
         """Matches Anointed.cs: upgraded Anointed adds Retain."""
         assert make_anointed(upgraded=True).is_retain
+
+    def test_automation_plus_costs_zero_and_grants_energy_after_ten_owner_draws(self):
+        """Matches Automation.cs / AutomationPower.cs: every 10 owner draws gains configured energy."""
+        combat = _make_combat()
+        drawn = [make_defend_ironclad() for _ in range(AUTOMATION_DRAW_THRESHOLD)]
+        combat.hand = [make_automation(upgraded=True)]
+        combat.draw_pile = list(drawn)
+        combat.energy = 0
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.AUTOMATION) == AUTOMATION_ENERGY_GAIN
+        assert combat.energy == 0
+
+        combat.draw_cards(combat.player, AUTOMATION_DRAW_THRESHOLD)
+
+        assert combat.energy == AUTOMATION_ENERGY_GAIN
+        assert combat.hand == drawn
 
     def test_calamity_generates_owner_attack_after_owner_attack_only(self):
         combat = _make_combat()
@@ -528,6 +557,24 @@ class TestColorlessParityExtra4:
         assert combat.primary_player.get_power_amount(PowerId.COORDINATE) == 0
         assert combat.primary_player.get_power_amount(PowerId.STRENGTH) == 0
 
+    def test_knockdown_damage_and_multiplier_match_reference_values(self):
+        """Matches Knockdown.cs: damage first, then apply KnockdownPower."""
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = enemy.max_hp = 100
+        combat.hand = [make_knockdown(), make_knockdown(upgraded=True)]
+        combat.energy = 6
+
+        assert combat.play_card(0, 0)
+
+        assert enemy.current_hp == 100 - KNOCKDOWN_BASE_DAMAGE
+        assert enemy.get_power_amount(PowerId.KNOCKDOWN) == KNOCKDOWN_BASE_MULTIPLIER
+
+        assert combat.play_card(0, 0)
+
+        assert enemy.current_hp == 100 - KNOCKDOWN_BASE_DAMAGE - KNOCKDOWN_PLUS_DAMAGE
+        assert enemy.get_power_amount(PowerId.KNOCKDOWN) == KNOCKDOWN_PLUS_MULTIPLIER
+
     def test_hidden_gem_does_not_apply_replay_to_curse_or_quest_cards(self):
         combat = _make_combat()
         curse = CardInstance(
@@ -594,6 +641,40 @@ class TestColorlessParityExtra4:
         assert combat.play_card(0, 0)
 
         assert target.current_hp == 90
+
+    def test_rolling_boulder_deals_unpowered_start_turn_damage_then_increments(self):
+        """Matches RollingBoulder.cs: start-turn unpowered damage increases by 5 each trigger."""
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = enemy.max_hp = 100
+        combat.hand = [make_rolling_boulder()]
+        combat.energy = 3
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.ROLLING_BOULDER) == ROLLING_BOULDER_BASE_DAMAGE
+
+        combat.end_player_turn()
+
+        assert enemy.current_hp == 100 - ROLLING_BOULDER_BASE_DAMAGE
+        assert combat.player.get_power_amount(PowerId.ROLLING_BOULDER) == (
+            ROLLING_BOULDER_BASE_DAMAGE + ROLLING_BOULDER_INCREMENT
+        )
+
+    def test_rolling_boulder_plus_starts_at_ten_damage(self):
+        """Matches RollingBoulder.cs: upgraded RollingBoulderPower starts at 10."""
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = enemy.max_hp = 100
+        combat.hand = [make_rolling_boulder(upgraded=True)]
+        combat.energy = 3
+
+        assert combat.play_card(0)
+        combat.end_player_turn()
+
+        assert enemy.current_hp == 100 - ROLLING_BOULDER_PLUS_DAMAGE
+        assert combat.player.get_power_amount(PowerId.ROLLING_BOULDER) == (
+            ROLLING_BOULDER_PLUS_DAMAGE + ROLLING_BOULDER_INCREMENT
+        )
 
     def test_scrawl_plus_retains_and_draws_until_hand_is_full(self):
         """Matches Scrawl.cs: upgraded Scrawl adds Retain and draws to the 10-card hand limit."""
