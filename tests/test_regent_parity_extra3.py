@@ -94,6 +94,24 @@ class TestRegentParityExtra3:
         assert combat.stars == 0
         assert enemy.current_hp == 88
 
+    def test_void_form_only_waives_hand_or_play_pile_cards_like_reference(self):
+        """Matches VoidFormPower.cs: ShouldSkip only covers cards in Hand or Play."""
+        combat = _make_combat()
+        hand_card = create_card(CardId.GUIDING_STAR)
+        draw_card = create_card(CardId.GUIDING_STAR)
+        discard_card = create_card(CardId.GUIDING_STAR)
+        combat.hand = [hand_card]
+        combat.draw_pile = [draw_card]
+        combat.discard_pile = [discard_card]
+        combat.apply_power_to(combat.player, PowerId.VOID_FORM, 2)
+
+        assert combat.modified_card_cost(combat.player, hand_card) == 0
+        assert combat.modified_star_cost(combat.player, hand_card) == 0
+        assert combat.modified_card_cost(combat.player, draw_card) == draw_card.cost
+        assert combat.modified_star_cost(combat.player, draw_card) == draw_card.star_cost
+        assert combat.modified_card_cost(combat.player, discard_card) == discard_card.cost
+        assert combat.modified_star_cost(combat.player, discard_card) == discard_card.star_cost
+
     def test_void_form_counts_replayed_card_once_for_coverage(self):
         """Matches VoidFormPower.cs: AfterCardPlayed counts only the last play in a series."""
         combat = _make_combat()

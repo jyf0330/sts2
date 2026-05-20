@@ -1915,18 +1915,28 @@ class VoidFormPower(PowerInstance):
         super().__init__(PowerId.VOID_FORM, amount)
         self._cards_played_this_turn: int = 0
 
-    def modify_card_cost(self, owner: Creature, card: object) -> int | None:
-        """Make the first Amount cards cost 0."""
+    def _covers_card(self, owner: Creature, card: object) -> bool:
         card_owner = getattr(card, "owner", None)
         if card_owner is not owner:
+            return False
+        combat = getattr(owner, "combat_state", None)
+        if combat is None:
+            return False
+        state = combat.combat_player_state_for(owner)
+        if state is None:
+            return False
+        return any(card is existing for existing in state.hand) or any(card is existing for existing in state.play)
+
+    def modify_card_cost(self, owner: Creature, card: object) -> int | None:
+        """Make the first Amount cards cost 0."""
+        if not self._covers_card(owner, card):
             return None
         if self._cards_played_this_turn >= self.amount:
             return None
         return 0
 
     def modify_star_cost(self, owner: Creature, card: object) -> int | None:
-        card_owner = getattr(card, "owner", None)
-        if card_owner is not owner:
+        if not self._covers_card(owner, card):
             return None
         if self._cards_played_this_turn >= self.amount:
             return None
