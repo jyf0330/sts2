@@ -799,21 +799,59 @@ def create_ceremonial_beast(rng: Rng) -> tuple[Creature, MonsterAI]:
 # ---- TheKin (KinPriest + 2 KinFollowers) ----
 
 def create_kin_priest(rng: Rng) -> tuple[Creature, MonsterAI]:
-    hp = 119
+    hp = 190
     creature = Creature(max_hp=hp, monster_id="KIN_PRIEST")
-    smite_dmg = 22
+    orb_of_frailty_move = "ORB_OF_FRAILTY_MOVE"
+    orb_of_weakness_move = "ORB_OF_WEAKNESS_MOVE"
+    beam_move = "BEAM_MOVE"
+    ritual_move = "RITUAL_MOVE"
+    orb_of_frailty_dmg = 8
+    orb_of_weakness_dmg = 8
+    beam_dmg = 3
+    beam_hits = 3
+    ritual_strength = 2
+    orb_debuff_amount = 1
 
-    def conversion(combat: CombatState) -> None:
-        creature.apply_power(PowerId.RITUAL, 4)
+    def orb_of_frailty(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, orb_of_frailty_dmg)
+        if combat.is_over:
+            return
+        apply_power_to_living_player_targets(combat, PowerId.FRAIL, orb_debuff_amount, applier=creature)
 
-    def smite(combat: CombatState) -> None:
-        _deal_damage_to_player(combat, creature, smite_dmg)
+    def orb_of_weakness(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, orb_of_weakness_dmg)
+        if combat.is_over:
+            return
+        apply_power_to_living_player_targets(combat, PowerId.WEAK, orb_debuff_amount, applier=creature)
+
+    def beam(combat: CombatState) -> None:
+        _deal_damage_to_player(combat, creature, beam_dmg, hits=beam_hits)
+
+    def ritual(combat: CombatState) -> None:
+        combat.apply_power_to(creature, PowerId.STRENGTH, ritual_strength, applier=creature)
 
     states: dict[str, MonsterState] = {
-        "CONVERSION": MoveState("CONVERSION", conversion, [buff_intent()], follow_up_id="SMITE"),
-        "SMITE": MoveState("SMITE", smite, [attack_intent(smite_dmg)], follow_up_id="SMITE"),
+        orb_of_frailty_move: MoveState(
+            orb_of_frailty_move,
+            orb_of_frailty,
+            [attack_intent(orb_of_frailty_dmg), debuff_intent()],
+            follow_up_id=orb_of_weakness_move,
+        ),
+        orb_of_weakness_move: MoveState(
+            orb_of_weakness_move,
+            orb_of_weakness,
+            [attack_intent(orb_of_weakness_dmg), debuff_intent()],
+            follow_up_id=beam_move,
+        ),
+        beam_move: MoveState(
+            beam_move,
+            beam,
+            [multi_attack_intent(beam_dmg, beam_hits)],
+            follow_up_id=ritual_move,
+        ),
+        ritual_move: MoveState(ritual_move, ritual, [buff_intent()], follow_up_id=orb_of_frailty_move),
     }
-    return creature, MonsterAI(states, "CONVERSION")
+    return creature, MonsterAI(states, orb_of_frailty_move)
 
 
 def create_kin_follower(rng: Rng, *, starts_with_dance: bool = False) -> tuple[Creature, MonsterAI]:

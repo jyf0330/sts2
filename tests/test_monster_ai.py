@@ -238,7 +238,7 @@ CS_MONSTER_FACTORY_PARITY_CASES = [
     ("FakeMerchantMonster", create_fake_merchant_monster, "FAKE_MERCHANT_MONSTER", "SWIPE", 165, 165),
     ("Inklet", create_inklet, "INKLET", "JAB_MOVE", 11, 17),
     ("KinFollower", create_kin_follower, "KIN_FOLLOWER", "QUICK_SLASH_MOVE", 58, 59),
-    ("KinPriest", create_kin_priest, "KIN_PRIEST", "CONVERSION", 119, 119),
+    ("KinPriest", create_kin_priest, "KIN_PRIEST", "ORB_OF_FRAILTY_MOVE", 190, 190),
     ("LeafSlimeM", create_leaf_slime_m, "LEAF_SLIME_M", "STICKY_SHOT", 32, 35),
     ("MultiAttackMoveMonster", create_multi_attack_move_monster, "MULTI_ATTACK_MOVE_MONSTER", "POKE", 999, 999),
     ("OneHpMonster", create_one_hp_monster, "ONE_HP_MONSTER", "NOTHING", 1, 1),
@@ -1052,8 +1052,55 @@ class TestFixedRotation:
         assert combat.primary_player.get_power_amount(PowerId.WEAK) == no_weak
         assert creature.get_power_amount(PowerId.STRENGTH) == dance_strength
 
-    def test_vine_shambler_matches_original_cycle_and_tangled_targets(self):
+    def test_kin_priest_matches_original_cycle_and_debuff_targets(self):
         rng_seed = 1252
+        ally_hp = 80
+        osty_hp = 100
+        orb_damage = 8
+        beam_damage = 3
+        beam_hits = 3
+        debuff_amount = 1
+        ritual_strength = 2
+        combat = _make_combat(rng_seed)
+        ally = _add_test_ally(combat, hp=ally_hp)
+        osty = combat.summon_osty(combat.primary_player, osty_hp)
+        assert osty is not None
+        creature, ai = create_kin_priest(Rng(rng_seed))
+        combat.add_enemy(creature, ai)
+
+        assert creature.max_hp == 190
+        assert _run_ai(ai, Rng(rng_seed), 5) == [
+            "ORB_OF_FRAILTY_MOVE",
+            "ORB_OF_WEAKNESS_MOVE",
+            "BEAM_MOVE",
+            "RITUAL_MOVE",
+            "ORB_OF_FRAILTY_MOVE",
+        ]
+        assert {"ORB_OF_FRAILTY_MOVE", "ORB_OF_WEAKNESS_MOVE", "BEAM_MOVE", "RITUAL_MOVE"} == set(ai.states)
+
+        primary_hp_before = combat.primary_player.current_hp
+        ally_hp_before = ally.current_hp
+        osty_hp_before = osty.current_hp
+
+        ai.states["ORB_OF_FRAILTY_MOVE"].perform(combat)
+        ai.states["ORB_OF_WEAKNESS_MOVE"].perform(combat)
+        ai.states["BEAM_MOVE"].perform(combat)
+        ai.states["RITUAL_MOVE"].perform(combat)
+
+        total_damage = orb_damage * 2 + beam_damage * beam_hits
+        assert combat.primary_player.current_hp == primary_hp_before
+        assert ally.current_hp == ally_hp_before - total_damage
+        assert osty.current_hp == osty_hp_before - total_damage
+        assert combat.primary_player.get_power_amount(PowerId.FRAIL) == debuff_amount
+        assert ally.get_power_amount(PowerId.FRAIL) == debuff_amount
+        assert osty.get_power_amount(PowerId.FRAIL) == 0
+        assert combat.primary_player.get_power_amount(PowerId.WEAK) == debuff_amount
+        assert ally.get_power_amount(PowerId.WEAK) == debuff_amount
+        assert osty.get_power_amount(PowerId.WEAK) == 0
+        assert creature.get_power_amount(PowerId.STRENGTH) == ritual_strength
+
+    def test_vine_shambler_matches_original_cycle_and_tangled_targets(self):
+        rng_seed = 1253
         ally_hp = 80
         osty_hp = 100
         swipe_damage = 6

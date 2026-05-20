@@ -429,7 +429,7 @@ class TestAct1BossEncounters:
         assert [combat.enemy_ais[enemy.combat_id].current_move.state_id for enemy in combat.enemies] == [
             "POWER_DANCE_MOVE",
             "QUICK_SLASH_MOVE",
-            "CONVERSION",
+            "ORB_OF_FRAILTY_MOVE",
         ]
 
 
