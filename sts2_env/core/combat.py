@@ -3291,7 +3291,7 @@ class CombatState:
             blade.after_forged()
         fire_after_forge(self, amount, owner, source)
 
-    def stun_enemy(self, creature: Creature) -> bool:
+    def stun_enemy(self, creature: Creature, next_state_id: str | None = None) -> bool:
         """Replace an enemy's next move with a one-turn stun."""
         if creature is None or creature.is_player or creature.is_dead:
             return False
@@ -3303,7 +3303,7 @@ class CombatState:
         from sts2_env.monsters.intents import Intent
         from sts2_env.monsters.state_machine import MoveState
 
-        next_state_id = ai.current_move.state_id
+        next_state_id = next_state_id or ai.current_move.state_id
 
         def _stunned(_: CombatState) -> None:
             return

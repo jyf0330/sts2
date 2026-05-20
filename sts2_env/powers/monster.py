@@ -442,9 +442,10 @@ class PlowPower(PowerInstance):
             strength = owner.powers.get(PowerId.STRENGTH)
             if strength is not None:
                 del owner.powers[PowerId.STRENGTH]
-            # Remove this power
             owner.powers.pop(self.power_id, None)
-            combat.stun_enemy(owner)
+            ai = combat.enemy_ais.get(owner.combat_id)
+            next_state_id = "BEAST_CRY_MOVE" if ai is not None and "BEAST_CRY_MOVE" in ai.states else None
+            combat.stun_enemy(owner, next_state_id)
 
 
 # ---------------------------------------------------------------------------

@@ -17,9 +17,7 @@ from sts2_env.monsters.intents import (
     buff_intent, debuff_intent, strong_debuff_intent, status_intent,
     defend_intent, sleep_intent,
 )
-from sts2_env.monsters.state_machine import (
-    ConditionalBranchState, MonsterAI, MonsterState, MoveState, RandomBranchState,
-)
+from sts2_env.monsters.state_machine import MonsterAI, MonsterState, MoveState, RandomBranchState
 from sts2_env.monsters.targets import (
     add_generated_cards_to_living_player_discards,
     apply_power_to_living_player_targets,
@@ -733,24 +731,31 @@ def create_vantom(rng: Rng) -> tuple[Creature, MonsterAI]:
 def create_ceremonial_beast(rng: Rng) -> tuple[Creature, MonsterAI]:
     hp = 252
     creature = Creature(max_hp=hp, monster_id="CEREMONIAL_BEAST")
+    stamp_move = "STAMP_MOVE"
+    plow_move_id = "PLOW_MOVE"
+    stun_move = "STUN_MOVE"
+    beast_cry_move = "BEAST_CRY_MOVE"
+    stomp_move_id = "STOMP_MOVE"
+    crush_move_id = "CRUSH_MOVE"
     plow_dmg = 18
     stomp_dmg = 15
     crush_dmg = 17
     plow_amount = 150
+    plow_strength = 2
+    crush_strength = 3
     beast_cry_ringing = 1
-
-    # Track phase
-    _phase = {"stunned": False}
 
     def stamp(combat: CombatState) -> None:
         creature.apply_power(PowerId.PLOW, plow_amount)
 
     def plow_move(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, plow_dmg)
-        combat.apply_power_to(creature, PowerId.STRENGTH, 2, applier=creature)
+        if combat.is_over:
+            return
+        combat.apply_power_to(creature, PowerId.STRENGTH, plow_strength, applier=creature)
 
     def stun(combat: CombatState) -> None:
-        _phase["stunned"] = True
+        pass
 
     def beast_cry(combat: CombatState) -> None:
         apply_power_to_living_player_targets(combat, PowerId.RINGING, beast_cry_ringing, applier=creature)
@@ -760,23 +765,35 @@ def create_ceremonial_beast(rng: Rng) -> tuple[Creature, MonsterAI]:
 
     def crush(combat: CombatState) -> None:
         _deal_damage_to_player(combat, creature, crush_dmg)
-        combat.apply_power_to(creature, PowerId.STRENGTH, 3, applier=creature)
-
-    # Phase 1 check: is plow broken?
-    plow_check = ConditionalBranchState("PLOW_CHECK")
-    plow_check.add_branch(lambda: creature.get_power_amount(PowerId.PLOW) <= 0, "STUN")
-    plow_check.add_branch(lambda: True, "PLOW")
+        if combat.is_over:
+            return
+        combat.apply_power_to(creature, PowerId.STRENGTH, crush_strength, applier=creature)
 
     states: dict[str, MonsterState] = {
-        "STAMP": MoveState("STAMP", stamp, [buff_intent()], follow_up_id="PLOW"),
-        "PLOW": MoveState("PLOW", plow_move, [attack_intent(plow_dmg), buff_intent()], follow_up_id="PLOW_CHECK"),
-        "PLOW_CHECK": plow_check,
-        "STUN": MoveState("STUN", stun, [Intent(IntentType.STUN)], follow_up_id="BEAST_CRY", must_perform_once=True),
-        "BEAST_CRY": MoveState("BEAST_CRY", beast_cry, [debuff_intent()], follow_up_id="STOMP"),
-        "STOMP": MoveState("STOMP", stomp, [attack_intent(stomp_dmg)], follow_up_id="CRUSH"),
-        "CRUSH": MoveState("CRUSH", crush, [attack_intent(crush_dmg), buff_intent()], follow_up_id="BEAST_CRY"),
+        stamp_move: MoveState(stamp_move, stamp, [buff_intent()], follow_up_id=plow_move_id),
+        plow_move_id: MoveState(
+            plow_move_id,
+            plow_move,
+            [attack_intent(plow_dmg), buff_intent()],
+            follow_up_id=plow_move_id,
+        ),
+        stun_move: MoveState(
+            stun_move,
+            stun,
+            [Intent(IntentType.STUN)],
+            follow_up_id=beast_cry_move,
+            must_perform_once=True,
+        ),
+        beast_cry_move: MoveState(beast_cry_move, beast_cry, [debuff_intent()], follow_up_id=stomp_move_id),
+        stomp_move_id: MoveState(stomp_move_id, stomp, [attack_intent(stomp_dmg)], follow_up_id=crush_move_id),
+        crush_move_id: MoveState(
+            crush_move_id,
+            crush,
+            [attack_intent(crush_dmg), buff_intent()],
+            follow_up_id=beast_cry_move,
+        ),
     }
-    return creature, MonsterAI(states, "STAMP")
+    return creature, MonsterAI(states, stamp_move)
 
 
 # ---- TheKin (KinPriest + 2 KinFollowers) ----

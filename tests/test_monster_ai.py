@@ -659,7 +659,7 @@ class TestFixedRotation:
         plow_beast, plow_ai = create_ceremonial_beast(Rng(110))
         plow_combat.add_enemy(plow_beast, plow_ai)
         plow_combat.player.current_hp = 18
-        plow_ai.states["PLOW"].perform(plow_combat)
+        plow_ai.states["PLOW_MOVE"].perform(plow_combat)
         assert plow_combat.is_over
         assert plow_combat.player_won is False
         assert plow_beast.get_power_amount(PowerId.STRENGTH) == 0
@@ -668,10 +668,50 @@ class TestFixedRotation:
         crush_beast, crush_ai = create_ceremonial_beast(Rng(111))
         crush_combat.add_enemy(crush_beast, crush_ai)
         crush_combat.player.current_hp = 17
-        crush_ai.states["CRUSH"].perform(crush_combat)
+        crush_ai.states["CRUSH_MOVE"].perform(crush_combat)
         assert crush_combat.is_over
         assert crush_combat.player_won is False
         assert crush_beast.get_power_amount(PowerId.STRENGTH) == 0
+
+    def test_ceremonial_beast_uses_original_move_ids_and_plow_break_follow_up(self):
+        plow_threshold_hp = 150
+        plow_break_damage = 1
+        strength_before_plow_break = 5
+        combat = _make_combat(112)
+        beast, ai = create_ceremonial_beast(Rng(112))
+        combat.add_enemy(beast, ai)
+
+        assert ai.current_move.state_id == "STAMP_MOVE"
+        assert _run_ai(ai, Rng(112), 4) == [
+            "STAMP_MOVE",
+            "PLOW_MOVE",
+            "PLOW_MOVE",
+            "PLOW_MOVE",
+        ]
+        assert {
+            "STAMP_MOVE",
+            "PLOW_MOVE",
+            "STUN_MOVE",
+            "BEAST_CRY_MOVE",
+            "STOMP_MOVE",
+            "CRUSH_MOVE",
+        } == set(ai.states)
+
+        beast.current_hp = plow_threshold_hp + plow_break_damage
+        beast.apply_power(PowerId.PLOW, plow_threshold_hp, applier=beast)
+        beast.apply_power(PowerId.STRENGTH, strength_before_plow_break, applier=beast)
+
+        apply_damage(beast, plow_break_damage, ValueProp.MOVE, combat, combat.player)
+
+        assert beast.get_power_amount(PowerId.PLOW) == 0
+        assert beast.get_power_amount(PowerId.STRENGTH) == 0
+        assert ai.current_move.state_id == "STUNNED"
+
+        ai.current_move.perform(combat)
+        ai.on_move_performed()
+        ai.roll_move(Rng(112))
+
+        assert ai.current_move.state_id == "BEAST_CRY_MOVE"
 
     def test_act1_normal_monsters_use_original_move_ids(self):
         cubex, cubex_ai = create_cubex_construct(Rng(11))
