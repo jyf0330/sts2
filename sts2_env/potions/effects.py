@@ -69,6 +69,10 @@ CURE_ALL_ENERGY_GAIN = 1
 CURE_ALL_DRAW_COUNT = 2
 RADIANT_TINCTURE_ENERGY_GAIN = 1
 RADIANT_TINCTURE_RADIANCE = 3
+SNECKO_OIL_DRAW_COUNT = 7
+SNECKO_OIL_MIN_COST = 0
+SNECKO_OIL_MAX_COST = 3
+SOLDIERS_STEW_REPLAY_GAIN = 1
 
 
 def _source_card_order(card) -> tuple[int, str]:
@@ -639,10 +643,16 @@ def _ship_in_a_bottle(combat: CombatState, user: Creature, target: Creature | No
 
 def _snecko_oil(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Draw 7 cards and randomize costs of all cards in hand (0-3)."""
-    combat._draw_cards(7)  # noqa: SLF001
-    for card in combat.hand:
+    t = target if target is not None else user
+    combat.draw_cards(t, SNECKO_OIL_DRAW_COUNT)
+    state = combat.combat_player_state_for(t)
+    if state is None:
+        return
+    for card in state.hand:
         if hasattr(card, "cost") and not card.has_energy_cost_x and card.cost >= 0:
-            card.set_temporary_cost_for_turn(combat.combat_energy_costs_rng.next_int(0, 3))
+            card.set_temporary_cost_for_turn(
+                combat.combat_energy_costs_rng.next_int(SNECKO_OIL_MIN_COST, SNECKO_OIL_MAX_COST)
+            )
 
 
 def _soldiers_stew(combat: CombatState, user: Creature, target: Creature | None) -> None:
@@ -651,11 +661,15 @@ def _soldiers_stew(combat: CombatState, user: Creature, target: Creature | None)
     Adds replay_count attribute if available.
     """
     from sts2_env.core.enums import CardTag
-    for pile in (combat.hand, combat.draw_pile, combat.discard_pile):
+    t = target if target is not None else user
+    state = combat.combat_player_state_for(t)
+    if state is None:
+        return
+    for pile in state.all_piles:
         for card in pile:
             if hasattr(card, "tags") and CardTag.STRIKE in card.tags:
                 if hasattr(card, "base_replay_count"):
-                    card.base_replay_count += 1
+                    card.base_replay_count += SOLDIERS_STEW_REPLAY_GAIN
 
 
 # =====================================================================

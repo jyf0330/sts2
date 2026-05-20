@@ -98,6 +98,8 @@ CURE_ALL_ENERGY_GAIN = 1
 CURE_ALL_DRAW_COUNT = 2
 RADIANT_TINCTURE_ENERGY_GAIN = 1
 RADIANT_TINCTURE_RADIANCE = 3
+SNECKO_OIL_DRAW_COUNT = 7
+SOLDIERS_STEW_REPLAY_GAIN = 1
 
 
 class TestPotionRegistry:
@@ -637,6 +639,39 @@ class TestPotionInstance:
         assert hand_card.cost == 2
         assert drawn_card.cost == 1
 
+    def test_snecko_oil_targets_selected_player_hand_like_reference(self):
+        combat = _make_silent_combat()
+        ally = combat.add_ally_player(PlayerState(player_id=2, character_id="Silent", max_hp=70, current_hp=70))
+        ally_state = combat.combat_player_state_for(ally)
+        assert ally_state is not None
+        primary_hand = make_strike_silent()
+        primary_hand.cost = primary_hand.original_cost = 2
+        primary_draw = make_defend_silent()
+        ally_hand = make_strike_silent()
+        ally_draw = make_defend_silent()
+        ally_x_cost = make_tempest()
+        ally_hand.cost = ally_hand.original_cost = 2
+        ally_draw.cost = ally_draw.original_cost = 1
+        ally_x_cost.cost = ally_x_cost.original_cost = 0
+        combat.hand = [primary_hand]
+        combat.draw_pile = [primary_draw]
+        ally_state.hand = [ally_hand, ally_x_cost]
+        ally_state.draw = [ally_draw]
+        ally_state.zone_map["hand"] = ally_state.hand
+        ally_state.zone_map["draw"] = ally_state.draw
+        combat.potions = [create_potion("SneckoOil"), None, None]
+
+        assert combat.use_potion(0, target_index=FIRST_ALLY_PLAYER_TARGET_INDEX)
+
+        assert ally_state.hand == [ally_hand, ally_x_cost, ally_draw][:SNECKO_OIL_DRAW_COUNT]
+        assert ally_state.draw == []
+        assert "_turn_cost_override" in ally_hand.combat_vars
+        assert "_turn_cost_override" in ally_draw.combat_vars
+        assert "_turn_cost_override" not in ally_x_cost.combat_vars
+        assert combat.hand == [primary_hand]
+        assert combat.draw_pile == [primary_draw]
+        assert "_turn_cost_override" not in primary_hand.combat_vars
+
     def test_swift_potion_draws_three_cards(self):
         combat = _make_silent_combat()
         first = make_strike_silent()
@@ -667,6 +702,43 @@ class TestPotionInstance:
         assert combat.energy == 1
         assert combat.hand == [first, second]
         assert combat.draw_pile == []
+
+    def test_soldiers_stew_updates_selected_player_all_cards_like_reference(self):
+        combat = _make_silent_combat()
+        ally = combat.add_ally_player(PlayerState(player_id=2, character_id="Silent", max_hp=70, current_hp=70))
+        ally_state = combat.combat_player_state_for(ally)
+        assert ally_state is not None
+        primary_strike = make_strike_silent()
+        ally_hand_strike = make_strike_silent()
+        ally_draw_strike = make_strike_silent()
+        ally_discard_strike = make_strike_silent()
+        ally_exhaust_strike = make_strike_silent()
+        ally_play_strike = make_strike_silent()
+        ally_defend = make_defend_silent()
+        combat.hand = [primary_strike]
+        ally_state.hand = [ally_hand_strike, ally_defend]
+        ally_state.draw = [ally_draw_strike]
+        ally_state.discard = [ally_discard_strike]
+        ally_state.exhaust = [ally_exhaust_strike]
+        ally_state.play = [ally_play_strike]
+        ally_state.zone_map["hand"] = ally_state.hand
+        ally_state.zone_map["draw"] = ally_state.draw
+        ally_state.zone_map["discard"] = ally_state.discard
+        ally_state.zone_map["exhaust"] = ally_state.exhaust
+        combat.potions = [create_potion("SoldiersStew"), None, None]
+
+        assert combat.use_potion(0, target_index=FIRST_ALLY_PLAYER_TARGET_INDEX)
+
+        for card in [
+            ally_hand_strike,
+            ally_draw_strike,
+            ally_discard_strike,
+            ally_exhaust_strike,
+            ally_play_strike,
+        ]:
+            assert card.base_replay_count == SOLDIERS_STEW_REPLAY_GAIN
+        assert ally_defend.base_replay_count == 0
+        assert primary_strike.base_replay_count == 0
 
     def test_bottled_potential_moves_hand_into_draw_pile_then_draws_five(self):
         combat = _make_silent_combat()
