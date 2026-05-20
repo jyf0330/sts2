@@ -280,6 +280,19 @@ class TestPowerApplication:
         assert simple_combat.modified_card_cost(simple_combat.player, already_afflicted) == 1
         assert simple_combat.can_play_card(already_afflicted) is True
 
+    def test_tangled_stack_does_not_afflict_cards_skipped_by_initial_application(self, simple_combat):
+        """Matches TangledPower.cs: only AfterApplied scans existing Attack cards."""
+        skipped_attack = make_strike_ironclad()
+        skipped_attack.afflict("hexed")
+        simple_combat.hand = [skipped_attack]
+
+        simple_combat.apply_power_to(simple_combat.player, PowerId.TANGLED, 1)
+        skipped_attack.clear_affliction("hexed")
+        simple_combat.apply_power_to(simple_combat.player, PowerId.TANGLED, 1)
+
+        assert skipped_attack.affliction is None
+        assert simple_combat.modified_card_cost(simple_combat.player, skipped_attack) == skipped_attack.cost
+
     def test_corruption_makes_owner_skills_free_and_exhaust_after_play(self, simple_combat):
         defend = make_defend_ironclad()
         simple_combat.hand = [defend]

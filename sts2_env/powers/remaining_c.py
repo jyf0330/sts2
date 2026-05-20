@@ -1370,6 +1370,7 @@ class TangledPower(PowerInstance):
 
     def __init__(self, amount: int):
         super().__init__(PowerId.TANGLED, amount)
+        self._afflicted_initial_cards = False
 
     def _afflict_card(self, owner: Creature, card: object) -> None:
         card_owner = getattr(card, "owner", None)
@@ -1419,8 +1420,9 @@ class TangledPower(PowerInstance):
         source: object | None,
         combat: CombatState,
     ) -> None:
-        if owner is target and power_id == PowerId.TANGLED and amount > 0:
+        if owner is target and power_id == PowerId.TANGLED and amount > 0 and not self._afflicted_initial_cards:
             self._afflict_all_attacks(owner, combat)
+            self._afflicted_initial_cards = True
 
     def after_card_entered_combat(self, owner: Creature, card: object, combat: CombatState) -> None:
         self._afflict_card(owner, card)
