@@ -4,6 +4,7 @@ import sts2_env.powers  # noqa: F401
 
 from sts2_env.cards.defect import (
     make_adaptive_strike,
+    make_buffer,
     create_defect_starter_deck,
     make_all_for_one,
     make_biased_cognition,
@@ -17,6 +18,7 @@ from sts2_env.cards.defect import (
     make_darkness,
     make_defend_defect,
     make_double_energy,
+    make_echo_form,
     make_fight_through,
     make_flak_cannon,
     make_ftl,
@@ -28,6 +30,7 @@ from sts2_env.cards.defect import (
     make_helix_drill,
     make_hyperbeam,
     make_ice_lance,
+    make_iteration,
     make_leap,
     make_lightning_rod,
     make_machine_learning,
@@ -42,6 +45,7 @@ from sts2_env.cards.defect import (
     make_shadow_shield,
     make_signal_boost,
     make_skim,
+    make_spinner,
     make_strike_defect,
     make_synthesis,
     make_sweeping_beam,
@@ -58,6 +62,14 @@ from sts2_env.core.enums import CardId, OrbType, PowerId, ValueProp
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle, create_twig_slime_s
 from sts2_env.powers.base import PowerInstance
+
+
+BUFFER_POWER_AMOUNT = 1
+BUFFER_UPGRADED_POWER_AMOUNT = 2
+ECHO_FORM_POWER_AMOUNT = 1
+ITERATION_POWER_AMOUNT = 2
+ITERATION_UPGRADED_POWER_AMOUNT = 3
+SPINNER_POWER_AMOUNT = 1
 
 
 class _CannotHitPower(PowerInstance):
@@ -847,6 +859,108 @@ class TestDefectParityExtra3:
         assert combat.play_card(0)
         assert combat.player.get_power_amount(PowerId.MACHINE_LEARNING) == 2
         assert combat.player.get_power_amount(PowerId.SIGNAL_BOOST) == 0
+
+    def test_buffer_card_applies_reference_power_amounts(self):
+        combat = _make_combat()
+        combat.hand = [make_buffer()]
+        combat.energy = 2
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.BUFFER) == BUFFER_POWER_AMOUNT
+
+        upgraded_combat = _make_combat()
+        upgraded_combat.hand = [make_buffer(upgraded=True)]
+        upgraded_combat.energy = 2
+
+        assert upgraded_combat.play_card(0)
+        assert upgraded_combat.player.get_power_amount(PowerId.BUFFER) == BUFFER_UPGRADED_POWER_AMOUNT
+
+    def test_buffer_prevents_next_hp_loss_and_then_decrements(self):
+        combat = _make_combat()
+        combat.hand = [make_buffer()]
+        combat.energy = 2
+
+        assert combat.play_card(0)
+        combat.deal_damage(combat.enemies[0], combat.player, 7)
+
+        assert combat.player.current_hp == combat.player.max_hp
+        assert combat.player.get_power_amount(PowerId.BUFFER) == 0
+
+    def test_echo_form_card_applies_reference_power_and_upgrade_removes_ethereal(self):
+        card = make_echo_form()
+        assert card.is_ethereal
+        combat = _make_combat()
+        combat.hand = [card]
+        combat.energy = 3
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.ECHO_FORM) == ECHO_FORM_POWER_AMOUNT
+
+        upgraded = make_echo_form(upgraded=True)
+        assert upgraded.is_ethereal is False
+
+    def test_iteration_card_applies_reference_power_amounts(self):
+        combat = _make_combat()
+        combat.hand = [make_iteration()]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.ITERATION) == ITERATION_POWER_AMOUNT
+
+        upgraded_combat = _make_combat()
+        upgraded_combat.hand = [make_iteration(upgraded=True)]
+        upgraded_combat.energy = 1
+
+        assert upgraded_combat.play_card(0)
+        assert upgraded_combat.player.get_power_amount(PowerId.ITERATION) == ITERATION_UPGRADED_POWER_AMOUNT
+
+    def test_iteration_draws_only_after_first_status_drawn_this_turn(self):
+        combat = _make_combat()
+        first_status = make_dazed()
+        second_status = make_burn()
+        drawn_from_iteration = make_strike_defect()
+        undrawn = make_defend_defect()
+        combat.hand = [make_iteration()]
+        combat.draw_pile = [first_status, drawn_from_iteration, second_status, undrawn]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        combat.draw_cards(combat.player, 1)
+
+        assert combat.hand == [first_status, drawn_from_iteration, second_status]
+        assert combat.draw_pile == [undrawn]
+
+        combat.draw_cards(combat.player, 1)
+
+        assert combat.hand == [first_status, drawn_from_iteration, second_status, undrawn]
+        assert combat.draw_pile == []
+
+    def test_spinner_base_and_upgraded_immediate_channel_match_reference(self):
+        combat = _make_combat()
+        combat.hand = [make_spinner()]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.SPINNER) == SPINNER_POWER_AMOUNT
+        assert combat.orb_queue.orbs == []
+
+        upgraded_combat = _make_combat()
+        upgraded_combat.hand = [make_spinner(upgraded=True)]
+        upgraded_combat.energy = 1
+
+        assert upgraded_combat.play_card(0)
+        assert upgraded_combat.player.get_power_amount(PowerId.SPINNER) == SPINNER_POWER_AMOUNT
+        assert [orb.orb_type for orb in upgraded_combat.orb_queue.orbs] == [OrbType.GLASS]
+
+    def test_spinner_channels_glass_on_next_energy_reset(self):
+        combat = _make_combat()
+        combat.hand = [make_spinner()]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        combat.end_player_turn()
+
+        assert [orb.orb_type for orb in combat.orb_queue.orbs] == [OrbType.GLASS]
 
     def test_biased_cognition_applies_focus_then_delayed_focus_loss(self):
         """Matches BiasedCognition.cs: apply Focus(4), then BiasedCognition(1)."""

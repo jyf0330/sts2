@@ -890,8 +890,9 @@ def signal_boost(card: CardInstance, combat: CombatState, target: Creature | Non
 
 @register_effect(CardId.SPINNER_CARD)
 def spinner_card(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
+    if card.upgraded:
+        _channel_orb(combat, OrbType.GLASS)
     combat.apply_power_to(_owner(card, combat), PowerId.SPINNER, card.effect_vars.get("spinner_power", 1))
-    _channel_orb(combat, OrbType.GLASS)
 
 
 @register_effect(CardId.SUPERCRITICAL)
@@ -1269,11 +1270,12 @@ def make_hailstorm() -> CardInstance:
     )
 
 
-def make_iteration() -> CardInstance:
+def make_iteration(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.ITERATION_CARD, cost=1, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.UNCOMMON,
-        effect_vars={"iteration_power": 2}, instance_id=_get_next_id(),
+        effect_vars={"iteration_power": 3 if upgraded else 2},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
@@ -1447,11 +1449,12 @@ def make_all_for_one() -> CardInstance:
     )
 
 
-def make_buffer() -> CardInstance:
+def make_buffer(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.BUFFER_CARD, cost=2, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
-        effect_vars={"buffer_power": 1}, instance_id=_get_next_id(),
+        effect_vars={"buffer_power": 2 if upgraded else 1},
+        upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
@@ -1489,12 +1492,13 @@ def make_defragment() -> CardInstance:
     )
 
 
-def make_echo_form() -> CardInstance:
+def make_echo_form(upgraded: bool = False) -> CardInstance:
+    keywords = frozenset() if upgraded else frozenset({"ethereal"})
     return CardInstance(
         card_id=CardId.ECHO_FORM_CARD, cost=3, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
-        keywords=frozenset({"ethereal"}),
-        effect_vars={"echo_form": 1}, instance_id=_get_next_id(),
+        keywords=keywords,
+        effect_vars={"echo_form": 1}, upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
@@ -1617,11 +1621,11 @@ def make_signal_boost() -> CardInstance:
     )
 
 
-def make_spinner() -> CardInstance:
+def make_spinner(upgraded: bool = False) -> CardInstance:
     return CardInstance(
         card_id=CardId.SPINNER_CARD, cost=1, card_type=CardType.POWER,
         target_type=TargetType.SELF, rarity=CardRarity.RARE,
-        effect_vars={"spinner_power": 1}, instance_id=_get_next_id(),
+        effect_vars={"spinner_power": 1}, upgraded=upgraded, instance_id=_get_next_id(),
     )
 
 
