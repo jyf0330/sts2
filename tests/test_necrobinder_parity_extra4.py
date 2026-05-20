@@ -13,6 +13,7 @@ from sts2_env.cards.necrobinder import (
     make_call_of_the_void,
     make_deathbringer,
     make_deaths_door,
+    make_debilitate_card,
     make_defy,
     make_defend_necrobinder,
     make_demesne,
@@ -31,6 +32,7 @@ from sts2_env.cards.necrobinder import (
     make_negative_pulse,
     make_neurosurge,
     make_pagestorm,
+    make_parse,
     make_poke,
     make_pull_from_below,
     make_sculpting_strike,
@@ -63,6 +65,12 @@ SOW_DAMAGE = 8
 SOW_UPGRADED_DAMAGE = 11
 STRIKE_NECROBINDER_DAMAGE = 6
 STRIKE_NECROBINDER_UPGRADED_DAMAGE = 9
+DEBILITATE_DAMAGE = 7
+DEBILITATE_POWER_AMOUNT = 3
+DEBILITATE_UPGRADED_DAMAGE = 9
+DEBILITATE_UPGRADED_POWER_AMOUNT = 4
+PARSE_DRAW_COUNT = 3
+PARSE_UPGRADED_DRAW_COUNT = 4
 
 
 class _CannotHitPower(PowerInstance):
@@ -206,6 +214,30 @@ class TestNecrobinderParityExtra4:
         assert combat.player.block == 7
         assert enemy.get_power_amount(PowerId.WEAK) == 2
 
+    def test_debilitate_deals_damage_then_applies_power(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = enemy.max_hp = REFERENCE_ENEMY_HP
+        combat.hand = [make_debilitate_card()]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+
+        assert enemy.current_hp == REFERENCE_ENEMY_HP - DEBILITATE_DAMAGE
+        assert enemy.get_power_amount(PowerId.DEBILITATE) == DEBILITATE_POWER_AMOUNT
+
+    def test_upgraded_debilitate_values_match_reference(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = enemy.max_hp = REFERENCE_ENEMY_HP
+        combat.hand = [make_debilitate_card(upgraded=True)]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+
+        assert enemy.current_hp == REFERENCE_ENEMY_HP - DEBILITATE_UPGRADED_DAMAGE
+        assert enemy.get_power_amount(PowerId.DEBILITATE) == DEBILITATE_UPGRADED_POWER_AMOUNT
+
     def test_demesne_applies_power_and_upgrade_only_changes_cost(self):
         combat = _make_combat()
         card = make_demesne(upgraded=True)
@@ -231,6 +263,30 @@ class TestNecrobinderParityExtra4:
 
         assert combat.play_card(0)
         assert combat.player.get_power_amount(PowerId.LETHALITY) == 75
+
+    def test_parse_draws_reference_cards_and_is_ethereal(self):
+        combat = _make_combat()
+        drawn = [make_defend_necrobinder() for _ in range(PARSE_DRAW_COUNT)]
+        card = make_parse()
+        combat.hand = [card]
+        combat.draw_pile = list(drawn)
+        combat.energy = 1
+
+        assert card.is_ethereal
+        assert combat.play_card(0)
+
+        assert combat.hand == drawn
+
+    def test_upgraded_parse_draw_count_matches_reference(self):
+        combat = _make_combat()
+        drawn = [make_defend_necrobinder() for _ in range(PARSE_UPGRADED_DRAW_COUNT)]
+        combat.hand = [make_parse(upgraded=True)]
+        combat.draw_pile = list(drawn)
+        combat.energy = 1
+
+        assert combat.play_card(0)
+
+        assert combat.hand == drawn
 
     def test_scourge_applies_doom_then_draws_cards(self):
         combat = _make_combat()
