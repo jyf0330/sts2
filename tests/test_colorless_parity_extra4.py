@@ -15,6 +15,7 @@ from sts2_env.cards.colorless import (
     make_fisticuffs,
     make_gold_axe,
     make_hidden_gem,
+    make_huddle_up,
     make_impatience,
     make_intercept_card,
     make_jackpot,
@@ -25,6 +26,7 @@ from sts2_env.cards.colorless import (
     make_prowess,
     make_rend,
     make_salvo,
+    make_scrawl,
 )
 from sts2_env.cards.ironclad import create_ironclad_starter_deck
 from sts2_env.cards.ironclad_basic import make_defend_ironclad, make_strike_ironclad
@@ -256,6 +258,49 @@ class TestColorlessParityExtra4:
         assert skill_draw not in combat.hand
         assert combat.draw_pile[0] is skill_draw
 
+    def test_impatience_plus_draws_three_when_no_attack_remains_in_hand(self):
+        """Matches Impatience.cs: upgraded CardsVar draws 3 if the owner's hand has no Attack."""
+        combat = _make_combat()
+        drawn = [make_defend_ironclad(), make_defend_ironclad(), make_defend_ironclad()]
+        combat.hand = [make_impatience(upgraded=True)]
+        combat.draw_pile = list(drawn)
+        combat.energy = 0
+
+        assert combat.play_card(0)
+
+        assert combat.hand == drawn
+        assert combat.draw_pile == []
+
+    def test_huddle_up_draws_for_living_player_teammates_only(self):
+        """Matches HuddleUp.cs: each living player teammate draws cards."""
+        combat = _make_combat()
+        living_ally = combat.add_ally_player(
+            PlayerState(player_id=2, character_id="Ironclad", max_hp=60, current_hp=60)
+        )
+        dead_ally = combat.add_ally_player(
+            PlayerState(player_id=3, character_id="Ironclad", max_hp=60, current_hp=0)
+        )
+        living_state = combat.combat_player_state_for(living_ally)
+        dead_state = combat.combat_player_state_for(dead_ally)
+        assert living_state is not None
+        assert dead_state is not None
+        drawn = [make_strike_ironclad(), make_defend_ironclad(), make_strike_ironclad()]
+        living_state.draw = list(drawn)
+        living_state.zone_map["draw"] = living_state.draw
+        dead_draw = [make_defend_ironclad()]
+        dead_state.draw = list(dead_draw)
+        dead_state.zone_map["draw"] = dead_state.draw
+        combat.hand = [make_huddle_up(upgraded=True)]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+
+        assert living_state.hand == drawn
+        assert living_state.draw == []
+        assert dead_state.hand == []
+        assert dead_state.draw == dead_draw
+        assert combat.hand == []
+
     def test_intercept_grants_block_and_covered_to_target_ally(self):
         combat = _make_combat()
         ally = combat.add_ally_player(
@@ -479,3 +524,39 @@ class TestColorlessParityExtra4:
         assert combat.play_card(0)
         assert curse.base_replay_count == 0
         assert quest.base_replay_count == 0
+
+    def test_hidden_gem_prefers_attack_skill_power_draw_cards_over_status_fallback(self):
+        """Matches HiddenGem.cs: prefer playable Attack / Skill / Power cards when available."""
+        combat = _make_combat()
+        status = CardInstance(
+            card_id=CardId.WOUND,
+            cost=-1,
+            card_type=CardType.STATUS,
+            target_type=TargetType.NONE,
+            rarity=CardRarity.STATUS,
+            keywords=frozenset({"unplayable"}),
+        )
+        skill = make_defend_ironclad()
+        combat.hand = [make_hidden_gem()]
+        combat.draw_pile = [status, skill]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+
+        assert skill.base_replay_count == 2
+        assert status.base_replay_count == 0
+
+    def test_scrawl_plus_retains_and_draws_until_hand_is_full(self):
+        """Matches Scrawl.cs: upgraded Scrawl adds Retain and draws to the 10-card hand limit."""
+        combat = _make_combat()
+        kept = [make_defend_ironclad() for _ in range(8)]
+        drawn = [make_strike_ironclad(), make_strike_ironclad(), make_strike_ironclad()]
+        combat.hand = [make_scrawl(upgraded=True), *kept]
+        combat.draw_pile = list(drawn)
+        combat.energy = 1
+
+        assert combat.play_card(0)
+
+        assert make_scrawl(upgraded=True).is_retain
+        assert combat.hand == [*kept, drawn[0], drawn[1]]
+        assert combat.draw_pile == [drawn[2]]
