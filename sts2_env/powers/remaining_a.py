@@ -1628,6 +1628,7 @@ class ForegoneConclusionPower(PowerInstance):
     def before_hand_draw(self, owner: Creature, combat: CombatState) -> None:
         if not getattr(owner, "is_player", False):
             return
+        combat._shuffle_if_needed(owner)
         select = getattr(combat, "search_draw_pile_to_hand", None)
         if select is not None:
             select(owner, self.amount)

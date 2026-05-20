@@ -271,3 +271,21 @@ class TestRegentParityExtra3:
         assert chosen_a in combat.hand
         assert chosen_b in combat.hand
         assert combat.player.get_power_amount(PowerId.FOREGONE_CONCLUSION) == 0
+
+    def test_foregone_conclusion_shuffles_discard_before_selection_like_reference(self):
+        """Matches ForegoneConclusionPower.cs: ShuffleIfNecessary runs before selection."""
+        combat = _make_combat()
+        skill = create_card(CardId.FOREGONE_CONCLUSION)
+        shuffled_choice = create_card(CardId.DEFEND_REGENT)
+        combat.hand = [skill]
+        combat.draw_pile = []
+        combat.discard_pile = [shuffled_choice]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        combat.end_player_turn()
+
+        assert combat.pending_choice is None
+        assert shuffled_choice in combat.hand
+        assert shuffled_choice not in combat.discard_pile
+        assert combat.player.get_power_amount(PowerId.FOREGONE_CONCLUSION) == 0
