@@ -66,6 +66,11 @@ if TYPE_CHECKING:
 _NO_CARD_PLAY_FILTER = object()
 _NO_CARD_FILTER = object()
 
+_TORCH_HEAD_AMALGAM_ID = "TORCH_HEAD_AMALGAM"
+_QUEEN_ID = "QUEEN"
+_QUEEN_BURN_BRIGHT_MOVE_ID = "BURN_BRIGHT_FOR_ME_MOVE"
+_QUEEN_ENRAGE_MOVE_ID = "ENRAGE_MOVE"
+
 
 @dataclass(frozen=True)
 class CardPlayStartedEntry:
@@ -3048,6 +3053,7 @@ class CombatState:
                 if callable(after_death):
                     after_death(state.creature, creature, self)
         self._fire_card_after_death(creature, was_removal_prevented)
+        self._sync_monster_death_move_responses(creature)
         self._check_combat_end()
         return True
 
@@ -3059,6 +3065,25 @@ class CombatState:
                 for card in list(pile):
                     if card.card_id == CardId.MELANCHOLY:
                         card.set_combat_cost(max(0, card.cost - card.effect_vars.get("energy", 1)))
+
+    def _sync_monster_death_move_responses(self, creature: Creature) -> None:
+        if creature.monster_id != _TORCH_HEAD_AMALGAM_ID:
+            return
+        queen = next(
+            (
+                enemy for enemy in self.enemies
+                if enemy.monster_id == _QUEEN_ID
+                and enemy.side == creature.side
+                and enemy.is_alive
+            ),
+            None,
+        )
+        if queen is None:
+            return
+        queen_ai = self.enemy_ais.get(queen.combat_id)
+        if queen_ai is None or queen_ai.current_move.state_id != _QUEEN_BURN_BRIGHT_MOVE_ID:
+            return
+        self.set_enemy_state(queen, _QUEEN_ENRAGE_MOVE_ID)
 
     def _remove_power(self, owner: Creature, power_id: PowerId) -> None:
         power = owner.powers.pop(power_id, None)

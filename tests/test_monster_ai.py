@@ -2743,6 +2743,17 @@ class TestFixedRotation:
         queen_ai.roll_move(Rng(39))
         assert queen_ai.current_move.state_id == "OFF_WITH_YOUR_HEAD_MOVE"
 
+    def test_queen_switches_from_burn_bright_to_enrage_when_amalgam_dies(self):
+        combat = _make_combat(1239)
+        setup_queen_boss(combat, Rng(1239))
+        amalgam, queen = combat.enemies
+        queen_ai = combat.enemy_ais[queen.combat_id]
+        queen_ai._current_state_id = "BURN_BRIGHT_FOR_ME_MOVE"  # noqa: SLF001
+
+        combat.kill_creature(amalgam)
+
+        assert queen_ai.current_move.state_id == "ENRAGE_MOVE"
+
     def test_act4_weak_monsters_use_original_move_ids_and_stats(self):
         slug, slug_ai = create_corpse_slug(Rng(50), starter_idx=0)
         assert 25 <= slug.max_hp <= 27
