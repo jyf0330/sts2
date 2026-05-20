@@ -53,6 +53,18 @@ def _gain_block(creature: Creature, amount: int, combat: CombatState) -> None:
         fire_after_block_gained(creature, gained, combat, ValueProp.MOVE, None)
 
 
+def _gain_unpowered_block(creature: Creature, amount: int, combat: CombatState) -> None:
+    if combat.is_over:
+        return
+    before = creature.block
+    creature.gain_block(amount, unpowered=True)
+    gained = creature.block - before
+    if gained > 0:
+        from sts2_env.core.hooks import fire_after_block_gained
+
+        fire_after_block_gained(creature, gained, combat, ValueProp.UNPOWERED, None)
+
+
 # ========================================================================
 # WEAK ENCOUNTERS
 # ========================================================================
@@ -222,12 +234,12 @@ def create_stabbot(rng: Rng) -> tuple[Creature, MonsterAI]:
 def create_guardbot(rng: Rng) -> tuple[Creature, MonsterAI]:
     hp = rng.next_int(21, 25)
     creature = Creature(max_hp=hp, monster_id="GUARDBOT")
+    guard_block = 15
 
     def guard(combat: CombatState) -> None:
-        # Give block to all Fabricators
         for enemy in combat.alive_enemies:
             if enemy.monster_id == "FABRICATOR":
-                _gain_block(enemy, 15, combat)
+                _gain_unpowered_block(enemy, guard_block, combat)
 
     states: dict[str, MonsterState] = {
         "GUARD_MOVE": MoveState("GUARD_MOVE", guard, [defend_intent()], follow_up_id="GUARD_MOVE"),
@@ -269,24 +281,27 @@ def create_fabricator(rng: Rng) -> tuple[Creature, MonsterAI]:
     fabricating_strike_dmg = 18
     disintegrate_dmg = 11
 
-    _state = {"last_aggro": None, "last_defense": None}
+    _state = {"last_spawned_creator": None}
 
     aggro_creators = [create_zapbot, create_stabbot]
     defense_creators = [create_guardbot, create_noisebot]
 
-    def _spawn_aggro(combat: CombatState) -> None:
-        idx = 0 if _state["last_aggro"] == 1 else (1 if _state["last_aggro"] == 0 else rng.next_int(0, 1))
-        _state["last_aggro"] = idx
-        bot, bot_ai = aggro_creators[idx](rng)
+    def _spawn_bot(combat: CombatState, creators) -> None:
+        options = [
+            creator for creator in creators
+            if creator is not _state["last_spawned_creator"]
+        ]
+        creator = rng.choice(options)
+        _state["last_spawned_creator"] = creator
+        bot, bot_ai = creator(rng)
         combat.add_enemy(bot, bot_ai)
         combat.apply_power_to(bot, PowerId.MINION, 1, applier=creature)
 
+    def _spawn_aggro(combat: CombatState) -> None:
+        _spawn_bot(combat, aggro_creators)
+
     def _spawn_defense(combat: CombatState) -> None:
-        idx = 0 if _state["last_defense"] == 1 else (1 if _state["last_defense"] == 0 else rng.next_int(0, 1))
-        _state["last_defense"] = idx
-        bot, bot_ai = defense_creators[idx](rng)
-        combat.add_enemy(bot, bot_ai)
-        combat.apply_power_to(bot, PowerId.MINION, 1, applier=creature)
+        _spawn_bot(combat, defense_creators)
 
     def fabricate(combat: CombatState) -> None:
         _spawn_defense(combat)

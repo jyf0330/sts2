@@ -179,6 +179,18 @@ class _BlockHookCounterPower(PowerInstance):
             self.calls.append(amount)
 
 
+class _BlockEventCountPower(PowerInstance):
+    def __init__(self):
+        super().__init__(PowerId.JUGGERNAUT, 0)
+        self.card_or_move_block_events: list[int] = []
+
+    def after_block_gained(self, owner, creature, amount, combat):
+        if creature is owner:
+            self.card_or_move_block_events.append(
+                combat.count_card_or_monster_move_block_gained_events_this_turn(owner)
+            )
+
+
 def _noop(combat):
     """Dummy effect for test moves."""
     pass
@@ -2549,6 +2561,36 @@ class TestFixedRotation:
         assert len(lethal_combat.enemies) == 2
         assert lethal_combat.enemies[-1].get_power_amount(PowerId.HIGH_VOLTAGE) == 0
         assert lethal_combat.enemies[-1].get_power_amount(PowerId.MINION) == 0
+
+    def test_fabricator_spawn_history_is_shared_across_bot_pools(self):
+        rng_seed = 0
+        combat = _make_combat(rng_seed)
+        fabricator, fabricator_ai = create_fabricator(Rng(rng_seed))
+        combat.add_enemy(fabricator, fabricator_ai)
+        expected_first_fabricate = ["NOISEBOT", "STABBOT"]
+        expected_second_fabricate = ["NOISEBOT", "ZAPBOT"]
+
+        fabricator_ai.states["FABRICATE_MOVE"].perform(combat)
+        fabricator_ai.states["FABRICATE_MOVE"].perform(combat)
+
+        assert [enemy.monster_id for enemy in combat.enemies[1:3]] == expected_first_fabricate
+        assert [enemy.monster_id for enemy in combat.enemies[3:5]] == expected_second_fabricate
+
+    def test_guardbot_guard_block_is_unpowered_like_original(self):
+        rng_seed = 1239
+        guard_block = 15
+        no_card_or_move_block_events = 0
+        combat = _make_combat(rng_seed)
+        fabricator, fabricator_ai = create_fabricator(Rng(rng_seed))
+        guardbot, guardbot_ai = create_guardbot(Rng(rng_seed))
+        combat.add_enemy(fabricator, fabricator_ai)
+        combat.add_enemy(guardbot, guardbot_ai)
+        fabricator.powers[PowerId.JUGGERNAUT] = _BlockEventCountPower()
+
+        guardbot_ai.states["GUARD_MOVE"].perform(combat)
+
+        assert fabricator.block == guard_block
+        assert fabricator.powers[PowerId.JUGGERNAUT].card_or_move_block_events == [no_card_or_move_block_events]
 
     def test_noisebot_adds_dazed_to_each_living_player_not_osty(self):
         rng_seed = 1236
