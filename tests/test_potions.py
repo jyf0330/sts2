@@ -731,6 +731,54 @@ class TestPotionInstance:
             event,
         ]
 
+    def test_droplet_of_precognition_uses_owner_draw_pile_like_reference(self):
+        combat = _make_silent_combat()
+        ally = combat.add_ally_player(PlayerState(player_id=2, character_id="Silent", max_hp=70, current_hp=70))
+        ally_state = combat.combat_player_state_for(ally)
+        assert ally_state is not None
+        primary_draw = make_strike_silent()
+        ally_draw = make_neutralize()
+        combat.hand = []
+        combat.draw_pile = [primary_draw]
+        ally_state.hand = []
+        ally_state.draw = [ally_draw]
+        ally_state.zone_map["hand"] = ally_state.hand
+        ally_state.zone_map["draw"] = ally_state.draw
+        ally_state.potions = [create_potion("DropletOfPrecognition"), None, None]
+
+        assert combat.use_potion(0, owner=ally)
+
+        assert combat.pending_choice is None
+        assert ally_state.hand == [ally_draw]
+        assert ally_state.draw == []
+        assert combat.hand == []
+        assert combat.draw_pile == [primary_draw]
+
+    def test_liquid_memories_uses_owner_discard_pile_like_reference(self):
+        combat = _make_silent_combat()
+        ally = combat.add_ally_player(PlayerState(player_id=2, character_id="Silent", max_hp=70, current_hp=70))
+        ally_state = combat.combat_player_state_for(ally)
+        assert ally_state is not None
+        primary_discard = make_strike_silent()
+        ally_discard = make_defend_silent()
+        ally_discard.cost = ally_discard.original_cost = 1
+        combat.hand = []
+        combat.discard_pile = [primary_discard]
+        ally_state.hand = []
+        ally_state.discard = [ally_discard]
+        ally_state.zone_map["hand"] = ally_state.hand
+        ally_state.zone_map["discard"] = ally_state.discard
+        ally_state.potions = [create_potion("LiquidMemories"), None, None]
+
+        assert combat.use_potion(0, owner=ally)
+
+        assert combat.pending_choice is None
+        assert ally_state.hand == [ally_discard]
+        assert ally_state.discard == []
+        assert ally_discard.cost == 0
+        assert combat.hand == []
+        assert combat.discard_pile == [primary_discard]
+
     def test_snecko_oil_randomizes_non_x_costs_for_this_turn_only(self):
         combat = _make_silent_combat()
         hand_card = make_strike_silent()

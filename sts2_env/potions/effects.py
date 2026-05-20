@@ -527,14 +527,17 @@ def _distilled_chaos(combat: CombatState, user: Creature, target: Creature | Non
 def _droplet_of_precognition(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Choose a card from draw pile and add to hand.
     """
-    if combat.draw_pile:
-        candidates = sorted(combat.draw_pile, key=_source_card_order)
-        combat.request_card_choice(
-            prompt="Choose a draw pile card",
-            cards=candidates,
-            source_pile="draw",
-            resolver=combat.move_card_to_hand,
-        )
+    state = combat.combat_player_state_for(user)
+    if state is None or not state.draw:
+        return
+    candidates = sorted(state.draw, key=_source_card_order)
+    combat.request_card_choice(
+        prompt="Choose a draw pile card",
+        cards=candidates,
+        source_pile="draw",
+        resolver=combat.move_card_to_hand,
+        owner=user,
+    )
 
 
 def _entropic_brew(combat: CombatState, user: Creature, target: Creature | None) -> None:
@@ -590,7 +593,8 @@ def _gigantification_potion(combat: CombatState, user: Creature, target: Creatur
 def _liquid_memories(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Choose a card from discard pile, set cost to 0, add to hand.
     """
-    if not combat.discard_pile:
+    state = combat.combat_player_state_for(user)
+    if state is None or not state.discard:
         return
 
     def _resolver(selected):
@@ -601,9 +605,10 @@ def _liquid_memories(combat: CombatState, user: Creature, target: Creature | Non
 
     combat.request_card_choice(
         prompt="Choose a discard pile card",
-        cards=list(combat.discard_pile),
+        cards=list(state.discard),
         source_pile="discard",
         resolver=_resolver,
+        owner=user,
     )
 
 
