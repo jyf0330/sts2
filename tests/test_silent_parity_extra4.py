@@ -49,6 +49,17 @@ from sts2_env.monsters.act1_weak import create_shrinker_beetle
 from sts2_env.powers.base import PowerInstance
 
 
+BLUR_BLOCK = 5
+BLUR_UPGRADED_BLOCK = 8
+BLUR_POWER_AMOUNT = 1
+OUTBREAK_POWER_AMOUNT = 11
+OUTBREAK_UPGRADED_POWER_AMOUNT = 15
+SNEAKY_POWER_AMOUNT = 1
+SNEAKY_UPGRADED_POWER_AMOUNT = 2
+SPEEDSTER_POWER_AMOUNT = 2
+SPEEDSTER_UPGRADED_POWER_AMOUNT = 3
+
+
 class _CannotHitPower(PowerInstance):
     def __init__(self):
         super().__init__(PowerId.COVERED, 1)
@@ -490,6 +501,48 @@ class TestSilentParityExtra4:
         assert blocked.get_power_amount(PowerId.POISON) == 0
         assert hittable.get_power_amount(PowerId.POISON) == 2
 
+    def test_blur_card_gains_block_and_retains_it_until_next_player_turn(self):
+        combat = _make_combat()
+        combat.hand = [silent_cards.make_blur()]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.player.block == BLUR_BLOCK
+        assert combat.player.get_power_amount(PowerId.BLUR) == BLUR_POWER_AMOUNT
+
+        combat.player.clear_block(combat)
+        assert combat.player.block == BLUR_BLOCK
+
+        fire_after_side_turn_start(CombatSide.PLAYER, combat)
+        assert combat.player.get_power_amount(PowerId.BLUR) == 0
+
+        combat.player.clear_block(combat)
+        assert combat.player.block == 0
+
+    def test_upgraded_blur_card_uses_reference_block_value(self):
+        combat = _make_combat()
+        combat.hand = [silent_cards.make_blur(upgraded=True)]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.player.block == BLUR_UPGRADED_BLOCK
+        assert combat.player.get_power_amount(PowerId.BLUR) == BLUR_POWER_AMOUNT
+
+    def test_outbreak_card_applies_reference_power_amounts(self):
+        combat = _make_combat()
+        combat.hand = [silent_cards.make_outbreak()]
+        combat.energy = 1
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.OUTBREAK) == OUTBREAK_POWER_AMOUNT
+
+        upgraded_combat = _make_combat()
+        upgraded_combat.hand = [silent_cards.make_outbreak(upgraded=True)]
+        upgraded_combat.energy = 1
+
+        assert upgraded_combat.play_card(0)
+        assert upgraded_combat.player.get_power_amount(PowerId.OUTBREAK) == OUTBREAK_UPGRADED_POWER_AMOUNT
+
     def test_outbreak_damage_hits_only_hittable_enemies(self):
         combat = _make_combat(extra_enemies=1)
         blocked, hittable = combat.enemies
@@ -503,6 +556,21 @@ class TestSilentParityExtra4:
 
         assert blocked.current_hp == 100
         assert hittable.current_hp == 89
+
+    def test_speedster_card_applies_reference_power_amounts(self):
+        combat = _make_combat()
+        combat.hand = [silent_cards.make_speedster()]
+        combat.energy = 2
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.SPEEDSTER) == SPEEDSTER_POWER_AMOUNT
+
+        upgraded_combat = _make_combat()
+        upgraded_combat.hand = [silent_cards.make_speedster(upgraded=True)]
+        upgraded_combat.energy = 2
+
+        assert upgraded_combat.play_card(0)
+        assert upgraded_combat.player.get_power_amount(PowerId.SPEEDSTER) == SPEEDSTER_UPGRADED_POWER_AMOUNT
 
     def test_speedster_damage_hits_only_hittable_enemies(self):
         combat = _make_combat(extra_enemies=1)
@@ -518,6 +586,25 @@ class TestSilentParityExtra4:
 
         assert blocked.current_hp == 100
         assert hittable.current_hp == 98
+
+    def test_sneaky_card_applies_reference_power_amounts_and_sly_keyword(self):
+        card = silent_cards.make_sneaky()
+        assert card.is_sly
+        combat = _make_combat()
+        combat.hand = [card]
+        combat.energy = 2
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.SNEAKY) == SNEAKY_POWER_AMOUNT
+
+        upgraded_card = silent_cards.make_sneaky(upgraded=True)
+        assert upgraded_card.is_sly
+        upgraded_combat = _make_combat()
+        upgraded_combat.hand = [upgraded_card]
+        upgraded_combat.energy = 2
+
+        assert upgraded_combat.play_card(0)
+        assert upgraded_combat.player.get_power_amount(PowerId.SNEAKY) == SNEAKY_UPGRADED_POWER_AMOUNT
 
     def test_envenom_poison_uses_owner_applier_triggers_outbreak(self):
         combat = _make_combat(extra_enemies=2)

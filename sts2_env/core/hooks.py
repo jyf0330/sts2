@@ -790,6 +790,8 @@ def fire_after_side_turn_start(side: CombatSide, combat: CombatState) -> None:
     from sts2_env.powers.base import PowerInstance
 
     for owner, power in _iter_power_listeners(combat):
+        used_turn_hook = type(power).after_side_turn_start is not PowerInstance.after_side_turn_start
+        used_legacy_tick = False
         power.after_side_turn_start(owner, side, combat)
         if (
             owner.side == side
@@ -797,6 +799,10 @@ def fire_after_side_turn_start(side: CombatSide, combat: CombatState) -> None:
             and type(power).on_turn_start_own_side is not PowerInstance.on_turn_start_own_side
         ):
             power.on_turn_start_own_side(owner, combat)
+            used_legacy_tick = True
+        should_remove = power.amount == 0 if power.allow_negative else power.amount <= 0
+        if (used_turn_hook or used_legacy_tick) and should_remove and owner.powers.get(power.power_id) is power:
+            combat._remove_power(owner, power.power_id)
     for owner, relic in _iter_relic_listeners(combat):
         relic.after_side_turn_start(owner, side, combat)
 
