@@ -13,6 +13,7 @@ from sts2_env.cards.colorless import (
     make_eternal_armor,
     make_finesse,
     make_fisticuffs,
+    make_gang_up,
     make_gold_axe,
     make_hidden_gem,
     make_huddle_up,
@@ -545,6 +546,28 @@ class TestColorlessParityExtra4:
 
         assert skill.base_replay_count == 2
         assert status.base_replay_count == 0
+
+    def test_gang_up_counts_only_other_allied_powered_hits_on_same_target_this_turn(self):
+        """Matches GangUp.cs: multiplier filters by receiver, powered attack, dealer side, and dealer identity."""
+        combat = _make_combat()
+        ally = combat.add_ally_player(
+            PlayerState(player_id=2, character_id="Ironclad", max_hp=60, current_hp=60)
+        )
+        other_enemy, other_ai = create_shrinker_beetle(Rng(4243))
+        combat.add_enemy(other_enemy, other_ai)
+        target = combat.enemies[0]
+        target.current_hp = target.max_hp = 100
+        combat.record_damage_event(ally, target, ValueProp.MOVE, 1)
+        combat.record_damage_event(combat.player, target, ValueProp.MOVE, 1)
+        combat.record_damage_event(ally, other_enemy, ValueProp.MOVE, 1)
+        combat.record_damage_event(combat.enemies[1], target, ValueProp.MOVE, 1)
+        combat.record_damage_event(ally, target, ValueProp.MOVE | ValueProp.UNPOWERED, 1)
+        combat.hand = [make_gang_up()]
+        combat.energy = 1
+
+        assert combat.play_card(0, 0)
+
+        assert target.current_hp == 90
 
     def test_scrawl_plus_retains_and_draws_until_hand_is_full(self):
         """Matches Scrawl.cs: upgraded Scrawl adds Retain and draws to the 10-card hand limit."""
