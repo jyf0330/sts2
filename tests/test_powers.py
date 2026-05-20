@@ -39,6 +39,11 @@ from sts2_env.run.rooms import CombatRoom
 from sts2_env.run.run_state import PlayerState, RunState
 
 
+TEMPORARY_STRENGTH_AMOUNT = 3
+TEMPORARY_DEXTERITY_AMOUNT = 4
+TEMPORARY_FOCUS_AMOUNT = 2
+
+
 class _FirstChoiceRng:
     def choice(self, values):
         return list(values)[0]
@@ -908,6 +913,54 @@ class TestSkittishPower:
 
 
 class TestPowerAmountChangedHooks:
+    def test_temporary_strength_power_applies_strength_and_expires_on_owner_turn_end(self, simple_combat):
+        player = simple_combat.player
+
+        simple_combat.apply_power_to(player, PowerId.TEMPORARY_STRENGTH, TEMPORARY_STRENGTH_AMOUNT)
+
+        assert player.get_power_amount(PowerId.TEMPORARY_STRENGTH) == TEMPORARY_STRENGTH_AMOUNT
+        assert player.get_power_amount(PowerId.STRENGTH) == TEMPORARY_STRENGTH_AMOUNT
+
+        fire_after_turn_end(CombatSide.ENEMY, simple_combat)
+        assert player.get_power_amount(PowerId.TEMPORARY_STRENGTH) == TEMPORARY_STRENGTH_AMOUNT
+        assert player.get_power_amount(PowerId.STRENGTH) == TEMPORARY_STRENGTH_AMOUNT
+
+        fire_after_turn_end(CombatSide.PLAYER, simple_combat)
+        assert player.get_power_amount(PowerId.TEMPORARY_STRENGTH) == 0
+        assert player.get_power_amount(PowerId.STRENGTH) == 0
+
+    def test_temporary_dexterity_power_applies_dexterity_and_expires_on_owner_turn_end(self, simple_combat):
+        player = simple_combat.player
+
+        simple_combat.apply_power_to(player, PowerId.TEMPORARY_DEXTERITY, TEMPORARY_DEXTERITY_AMOUNT)
+
+        assert player.get_power_amount(PowerId.TEMPORARY_DEXTERITY) == TEMPORARY_DEXTERITY_AMOUNT
+        assert player.get_power_amount(PowerId.DEXTERITY) == TEMPORARY_DEXTERITY_AMOUNT
+
+        fire_after_turn_end(CombatSide.ENEMY, simple_combat)
+        assert player.get_power_amount(PowerId.TEMPORARY_DEXTERITY) == TEMPORARY_DEXTERITY_AMOUNT
+        assert player.get_power_amount(PowerId.DEXTERITY) == TEMPORARY_DEXTERITY_AMOUNT
+
+        fire_after_turn_end(CombatSide.PLAYER, simple_combat)
+        assert player.get_power_amount(PowerId.TEMPORARY_DEXTERITY) == 0
+        assert player.get_power_amount(PowerId.DEXTERITY) == 0
+
+    def test_temporary_focus_power_applies_focus_and_expires_on_owner_turn_end(self, simple_combat):
+        player = simple_combat.player
+
+        simple_combat.apply_power_to(player, PowerId.TEMPORARY_FOCUS, TEMPORARY_FOCUS_AMOUNT)
+
+        assert player.get_power_amount(PowerId.TEMPORARY_FOCUS) == TEMPORARY_FOCUS_AMOUNT
+        assert player.get_power_amount(PowerId.FOCUS) == TEMPORARY_FOCUS_AMOUNT
+
+        fire_after_turn_end(CombatSide.ENEMY, simple_combat)
+        assert player.get_power_amount(PowerId.TEMPORARY_FOCUS) == TEMPORARY_FOCUS_AMOUNT
+        assert player.get_power_amount(PowerId.FOCUS) == TEMPORARY_FOCUS_AMOUNT
+
+        fire_after_turn_end(CombatSide.PLAYER, simple_combat)
+        assert player.get_power_amount(PowerId.TEMPORARY_FOCUS) == 0
+        assert player.get_power_amount(PowerId.FOCUS) == 0
+
     def test_shroud_gains_block_when_owner_applies_doom(self, simple_combat):
         player = simple_combat.player
         enemy = simple_combat.enemies[0]

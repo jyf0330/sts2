@@ -170,23 +170,83 @@ def direct_test_reference_text(source: str) -> str:
         module = ast.parse(source)
     except SyntaxError:
         return ""
+    module_assignments = _module_level_assignments(module)
     chunks: list[str] = []
+    pending_names: set[str] = set()
     for node in module.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_"):
-            chunks.extend(_test_node_reference_chunks(node))
+            chunks.extend(_node_reference_chunks(node))
+            pending_names.update(_referenced_names(node))
         elif isinstance(node, ast.ClassDef) and node.name.startswith("Test"):
-            chunks.extend(_test_node_reference_chunks(node))
+            chunks.extend(_node_reference_chunks(node))
+            pending_names.update(_referenced_names(node))
+    chunks.extend(_module_assignment_reference_chunks(module_assignments, pending_names))
     return "\n".join(chunks)
 
 
-def _test_node_reference_chunks(node: ast.AST) -> list[str]:
+def _module_level_assignments(module: ast.Module) -> dict[str, ast.AST]:
+    assignments: dict[str, ast.AST] = {}
+    for node in module.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                for name in _assigned_names(target):
+                    assignments[name] = node
+        elif isinstance(node, ast.AnnAssign):
+            for name in _assigned_names(node.target):
+                assignments[name] = node
+    return assignments
+
+
+def _assigned_names(node: ast.AST) -> set[str]:
+    if isinstance(node, ast.Name):
+        return {node.id}
+    if isinstance(node, (ast.Tuple, ast.List)):
+        names: set[str] = set()
+        for element in node.elts:
+            names.update(_assigned_names(element))
+        return names
+    return set()
+
+
+def _referenced_names(node: ast.AST) -> set[str]:
+    return {
+        child.id
+        for child in ast.walk(node)
+        if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load)
+    }
+
+
+def _module_assignment_reference_chunks(
+    assignments: dict[str, ast.AST],
+    initial_names: set[str],
+) -> list[str]:
+    chunks: list[str] = []
+    pending_names = set(initial_names)
+    seen_names: set[str] = set()
+    seen_nodes: set[int] = set()
+    while pending_names:
+        name = pending_names.pop()
+        if name in seen_names:
+            continue
+        seen_names.add(name)
+        node = assignments.get(name)
+        if node is None or id(node) in seen_nodes:
+            continue
+        seen_nodes.add(id(node))
+        chunks.extend(_node_reference_chunks(node))
+        pending_names.update(_referenced_names(node))
+    return chunks
+
+
+def _node_reference_chunks(node: ast.AST) -> list[str]:
     chunks: list[str] = []
     name = getattr(node, "name", None)
     if isinstance(name, str):
         chunks.append(name)
-    docstring = ast.get_docstring(node)
-    if docstring:
-        chunks.append(docstring)
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)):
+        docstring = ast.get_docstring(node)
+        if docstring:
+            chunks.append(docstring)
     for child in ast.walk(node):
         if isinstance(child, ast.Constant) and isinstance(child.value, str):
             chunks.append(child.value)
