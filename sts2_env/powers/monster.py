@@ -33,6 +33,8 @@ if TYPE_CHECKING:
 _TERROR_EEL_ID = "TERROR_EEL"
 _TERROR_EEL_TERROR_MOVE_ID = "TERROR_MOVE"
 _TUNNELER_BITE_MOVE_ID = "BITE_MOVE"
+_LAGAVULIN_MATRIARCH_ID = "LAGAVULIN_MATRIARCH"
+_LAGAVULIN_MATRIARCH_SLASH_MOVE_ID = "SLASH_MOVE"
 
 
 def _gain_unpowered_block(owner: Creature, amount: int, combat: CombatState) -> int:
@@ -729,27 +731,8 @@ class AsleepPower(PowerInstance):
         if target is owner and damage > 0:
             owner.powers.pop(PowerId.PLATING, None)
             self.is_awake = True
-            if owner.monster_id == "LAGAVULIN_MATRIARCH":
-                ai = combat.enemy_ais.get(owner.combat_id)
-                if ai is not None and "SLASH_MOVE" in ai.states:
-                    from sts2_env.core.enums import IntentType
-                    from sts2_env.monsters.intents import Intent
-                    from sts2_env.monsters.state_machine import MoveState
-
-                    def _stunned(_: CombatState) -> None:
-                        return
-
-                    ai.states["STUNNED"] = MoveState(
-                        "STUNNED",
-                        _stunned,
-                        [Intent(IntentType.STUN)],
-                        follow_up_id="SLASH_MOVE",
-                        must_perform_once=True,
-                    )
-                    ai._current_state_id = "STUNNED"  # noqa: SLF001
-                    ai._performed_first_move = True  # noqa: SLF001
-                else:
-                    combat.stun_enemy(owner)
+            if owner.monster_id == _LAGAVULIN_MATRIARCH_ID:
+                combat.stun_enemy(owner, _LAGAVULIN_MATRIARCH_SLASH_MOVE_ID)
             else:
                 combat.stun_enemy(owner)
             owner.powers.pop(self.power_id, None)
@@ -763,8 +746,8 @@ class AsleepPower(PowerInstance):
                 owner.powers.pop(PowerId.PLATING, None)
                 self.is_awake = True
                 owner.powers.pop(self.power_id, None)
-                if owner.monster_id == "LAGAVULIN_MATRIARCH":
-                    combat.set_enemy_state(owner, "SLASH_MOVE")
+                if owner.monster_id == _LAGAVULIN_MATRIARCH_ID:
+                    combat.set_enemy_state(owner, _LAGAVULIN_MATRIARCH_SLASH_MOVE_ID)
                 else:
                     combat.stun_enemy(owner)
 
