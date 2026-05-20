@@ -9,15 +9,19 @@ from sts2_env.cards.ironclad import (
     make_bash,
     make_bloodletting,
     make_bully,
+    make_cruelty,
     make_feel_no_pain,
     make_fiend_fire,
+    make_hellraiser,
     make_inflame,
     make_juggernaut,
+    make_one_two_punch,
     make_perfected_strike,
     make_pommel_strike,
     make_rage,
     make_rampage,
     make_twin_strike,
+    make_vicious,
 )
 from sts2_env.cards.ironclad_basic import make_defend_ironclad, make_strike_ironclad
 from sts2_env.core.combat import CombatState
@@ -56,6 +60,18 @@ THORNS_LETHAL_DAMAGE = 5
 ATTACKER_FATAL_HP = 3
 TARGET_HP_FOR_POWER_INTERACTION_TEST = 50
 REFERENCE_ENEMY_HP = 100
+CRUELTY_POWER_AMOUNT = 25
+CRUELTY_PLUS_POWER_AMOUNT = 50
+CRUELTY_PLUS_VULNERABLE_STRIKE_DAMAGE = 12
+VICIOUS_POWER_AMOUNT = 1
+VICIOUS_PLUS_POWER_AMOUNT = 2
+ONE_TWO_PUNCH_POWER_AMOUNT = 1
+ONE_TWO_PUNCH_PLUS_POWER_AMOUNT = 2
+ONE_TWO_PUNCH_STRIKE_DAMAGE = 12
+HELLRAISER_POWER_AMOUNT = 1
+HELLRAISER_BASE_COST = 2
+HELLRAISER_PLUS_COST = 1
+VULNERABLE_TRIGGER_AMOUNT = 1
 
 
 def _make_combat() -> CombatState:
@@ -195,6 +211,114 @@ class TestIroncladCoreCardModelParity:
 
         assert combat.play_card(0)
         assert combat.player.get_power_amount(PowerId.STRENGTH) == INFLAME_PLUS_STRENGTH
+
+    def test_cruelty_applies_reference_power_amounts_and_boosts_vulnerable_damage(self):
+        """Matches Cruelty.cs: apply the reference power and raise powered Vulnerable damage."""
+        combat = _make_combat()
+        base_card = make_cruelty()
+        combat.hand = [base_card]
+        combat.energy = base_card.cost
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.CRUELTY) == CRUELTY_POWER_AMOUNT
+
+        upgraded_combat = _make_combat()
+        enemy = upgraded_combat.enemies[0]
+        start_hp = enemy.current_hp
+        upgraded_card = make_cruelty(upgraded=True)
+        upgraded_combat.hand = [upgraded_card]
+        upgraded_combat.energy = upgraded_card.cost
+
+        assert upgraded_combat.play_card(0)
+        assert upgraded_combat.player.get_power_amount(PowerId.CRUELTY) == CRUELTY_PLUS_POWER_AMOUNT
+
+        upgraded_combat.apply_power_to(enemy, PowerId.VULNERABLE, VULNERABLE_TRIGGER_AMOUNT)
+        strike = make_strike_ironclad()
+        upgraded_combat.hand = [strike]
+        upgraded_combat.energy = strike.cost
+
+        assert upgraded_combat.play_card(0, 0)
+        assert enemy.current_hp == start_hp - CRUELTY_PLUS_VULNERABLE_STRIKE_DAMAGE
+
+    def test_vicious_applies_reference_power_amounts_and_draws_when_owner_applies_vulnerable(self):
+        """Matches Vicious.cs: apply the reference power and draw after owner Vulnerable."""
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        drawn_card = make_strike_ironclad()
+        base_card = make_vicious()
+        combat.hand = [base_card]
+        combat.draw_pile = [drawn_card]
+        combat.energy = base_card.cost
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.VICIOUS) == VICIOUS_POWER_AMOUNT
+
+        combat.apply_power_to(enemy, PowerId.VULNERABLE, VULNERABLE_TRIGGER_AMOUNT)
+        assert combat.hand == [drawn_card]
+
+        upgraded_combat = _make_combat()
+        upgraded_enemy = upgraded_combat.enemies[0]
+        first_drawn = make_strike_ironclad()
+        second_drawn = make_defend_ironclad()
+        upgraded_card = make_vicious(upgraded=True)
+        upgraded_combat.hand = [upgraded_card]
+        upgraded_combat.draw_pile = [first_drawn, second_drawn]
+        upgraded_combat.energy = upgraded_card.cost
+
+        assert upgraded_combat.play_card(0)
+        assert upgraded_combat.player.get_power_amount(PowerId.VICIOUS) == VICIOUS_PLUS_POWER_AMOUNT
+
+        upgraded_combat.apply_power_to(upgraded_enemy, PowerId.VULNERABLE, VULNERABLE_TRIGGER_AMOUNT)
+        assert upgraded_combat.hand == [first_drawn, second_drawn]
+
+    def test_one_two_punch_applies_reference_power_amounts_and_replays_next_attack(self):
+        """Matches OneTwoPunch.cs: apply the reference power and replay the next owner attack."""
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        start_hp = enemy.current_hp
+        base_card = make_one_two_punch()
+        combat.hand = [base_card]
+        combat.energy = base_card.cost
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.ONE_TWO_PUNCH) == ONE_TWO_PUNCH_POWER_AMOUNT
+
+        strike = make_strike_ironclad()
+        combat.hand = [strike]
+        combat.energy = strike.cost
+
+        assert combat.play_card(0, 0)
+        assert enemy.current_hp == start_hp - ONE_TWO_PUNCH_STRIKE_DAMAGE
+        assert combat.player.get_power_amount(PowerId.ONE_TWO_PUNCH) == 0
+
+        upgraded_combat = _make_combat()
+        upgraded_card = make_one_two_punch(upgraded=True)
+        upgraded_combat.hand = [upgraded_card]
+        upgraded_combat.energy = upgraded_card.cost
+
+        assert upgraded_combat.play_card(0)
+        assert upgraded_combat.player.get_power_amount(PowerId.ONE_TWO_PUNCH) == ONE_TWO_PUNCH_PLUS_POWER_AMOUNT
+
+    def test_hellraiser_applies_reference_power_and_auto_plays_drawn_strike(self):
+        """Matches Hellraiser.cs: cost upgrade applies, and drawn Strikes auto-play."""
+        assert make_hellraiser().cost == HELLRAISER_BASE_COST
+        assert make_hellraiser(upgraded=True).cost == HELLRAISER_PLUS_COST
+
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        strike = make_strike_ironclad()
+        start_hp = enemy.current_hp
+        base_card = make_hellraiser()
+        combat.hand = [base_card]
+        combat.draw_pile = [strike]
+        combat.energy = base_card.cost
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.HELLRAISER) == HELLRAISER_POWER_AMOUNT
+
+        combat.draw_cards(combat.player, 1)
+        assert strike not in combat.hand
+        assert enemy.current_hp == start_hp - STRIKE_DAMAGE
 
     def test_perfected_strike_counts_all_strike_cards_including_itself(self):
         """Matches PerfectedStrike.cs: scale from all owner strike cards in combat state."""
