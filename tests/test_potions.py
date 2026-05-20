@@ -93,6 +93,10 @@ class _CannotHitPower(PowerInstance):
 
 FIRST_ALLY_PLAYER_TARGET_INDEX = 1
 INVALID_PLAYER_TARGET_INDEX = 2
+ALLY_PLAYER_ID = 2
+ALLY_MAX_HP = 70
+PRIMARY_POTION_SLOT_INDEX = 0
+FIRST_CARD_CHOICE_INDEX = 0
 ENERGY_POTION_ENERGY_GAIN = 2
 SWIFT_POTION_DRAW_COUNT = 3
 CURE_ALL_ENERGY_GAIN = 1
@@ -778,6 +782,88 @@ class TestPotionInstance:
         assert ally_discard.cost == 0
         assert combat.hand == []
         assert combat.discard_pile == [primary_discard]
+
+    def test_ashwater_exhausts_ally_hand(self):
+        combat = _make_silent_combat()
+        ally = combat.add_ally_player(PlayerState(player_id=ALLY_PLAYER_ID, character_id="Silent", max_hp=ALLY_MAX_HP, current_hp=ALLY_MAX_HP))
+        ally_state = combat.combat_player_state_for(ally)
+        assert ally_state is not None
+        primary_card = make_strike_silent()
+        ally_card = make_defend_silent()
+        primary_card.owner = combat.player
+        ally_card.owner = ally
+        combat.hand = [primary_card]
+        ally_state.hand = [ally_card]
+        ally_state.zone_map["hand"] = ally_state.hand
+        ally_state.potions = [create_potion("Ashwater"), None, None]
+
+        assert combat.use_potion(PRIMARY_POTION_SLOT_INDEX, owner=ally)
+        assert combat.pending_choice is not None
+        assert combat.resolve_pending_choice(FIRST_CARD_CHOICE_INDEX)
+        assert combat.resolve_pending_choice(None)
+
+        assert primary_card in combat.hand
+        assert ally_card not in ally_state.hand
+        assert ally_card in ally_state.exhaust
+
+    def test_gamblers_brew_discards_and_redraws_ally_hand(self):
+        combat = _make_silent_combat()
+        ally = combat.add_ally_player(PlayerState(player_id=ALLY_PLAYER_ID, character_id="Silent", max_hp=ALLY_MAX_HP, current_hp=ALLY_MAX_HP))
+        ally_state = combat.combat_player_state_for(ally)
+        assert ally_state is not None
+        primary_card = make_strike_silent()
+        ally_card = make_defend_silent()
+        redraw_card = make_neutralize()
+        primary_card.owner = combat.player
+        ally_card.owner = ally
+        redraw_card.owner = ally
+        combat.hand = [primary_card]
+        combat.draw_pile = [make_strike_silent()]
+        ally_state.hand = [ally_card]
+        ally_state.draw = [redraw_card]
+        ally_state.zone_map["hand"] = ally_state.hand
+        ally_state.zone_map["draw"] = ally_state.draw
+        ally_state.zone_map["discard"] = ally_state.discard
+        ally_state.potions = [create_potion("GamblersBrew"), None, None]
+
+        assert combat.use_potion(PRIMARY_POTION_SLOT_INDEX, owner=ally)
+        assert combat.pending_choice is not None
+        assert combat.resolve_pending_choice(FIRST_CARD_CHOICE_INDEX)
+        assert combat.resolve_pending_choice(None)
+
+        assert primary_card in combat.hand
+        assert ally_card not in ally_state.hand
+        assert ally_card in ally_state.discard
+        assert redraw_card in ally_state.hand
+        assert redraw_card not in ally_state.draw
+
+    def test_touch_of_insanity_sets_ally_hand_card_free(self):
+        combat = _make_silent_combat()
+        ally = combat.add_ally_player(PlayerState(player_id=ALLY_PLAYER_ID, character_id="Silent", max_hp=ALLY_MAX_HP, current_hp=ALLY_MAX_HP))
+        ally_state = combat.combat_player_state_for(ally)
+        assert ally_state is not None
+        primary_card = make_strike_silent()
+        ally_first = make_defend_silent()
+        ally_second = make_neutralize()
+        primary_card.cost = primary_card.original_cost = 1
+        ally_first.cost = ally_first.original_cost = 1
+        ally_second.cost = ally_second.original_cost = 1
+        primary_card.owner = combat.player
+        ally_first.owner = ally
+        ally_second.owner = ally
+        combat.hand = [primary_card]
+        ally_state.hand = [ally_first, ally_second]
+        ally_state.zone_map["hand"] = ally_state.hand
+        ally_state.potions = [create_potion("TouchOfInsanity"), None, None]
+
+        assert combat.use_potion(PRIMARY_POTION_SLOT_INDEX, owner=ally)
+        assert combat.pending_choice is not None
+        assert combat.resolve_pending_choice(FIRST_CARD_CHOICE_INDEX)
+        assert combat.pending_choice is None
+
+        assert primary_card.cost == 1
+        assert ally_first.cost == 0
+        assert ally_second.cost == 1
 
     def test_snecko_oil_randomizes_non_x_costs_for_this_turn_only(self):
         combat = _make_silent_combat()

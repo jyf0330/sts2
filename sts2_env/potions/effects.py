@@ -302,16 +302,18 @@ def _weak_potion(combat: CombatState, user: Creature, target: Creature | None) -
 def _ashwater(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Exhaust any number of cards from hand.
     """
-    if not combat.hand:
+    owner_state = combat.combat_player_state_for(user)
+    if owner_state is None or not owner_state.hand:
         return
     combat.request_multi_card_choice(
         prompt="Choose any number of hand cards to exhaust",
-        cards=list(combat.hand),
+        cards=list(owner_state.hand),
         source_pile="hand",
         resolver=lambda selected_cards: [combat.exhaust_card(selected) for selected in selected_cards],
         min_count=0,
-        max_count=len(combat.hand),
+        max_count=len(owner_state.hand),
         allow_skip=True,
+        owner=user,
     )
 
 
@@ -377,7 +379,8 @@ def _fysh_oil(combat: CombatState, user: Creature, target: Creature | None) -> N
 def _gamblers_brew(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Discard any number of cards and draw that many.
     """
-    if not combat.hand:
+    owner_state = combat.combat_player_state_for(user)
+    if owner_state is None or not owner_state.hand:
         return
 
     def _resolver(selected_cards):
@@ -386,12 +389,13 @@ def _gamblers_brew(combat: CombatState, user: Creature, target: Creature | None)
 
     combat.request_multi_card_choice(
         prompt="Choose any number of hand cards to discard",
-        cards=list(combat.hand),
+        cards=list(owner_state.hand),
         source_pile="hand",
         resolver=_resolver,
         min_count=0,
-        max_count=len(combat.hand),
+        max_count=len(owner_state.hand),
         allow_skip=True,
+        owner=user,
     )
 
 
@@ -461,7 +465,10 @@ def _stable_serum(combat: CombatState, user: Creature, target: Creature | None) 
 def _touch_of_insanity(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Choose a card from hand; it costs 0 for the rest of combat.
     """
-    candidates = [c for c in combat.hand if c.cost > 0 or c.star_cost > 0]
+    owner_state = combat.combat_player_state_for(user)
+    if owner_state is None:
+        return
+    candidates = [c for c in owner_state.hand if c.cost > 0 or c.star_cost > 0]
     if not candidates:
         return
 
@@ -475,6 +482,7 @@ def _touch_of_insanity(combat: CombatState, user: Creature, target: Creature | N
         cards=candidates,
         source_pile="hand",
         resolver=_resolver,
+        owner=user,
     )
 
 
