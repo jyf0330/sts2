@@ -18,6 +18,7 @@ from sts2_env.monsters.act1_weak import create_shrinker_beetle
 from sts2_env.run.reward_objects import AddCardsReward
 from sts2_env.run.rooms import RoomVisitContext
 from sts2_env.run.run_state import RunState
+from sts2_env.relics.registry import create_relic_by_name
 
 
 def _make_combat(relics: list[str] | None = None, *, seed: int = 991) -> CombatState:
@@ -486,6 +487,31 @@ class TestRelicParityEventExtra11:
         assert combat.play_card(0, 0)
         assert combat.is_over and combat.player_won
         assert combat.player.max_hp == max_hp_before + 1
+
+    def test_dusty_tome_sets_up_one_non_transcendence_ancient_card_for_each_character(self):
+        """Matches DustyTome.cs: random Ancient card excludes ArchaicTooth Transcendence cards."""
+        expected_by_character = {
+            "Ironclad": CardId.CORRUPTION_CARD,
+            "Silent": CardId.WRAITH_FORM,
+            "Defect": CardId.BIASED_COGNITION_CARD,
+            "Regent": CardId.THE_SEALED_THRONE,
+            "Necrobinder": CardId.FORBIDDEN_GRIMOIRE,
+        }
+
+        for character_id, expected_card_id in expected_by_character.items():
+            run_state = RunState(seed=995, character_id=character_id)
+            dusty_tome = create_relic_by_name("DUSTY_TOME")
+
+            assert dusty_tome.setup_for_player(run_state.player)
+            assert dusty_tome._ancient_card_id == expected_card_id.name  # noqa: SLF001
+
+            run_state.player.relics.append(dusty_tome.relic_id.name)
+            run_state.player.relic_objects.append(dusty_tome)
+            dusty_tome.after_obtained(run_state.player)
+
+            added = run_state.player.deck[-1]
+            assert added.card_id == expected_card_id
+            assert added.upgraded is True
 
     def test_jewelry_box_deferred_followups_queue_apotheosis_reward(self):
         run_state = RunState(seed=996, character_id="Ironclad")
