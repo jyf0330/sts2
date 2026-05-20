@@ -40,6 +40,10 @@ if TYPE_CHECKING:
     from sts2_env.core.combat import CombatState
 
 
+_SLUMBERING_BEETLE_ID = "SLUMBERING_BEETLE"
+_SLUMBERING_BEETLE_ROLL_OUT_MOVE_ID = "ROLL_OUT_MOVE"
+
+
 def _gain_unpowered_block(owner: Creature, amount: int, combat: CombatState) -> int:
     before = owner.block
     owner.gain_block(amount, unpowered=True)
@@ -794,6 +798,12 @@ class SlumberPower(PowerInstance):
             if self.amount <= 0:
                 self.is_awake = True
                 owner.powers.pop(self.power_id, None)
+                if owner.monster_id == _SLUMBERING_BEETLE_ID:
+                    def wake_up(_: CombatState) -> None:
+                        owner.powers.pop(PowerId.PLATING, None)
+                        self.is_awake = True
+
+                    combat.stun_enemy(owner, _SLUMBERING_BEETLE_ROLL_OUT_MOVE_ID, wake_up)
 
     def after_turn_end(self, owner: Creature, side: CombatSide, combat: CombatState) -> None:
         if side == owner.side:
@@ -801,6 +811,9 @@ class SlumberPower(PowerInstance):
             if self.amount <= 0:
                 self.is_awake = True
                 owner.powers.pop(self.power_id, None)
+                if owner.monster_id == _SLUMBERING_BEETLE_ID:
+                    owner.powers.pop(PowerId.PLATING, None)
+                    combat.set_enemy_state(owner, _SLUMBERING_BEETLE_ROLL_OUT_MOVE_ID)
 
 
 # ---------------------------------------------------------------------------

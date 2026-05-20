@@ -1621,6 +1621,28 @@ class TestFixedRotation:
         toad_ai.states["SPIKE_EXPLOSION_MOVE"].perform(combat)
         assert toad.get_power_amount(PowerId.THORNS) == 0
 
+    def test_slumbering_beetle_damage_wake_stuns_before_roll_out(self):
+        rng_seed = 1238
+        slumber_amount = 1
+        stunned_move_id = "STUNNED"
+        rollout_move_id = "ROLL_OUT_MOVE"
+        combat = _make_combat(rng_seed)
+        beetle, beetle_ai = create_slumbering_beetle(Rng(rng_seed))
+        combat.add_enemy(beetle, beetle_ai)
+        beetle.powers[PowerId.SLUMBER].amount = slumber_amount
+
+        apply_damage(beetle, slumber_amount, ValueProp.MOVE, combat, combat.player)
+
+        assert PowerId.SLUMBER not in beetle.powers
+        assert beetle_ai.current_move.state_id == stunned_move_id
+
+        beetle_ai.current_move.perform(combat)
+        beetle_ai.on_move_performed()
+        beetle_ai.roll_move(Rng(rng_seed))
+
+        assert PowerId.PLATING not in beetle.powers
+        assert beetle_ai.current_move.state_id == rollout_move_id
+
     def test_act2_obscura_summons_original_parafright(self):
         parafright, parafright_ai = create_parafright(Rng(39))
         assert parafright.max_hp == 21

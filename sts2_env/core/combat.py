@@ -70,6 +70,7 @@ _TORCH_HEAD_AMALGAM_ID = "TORCH_HEAD_AMALGAM"
 _QUEEN_ID = "QUEEN"
 _QUEEN_BURN_BRIGHT_MOVE_ID = "BURN_BRIGHT_FOR_ME_MOVE"
 _QUEEN_ENRAGE_MOVE_ID = "ENRAGE_MOVE"
+_STUNNED_MOVE_ID = "STUNNED"
 
 
 @dataclass(frozen=True)
@@ -3316,7 +3317,12 @@ class CombatState:
             blade.after_forged()
         fire_after_forge(self, amount, owner, source)
 
-    def stun_enemy(self, creature: Creature, next_state_id: str | None = None) -> bool:
+    def stun_enemy(
+        self,
+        creature: Creature,
+        next_state_id: str | None = None,
+        stun_effect: Callable[[CombatState], None] | None = None,
+    ) -> bool:
         """Replace an enemy's next move with a one-turn stun."""
         if creature is None or creature.is_player or creature.is_dead:
             return False
@@ -3330,12 +3336,14 @@ class CombatState:
 
         next_state_id = next_state_id or ai.current_move.state_id
 
-        def _stunned(_: CombatState) -> None:
+        def _stunned(combat: CombatState) -> None:
+            if stun_effect is not None:
+                stun_effect(combat)
             return
 
-        stunned = MoveState("STUNNED", _stunned, [Intent(IntentType.STUN)], follow_up_id=next_state_id, must_perform_once=True)
-        ai.states["STUNNED"] = stunned
-        ai._current_state_id = "STUNNED"  # noqa: SLF001
+        stunned = MoveState(_STUNNED_MOVE_ID, _stunned, [Intent(IntentType.STUN)], follow_up_id=next_state_id, must_perform_once=True)
+        ai.states[_STUNNED_MOVE_ID] = stunned
+        ai._current_state_id = _STUNNED_MOVE_ID  # noqa: SLF001
         ai._performed_first_move = True  # noqa: SLF001
         return True
 
