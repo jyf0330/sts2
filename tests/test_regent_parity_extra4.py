@@ -27,6 +27,7 @@ from sts2_env.cards.regent import (
     make_kingly_punch,
     make_know_thy_place,
     make_lunar_blast,
+    make_monarchs_gaze_card,
     make_monologue_card,
     make_neutron_aegis,
     make_patter,
@@ -42,7 +43,7 @@ from sts2_env.cards.regent import (
     make_venerate,
 )
 from sts2_env.core.combat import CombatState
-from sts2_env.core.enums import CardId, CombatSide, PowerId
+from sts2_env.core.enums import CardId, CombatSide, PowerId, ValueProp
 from sts2_env.core.hooks import fire_after_turn_end
 from sts2_env.core.rng import Rng
 from sts2_env.monsters.act1_weak import create_shrinker_beetle
@@ -54,6 +55,7 @@ PATTER_BLOCK = 8
 PATTER_VIGOR = 2
 PATTER_UPGRADED_BLOCK = 10
 PATTER_UPGRADED_VIGOR = 3
+MONARCHS_GAZE_STRENGTH_LOSS = 1
 
 
 def _make_combat(*, extra_enemies: int = 0) -> CombatState:
@@ -210,6 +212,29 @@ class TestRegentParityExtra4:
         assert combat.play_card(0, 0)
 
         assert enemy.current_hp == 88
+
+    def test_monarchs_gaze_applies_temporary_strength_down_after_powered_attack_only(self):
+        combat = _make_combat()
+        enemy = combat.enemies[0]
+        enemy.current_hp = enemy.max_hp = 100
+        combat.hand = [make_monarchs_gaze_card(), make_shining_strike()]
+        combat.energy = 4
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.MONARCHS_GAZE) == MONARCHS_GAZE_STRENGTH_LOSS
+
+        combat.deal_damage(combat.player, enemy, 4, ValueProp.UNPOWERED | ValueProp.MOVE)
+        assert enemy.get_power_amount(PowerId.MONARCHS_GAZE_STRENGTH_DOWN) == 0
+        assert enemy.get_power_amount(PowerId.STRENGTH) == 0
+
+        assert combat.play_card(0, 0)
+        assert enemy.get_power_amount(PowerId.MONARCHS_GAZE_STRENGTH_DOWN) == MONARCHS_GAZE_STRENGTH_LOSS
+        assert enemy.get_power_amount(PowerId.STRENGTH) == -MONARCHS_GAZE_STRENGTH_LOSS
+
+        fire_after_turn_end(CombatSide.ENEMY, combat)
+
+        assert enemy.get_power_amount(PowerId.MONARCHS_GAZE_STRENGTH_DOWN) == 0
+        assert enemy.get_power_amount(PowerId.STRENGTH) == 0
 
     def test_neutron_aegis_spends_stars_and_applies_plating(self):
         combat = _make_combat()
