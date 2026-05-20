@@ -37,6 +37,9 @@ if TYPE_CHECKING:
     from sts2_env.core.combat import CombatState
 
 
+_BOWLBUG_ROCK_ID = "BOWLBUG_ROCK"
+
+
 def _gain_unpowered_block(owner: Creature, amount: int, combat: CombatState) -> int:
     before = owner.block
     owner.gain_block(amount, unpowered=True)
@@ -525,11 +528,8 @@ class ImbalancedPower(PowerInstance):
 
     C# ref: ImbalancedPower.cs
     - AfterDamageGiven: if dealer == owner and damage was fully blocked,
-      stun the owner.
+      stun the owner. BowlbugRock instead sets IsOffBalance for its next move.
     StackType.Single.
-
-    Simplified: Stun is handled by the monster AI. This power signals via
-    a flag that the AI checks.
     """
 
     power_type = PowerType.DEBUFF
@@ -545,9 +545,10 @@ class ImbalancedPower(PowerInstance):
     ) -> None:
         result = getattr(combat, "_active_damage_result", None)
         if dealer is owner and getattr(result, "was_fully_blocked", False):
-            # Damage was fully blocked => stun
-            self.was_fully_blocked = True
-            # Stun is handled by the monster AI system
+            if owner.monster_id == _BOWLBUG_ROCK_ID:
+                self.was_fully_blocked = True
+            else:
+                combat.stun_enemy(owner)
 
 
 # ---------------------------------------------------------------------------

@@ -646,15 +646,17 @@ class TestDamageModifierInteractions:
     def test_imbalanced_triggers_only_when_damage_was_fully_blocked(self, simple_combat):
         player = simple_combat.player
         enemy = simple_combat.enemies[0]
+        enemy_ai = simple_combat.enemy_ais[enemy.combat_id]
+        starting_move_id = enemy_ai.current_move.state_id
+        stunned_move_id = "STUNNED"
         enemy.apply_power(PowerId.IMBALANCED, 1)
-        imbalanced = enemy.powers[PowerId.IMBALANCED]
 
         simple_combat.deal_damage(enemy, player, 0, ValueProp.MOVE)
-        assert imbalanced.was_fully_blocked is False
+        assert enemy_ai.current_move.state_id == starting_move_id
 
         player.block = 5
         simple_combat.deal_damage(enemy, player, 3, ValueProp.MOVE)
-        assert imbalanced.was_fully_blocked is True
+        assert enemy_ai.current_move.state_id == stunned_move_id
 
     def test_slippery_decrements_when_damage_is_blocked(self, simple_combat):
         player = simple_combat.player
