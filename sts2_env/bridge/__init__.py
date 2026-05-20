@@ -5,6 +5,8 @@ from sts2_env.bridge.state_adapter import StateAdapter
 from sts2_env.bridge.protocol import (
     Phase,
     ActionType,
+    BridgeAction,
+    BridgeStateType,
     MSG_TYPE_GAME_STATE,
     DEFAULT_HOST,
     DEFAULT_PORT,
@@ -15,6 +17,8 @@ __all__ = [
     "StateAdapter",
     "Phase",
     "ActionType",
+    "BridgeAction",
+    "BridgeStateType",
     "MSG_TYPE_GAME_STATE",
     "DEFAULT_HOST",
     "DEFAULT_PORT",

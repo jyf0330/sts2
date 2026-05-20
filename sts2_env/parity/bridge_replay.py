@@ -23,16 +23,17 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
+from sts2_env.bridge.protocol import BridgeAction, BridgeStateType
 from sts2_env.core.enums import CardType, TargetType
 
 if TYPE_CHECKING:
     from sts2_env.core.combat import CombatState
     from sts2_env.run.run_manager import RunManager
 
-STATE_TYPE_COMBAT = "combat_action"
-STATE_TYPE_CARD_SELECT = "card_select"
-STATE_TYPE_MAP_SELECT = "map_select"
-STATE_TYPE_CARD_REWARD = "card_reward"
+STATE_TYPE_COMBAT = BridgeStateType.COMBAT_ACTION
+STATE_TYPE_CARD_SELECT = BridgeStateType.CARD_SELECT
+STATE_TYPE_MAP_SELECT = BridgeStateType.MAP_SELECT
+STATE_TYPE_CARD_REWARD = BridgeStateType.CARD_REWARD
 SUPPORTED_STATE_TYPES = frozenset({
     STATE_TYPE_COMBAT,
     STATE_TYPE_CARD_SELECT,
@@ -154,19 +155,19 @@ class BridgeReplayRecorder:
 
     def play_card(self, card_index: int, target_index: int = -1) -> None:
         self.send_action({
-            "action": "play",
+            "action": BridgeAction.PLAY,
             "card_index": card_index,
             "target_index": target_index,
         })
 
     def end_turn(self) -> None:
-        self.send_action({"action": "end_turn"})
+        self.send_action({"action": BridgeAction.END_TURN})
 
     def choose(self, index: int) -> None:
-        self.send_action({"action": "choose", "index": index})
+        self.send_action({"action": BridgeAction.CHOOSE, "index": index})
 
     def use_potion(self, slot: int, target_index: int = -1) -> None:
-        self.send_action({"action": "potion", "slot": slot, "target_index": target_index})
+        self.send_action({"action": BridgeAction.POTION, "slot": slot, "target_index": target_index})
 
     def save(self, path: str | Path) -> Path:
         return save_replay_trace(self.trace, path)
@@ -418,7 +419,7 @@ def run_manager_to_bridge_state(run: RunManager) -> dict[str, Any]:
                 }
                 for action in card_actions
             ],
-            "can_skip": any(action.get("action") == "skip" for action in actions),
+            "can_skip": any(action.get("action") == BridgeAction.SKIP for action in actions),
         })
 
     raise ValueError(f"RunManager phase {phase!r} is not supported by the replay harness")
@@ -472,23 +473,28 @@ def _compare_state(expected: dict[str, Any], actual: dict[str, Any], label: str)
 
 def _apply_replay_action(combat: CombatState, action: dict[str, Any]) -> None:
     action_type = action.get("action")
-    if action_type == "play":
+    if action_type == BridgeAction.PLAY:
         success = combat.play_card(int(action["card_index"]), action.get("target_index"))
         if not success:
             raise AssertionError(f"Simulator failed to apply play action: {action}")
         return
-    if action_type == "end_turn":
+    if action_type == BridgeAction.END_TURN:
         combat.end_player_turn()
         return
-    if action_type == "choose":
+    if action_type == BridgeAction.CHOOSE:
         success = combat.resolve_pending_choice(int(action["index"]))
         if not success:
             raise AssertionError(f"Simulator failed to apply choose action: {action}")
         return
-    if action_type == "skip":
+    if action_type == BridgeAction.SKIP:
         success = combat.resolve_pending_choice(None)
         if not success:
             raise AssertionError(f"Simulator failed to apply skip action: {action}")
+        return
+    if action_type == BridgeAction.POTION:
+        success = combat.use_potion(int(action["slot"]), target_index=action.get("target_index"))
+        if not success:
+            raise AssertionError(f"Simulator failed to apply potion action: {action}")
         return
     raise ValueError(f"Unsupported replay action type: {action_type!r}")
 
@@ -548,8 +554,8 @@ def _apply_run_replay_action(run: RunManager, current_state_type: str, action: d
         return
 
     if current_state_type == STATE_TYPE_CARD_REWARD:
-        if action.get("action") == "skip":
-            run.take_action({"action": "skip"})
+        if action.get("action") == BridgeAction.SKIP:
+            run.take_action({"action": BridgeAction.SKIP})
             return
         index = int(action.get("index", -1))
         run.take_action({"action": "pick_card", "index": index})

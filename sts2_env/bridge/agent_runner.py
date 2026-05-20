@@ -25,7 +25,7 @@ from typing import Any
 import numpy as np
 
 from sts2_env.bridge.client import STS2GameClient
-from sts2_env.bridge.protocol import Phase
+from sts2_env.bridge.protocol import BridgeStateType, Phase
 from sts2_env.bridge.state_adapter import StateAdapter
 from sts2_env.parity.bridge_replay import BridgeReplayRecorder
 
@@ -119,15 +119,15 @@ def run_agent(
                     _reconnect_with_retry(client)
                     continue
 
-                # Mod sends "type" field (e.g. "combat_action", "map_select", "card_reward")
+                # Mod sends a bridge state "type" field; map it to runner phases.
                 # Map to our Phase constants
                 msg_type = state.get("type", "")
                 phase = {
-                    "combat_action": Phase.COMBAT_PLAY,
+                    BridgeStateType.COMBAT_ACTION: Phase.COMBAT_PLAY,
                     "game_state": state.get("phase", "UNKNOWN"),
-                    "map_select": Phase.MAP_SELECT,
-                    "card_reward": Phase.CARD_REWARD,
-                    "card_select": Phase.CARD_REWARD,
+                    BridgeStateType.MAP_SELECT: Phase.MAP_SELECT,
+                    BridgeStateType.CARD_REWARD: Phase.CARD_REWARD,
+                    BridgeStateType.CARD_SELECT: Phase.CARD_REWARD,
                     "rest_site": Phase.REST,
                     "shop": Phase.SHOP,
                     "event": Phase.EVENT,
@@ -197,7 +197,7 @@ def run_agent(
 
                 elif phase == Phase.CARD_REWARD:
                     # ---- Card reward: pick best card ----
-                    if msg_type == "card_select":
+                    if msg_type == BridgeStateType.CARD_SELECT:
                         cards = state.get("cards", [])
                         min_select = state.get("min_select", 1)
                         max_select = state.get("max_select", 1)

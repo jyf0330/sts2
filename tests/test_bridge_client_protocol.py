@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from sts2_env.bridge.protocol import BridgeAction
 from sts2_env.bridge.client import STS2GameClient
 
 
@@ -27,9 +28,9 @@ def test_send_action_echoes_last_request_id():
     client._connected = True  # noqa: SLF001
     client._last_request_id = "abc123"  # noqa: SLF001
 
-    client.send_action({"action": "end_turn"})
+    client.send_action({"action": BridgeAction.END_TURN})
 
-    assert _last_payload(client) == {"action": "end_turn", "request_id": "abc123"}
+    assert _last_payload(client) == {"action": BridgeAction.END_TURN, "request_id": "abc123"}
     assert client._last_request_id is None  # noqa: SLF001
 
 
@@ -39,9 +40,9 @@ def test_send_action_preserves_explicit_request_id():
     client._connected = True  # noqa: SLF001
     client._last_request_id = "stale"  # noqa: SLF001
 
-    client.send_action({"action": "choose", "index": 2, "request_id": "fresh"})
+    client.send_action({"action": BridgeAction.CHOOSE, "index": 2, "request_id": "fresh"})
 
-    assert _last_payload(client) == {"action": "choose", "index": 2, "request_id": "fresh"}
+    assert _last_payload(client) == {"action": BridgeAction.CHOOSE, "index": 2, "request_id": "fresh"}
 
 
 def test_choose_many_and_skip_helpers():
@@ -50,7 +51,7 @@ def test_choose_many_and_skip_helpers():
     client._connected = True  # noqa: SLF001
 
     client.choose_many([0, 2])
-    assert _last_payload(client) == {"action": "choose", "indexes": [0, 2]}
+    assert _last_payload(client) == {"action": BridgeAction.CHOOSE, "indexes": [0, 2]}
 
     client.skip()
-    assert _last_payload(client) == {"action": "skip"}
+    assert _last_payload(client) == {"action": BridgeAction.SKIP}

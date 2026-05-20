@@ -23,6 +23,7 @@ from sts2_env.bridge.protocol import (
     DEFAULT_HOST,
     DEFAULT_PORT,
     ActionType,
+    BridgeAction,
     MSG_TYPE_GAME_STATE,
 )
 
@@ -200,32 +201,32 @@ class STS2GameClient:
     def play_card(self, card_index: int, target_index: int = -1) -> None:
         """Play a card from the hand."""
         self.send_action({
-            "action": "play",
+            "action": BridgeAction.PLAY,
             "card_index": card_index,
             "target_index": target_index,
         })
 
     def end_turn(self) -> None:
         """End the current turn."""
-        self.send_action({"action": "end_turn"})
+        self.send_action({"action": BridgeAction.END_TURN})
 
     def choose(self, choice_index: int) -> None:
         """Make a non-combat choice (map node, card reward, event, etc)."""
         self.send_action({
-            "action": "choose",
+            "action": BridgeAction.CHOOSE,
             "index": choice_index,
         })
 
     def choose_many(self, indexes: list[int]) -> None:
         """Make a multi-card selection choice."""
         self.send_action({
-            "action": "choose",
+            "action": BridgeAction.CHOOSE,
             "indexes": indexes,
         })
 
     def skip(self) -> None:
         """Skip the current choice screen when the bridge supports it."""
-        self.send_action({"action": "skip"})
+        self.send_action({"action": BridgeAction.SKIP})
 
     def use_potion(self, slot: int, target_index: int = -1) -> None:
         """Use a potion.
@@ -235,7 +236,7 @@ class STS2GameClient:
             target_index: Enemy index for targeted potions (-1 for untargeted).
         """
         self.send_action({
-            "action": "potion",
+            "action": BridgeAction.POTION,
             "slot": slot,
             "target_index": target_index,
         })

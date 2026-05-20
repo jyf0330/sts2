@@ -27,6 +27,16 @@ MSG_TYPE_GAME_STATE = "game_state"
 MSG_TYPE_ERROR = "error"
 MSG_TYPE_PONG = "pong"
 
+
+class BridgeStateType:
+    """Values for the bridge state payload's top-level "type" field."""
+
+    COMBAT_ACTION = "combat_action"
+    CARD_SELECT = "card_select"
+    MAP_SELECT = "map_select"
+    CARD_REWARD = "card_reward"
+
+
 # ----------------------------------------------------------------
 # Game phases (state["phase"] field)
 # ----------------------------------------------------------------
@@ -74,6 +84,17 @@ class ActionType:
     CHOOSE = "CHOOSE"
     POTION = "POTION"
     PING = "PING"
+
+
+class BridgeAction:
+    """Values for the bridge action payload's "action" field."""
+
+    PLAY = "play"
+    END_TURN = "end_turn"
+    CHOOSE = "choose"
+    SKIP = "skip"
+    POTION = "potion"
+    PING = "ping"
 
 
 # ----------------------------------------------------------------

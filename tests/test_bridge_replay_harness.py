@@ -5,7 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import sts2_env.powers  # noqa: F401
+import sts2_env.potions  # noqa: F401
 
+from sts2_env.bridge.protocol import BridgeAction, BridgeStateType
 from sts2_env.cards.ironclad_basic import create_ironclad_starter_deck, make_strike_ironclad
 from sts2_env.cards.silent import create_silent_starter_deck, make_strike_silent, make_survivor
 from sts2_env.core.combat import CombatState
@@ -23,6 +25,7 @@ from sts2_env.parity.bridge_replay import (
     save_replay_trace,
 )
 from sts2_env.parity.bridge_replay_cli import build_parser
+from sts2_env.potions.base import create_potion
 from sts2_env.run.run_manager import RunManager
 
 
@@ -55,6 +58,12 @@ def make_choice_replay_combat() -> CombatState:
     combat.start_combat()
     combat.hand = [make_survivor(), make_strike_silent(), make_strike_silent()]
     combat.energy = 1
+    return combat
+
+
+def make_basic_replay_combat_with_block_potion() -> CombatState:
+    combat = make_basic_replay_combat()
+    combat.potions = [create_potion("BlockPotion"), None, None]
     return combat
 
 
@@ -94,7 +103,12 @@ def test_bridge_replay_trace_round_trip(tmp_path: Path):
     trace = BridgeReplayTrace(
         metadata={"scenario_factory": "tests.test_bridge_replay_harness:make_basic_replay_combat"},
         initial_state=initial_state,
-        steps=[BridgeReplayStep(action={"action": "play", "card_index": 0, "target_index": 0}, resulting_state=next_state)],
+        steps=[
+            BridgeReplayStep(
+                action={"action": BridgeAction.PLAY, "card_index": 0, "target_index": 0},
+                resulting_state=next_state,
+            )
+        ],
     )
 
     path = save_replay_trace(trace, tmp_path / "basic_trace.json")
@@ -107,8 +121,8 @@ def test_bridge_replay_trace_round_trip(tmp_path: Path):
 
 
 def test_bridge_replay_recorder_records_state_action_state_sequence():
-    initial = {"type": "combat_action", "player": {"hp": 80, "max_hp": 80, "block": 0, "energy": 1, "max_energy": 3, "powers": []}, "hand": [], "enemies": [], "draw_pile_count": 0, "discard_pile_count": 0, "exhaust_pile_count": 0, "round": 1}
-    next_state = {"type": "combat_action", "player": {"hp": 80, "max_hp": 80, "block": 0, "energy": 0, "max_energy": 3, "powers": []}, "hand": [], "enemies": [], "draw_pile_count": 0, "discard_pile_count": 1, "exhaust_pile_count": 0, "round": 1}
+    initial = {"type": BridgeStateType.COMBAT_ACTION, "player": {"hp": 80, "max_hp": 80, "block": 0, "energy": 1, "max_energy": 3, "powers": []}, "hand": [], "enemies": [], "draw_pile_count": 0, "discard_pile_count": 0, "exhaust_pile_count": 0, "round": 1}
+    next_state = {"type": BridgeStateType.COMBAT_ACTION, "player": {"hp": 80, "max_hp": 80, "block": 0, "energy": 0, "max_energy": 3, "powers": []}, "hand": [], "enemies": [], "draw_pile_count": 0, "discard_pile_count": 1, "exhaust_pile_count": 0, "round": 1}
     client = FakeBridgeClient([initial, next_state])
     recorder = BridgeReplayRecorder(client)
 
@@ -116,8 +130,8 @@ def test_bridge_replay_recorder_records_state_action_state_sequence():
     recorder.play_card(0, 0)
     assert recorder.receive_state() == next_state
 
-    assert client.sent_actions == [{"action": "play", "card_index": 0, "target_index": 0}]
-    assert recorder.trace.initial_state["type"] == "combat_action"
+    assert client.sent_actions == [{"action": BridgeAction.PLAY, "card_index": 0, "target_index": 0}]
+    assert recorder.trace.initial_state["type"] == BridgeStateType.COMBAT_ACTION
     assert recorder.trace.steps[0].action == client.sent_actions[0]
     assert recorder.trace.steps[0].resulting_state["player"]["energy"] == 0
 
@@ -138,7 +152,12 @@ def test_compare_combat_replay_passes_for_simple_combat_trace():
 
     trace = BridgeReplayTrace(
         initial_state=initial_state,
-        steps=[BridgeReplayStep(action={"action": "play", "card_index": 0, "target_index": 0}, resulting_state=resulting_state)],
+        steps=[
+            BridgeReplayStep(
+                action={"action": BridgeAction.PLAY, "card_index": 0, "target_index": 0},
+                resulting_state=resulting_state,
+            )
+        ],
     )
     result = compare_combat_replay(trace, factory=make_basic_replay_combat)
 
@@ -158,8 +177,11 @@ def test_compare_combat_replay_handles_card_select_round_trip():
     trace = BridgeReplayTrace(
         initial_state=initial_state,
         steps=[
-            BridgeReplayStep(action={"action": "play", "card_index": 0, "target_index": -1}, resulting_state=choice_state),
-            BridgeReplayStep(action={"action": "choose", "index": 0}, resulting_state=resulting_state),
+            BridgeReplayStep(
+                action={"action": BridgeAction.PLAY, "card_index": 0, "target_index": -1},
+                resulting_state=choice_state,
+            ),
+            BridgeReplayStep(action={"action": BridgeAction.CHOOSE, "index": 0}, resulting_state=resulting_state),
         ],
     )
     result = compare_combat_replay(trace, factory=make_choice_replay_combat)
@@ -177,7 +199,12 @@ def test_compare_combat_replay_reports_state_mismatch():
 
     trace = BridgeReplayTrace(
         initial_state=initial_state,
-        steps=[BridgeReplayStep(action={"action": "play", "card_index": 0, "target_index": 0}, resulting_state=resulting_state)],
+        steps=[
+            BridgeReplayStep(
+                action={"action": BridgeAction.PLAY, "card_index": 0, "target_index": 0},
+                resulting_state=resulting_state,
+            )
+        ],
     )
     result = compare_combat_replay(trace, factory=make_basic_replay_combat)
 
@@ -185,11 +212,33 @@ def test_compare_combat_replay_reports_state_mismatch():
     assert any("player.hp" in mismatch for mismatch in result.mismatches)
 
 
+def test_compare_combat_replay_handles_potion_action():
+    combat = make_basic_replay_combat()
+    combat.potions = [create_potion("BlockPotion"), None, None]
+    initial_state = combat_state_to_bridge_state(combat)
+    assert combat.use_potion(0)
+    resulting_state = combat_state_to_bridge_state(combat)
+
+    trace = BridgeReplayTrace(
+        initial_state=initial_state,
+        steps=[
+            BridgeReplayStep(
+                action={"action": BridgeAction.POTION, "slot": 0, "target_index": -1},
+                resulting_state=resulting_state,
+            )
+        ],
+    )
+    result = compare_combat_replay(trace, factory=lambda: make_basic_replay_combat_with_block_potion())
+
+    assert result.success is True
+    assert result.mismatches == []
+
+
 def test_run_manager_to_bridge_state_serializes_map_select():
     run = make_basic_replay_run()
     state = run_manager_to_bridge_state(run)
 
-    assert state["type"] == "map_select"
+    assert state["type"] == BridgeStateType.MAP_SELECT
     assert state["nodes"]
     assert all("row" in node and "col" in node and "type" in node for node in state["nodes"])
 
@@ -204,7 +253,7 @@ def test_compare_run_replay_handles_map_select_to_combat_transition():
     trace = BridgeReplayTrace(
         mode="run",
         initial_state=initial_state,
-        steps=[BridgeReplayStep(action={"action": "choose", "index": 0}, resulting_state=resulting_state)],
+        steps=[BridgeReplayStep(action={"action": BridgeAction.CHOOSE, "index": 0}, resulting_state=resulting_state)],
     )
     result = compare_run_replay(trace, factory=make_basic_replay_run)
 
@@ -221,7 +270,7 @@ def test_compare_run_replay_handles_card_reward_pick_to_map_transition():
     trace = BridgeReplayTrace(
         mode="run",
         initial_state=initial_state,
-        steps=[BridgeReplayStep(action={"action": "choose", "index": 0}, resulting_state=resulting_state)],
+        steps=[BridgeReplayStep(action={"action": BridgeAction.CHOOSE, "index": 0}, resulting_state=resulting_state)],
     )
     result = compare_run_replay(trace, factory=make_card_reward_replay_run)
 

@@ -151,6 +151,7 @@ python -m sts2_env.parity.bridge_replay_cli compare \
 
 - compares the simulator's initial state to the recorded initial state
 - replays each recorded action in order
+- supports recorded card plays, turn ends, card-select choices, skips, and potion use
 - compares each resulting simulator state to the recorded state
 - stops at the first mismatch and returns a diff list
 
