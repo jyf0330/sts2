@@ -28,6 +28,7 @@ from sts2_env.potions.base import (
     normal_pool_models,
     roll_random_potion_model,
 )
+from sts2_env.run.run_state import PlayerState
 import sts2_env.potions.all  # noqa: F401 -- register all potions
 
 
@@ -87,6 +88,10 @@ class _CannotHitPower(PowerInstance):
 
     def should_allow_hitting(self, owner, combat):
         return False
+
+
+FIRST_ALLY_PLAYER_TARGET_INDEX = 1
+INVALID_PLAYER_TARGET_INDEX = 2
 
 
 class TestPotionRegistry:
@@ -360,6 +365,31 @@ class TestPotionInstance:
 
         assert combat.stars == 0
         assert combat.player.stars == 0
+
+    def test_clarity_draws_from_selected_player_pile_like_reference(self):
+        """Matches Clarity.cs: draw and ClarityPower apply to the targeted player."""
+        combat = _make_silent_combat()
+        ally = combat.add_ally_player(PlayerState(player_id=2, character_id="Silent", max_hp=70, current_hp=70))
+        ally_state = combat.combat_player_state_for(ally)
+        assert ally_state is not None
+        primary_marker = make_strike_silent()
+        ally_draw = make_defend_silent()
+        combat.hand = []
+        combat.draw_pile = [primary_marker]
+        ally_state.hand = []
+        ally_state.draw = [ally_draw]
+        combat.potions = [create_potion("Clarity"), None, None]
+
+        assert combat.use_potion(0, target_index=INVALID_PLAYER_TARGET_INDEX) is False
+        assert combat.potions[0] is not None
+        assert combat.use_potion(0, target_index=FIRST_ALLY_PLAYER_TARGET_INDEX)
+
+        assert ally_state.hand == [ally_draw]
+        assert ally_state.draw == []
+        assert combat.hand == []
+        assert combat.draw_pile == [primary_marker]
+        assert ally.get_power_amount(PowerId.CLARITY) == 3
+        assert combat.player.get_power_amount(PowerId.CLARITY) == 0
 
     def test_block_potion_block_triggers_after_block_gained_hooks(self):
         combat = _make_silent_combat()

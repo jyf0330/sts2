@@ -298,7 +298,7 @@ def _bone_brew(combat: CombatState, user: Creature, target: Creature | None) -> 
 def _clarity(combat: CombatState, user: Creature, target: Creature | None) -> None:
     """Target draws 1 card and gains 3 Clarity (retain cards)."""
     t = target if target is not None else user
-    combat._draw_cards(1)  # noqa: SLF001
+    combat.draw_cards(t, 1)
     combat.apply_power_to(t, PowerId.CLARITY, 3, applier=user)
 
 

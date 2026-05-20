@@ -1885,8 +1885,15 @@ class CombatState:
         user: Creature,
         target_index: int | None,
     ) -> Creature | None:
-        if potion.target_type in (PotionTargetType.SELF, PotionTargetType.ANY_PLAYER):
+        if potion.target_type == PotionTargetType.SELF:
             return user
+        if potion.target_type == PotionTargetType.ANY_PLAYER:
+            if target_index is None or target_index < 0:
+                return user
+            players = [user] + self.get_player_allies_of(user)
+            if target_index < len(players):
+                return players[target_index]
+            return None
         if potion.target_type == PotionTargetType.ALL_ENEMIES:
             return None
         if potion.target_type != PotionTargetType.ANY_ENEMY:
@@ -1915,6 +1922,8 @@ class CombatState:
         if potion is None or not potion.can_use_in_combat():
             return False
         target = self._resolve_potion_target(potion, state.creature, target_index)
+        if potion.target_type == PotionTargetType.ANY_PLAYER:
+            return target is not None
         if potion.target_type == PotionTargetType.ANY_ENEMY:
             return target is not None
         return True
