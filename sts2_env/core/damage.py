@@ -132,6 +132,9 @@ def apply_damage(
     )
 
     attack = None
+    trace = getattr(combat, "_damage_lab_recorder", None) if combat is not None else None
+    if trace is not None:
+        trace.begin_application(target, damage, props, dealer)
     if combat is not None:
         attack = combat.active_attack or combat.pending_auto_attack
         can_hit = getattr(combat, "can_hit_creature", None)
@@ -147,6 +150,8 @@ def apply_damage(
     blocked = target.damage_block(damage, unblockable)
     was_block_broken = target.block <= 0 and blocked > 0
     remaining = damage - blocked
+    if trace is not None:
+        trace.record_application_block(blocked, remaining, unblockable, target.block)
 
     if combat is not None and remaining > 0:
         remaining = modify_hp_lost_before_osty(remaining, target, dealer, props, combat)
@@ -162,7 +167,9 @@ def apply_damage(
 
     # Apply HP loss
     was_alive = damage_target.is_alive
+    hp_before = damage_target.current_hp
     hp_lost = damage_target.lose_hp(remaining, fire_hooks=combat is None)
+    hp_after = damage_target.current_hp
     was_killed = was_alive and damage_target.is_dead
     overkill_damage = max(0, remaining - hp_lost)
 
@@ -200,6 +207,8 @@ def apply_damage(
         if redirected_result is not None:
             attack.results.append(redirected_result)
         attack.results.append(result)
+    if trace is not None:
+        trace.finish_application(result, damage_target, hp_before=hp_before, hp_after=hp_after, was_fully_blocked=was_fully_blocked)
 
     # Fire after-damage hooks
     if combat is not None:

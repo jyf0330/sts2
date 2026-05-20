@@ -1,0 +1,38 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bridge_mod", "bridge_mod", "{AA3137D9-3F36-C461-BC16-512087954D4F}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "decompiled", "decompiled", "{025CD755-29FC-D5EE-43B4-AF1FEEC65CD0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "STS2BridgeMod", "bridge_mod\STS2BridgeMod.csproj", "{03D74F6C-BE8B-55F5-85C8-04E0A90D6D6A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "sts2", "decompiled\sts2.csproj", "{2BB5F2BE-1244-180E-4E54-59BDF7E0B9AE}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{03D74F6C-BE8B-55F5-85C8-04E0A90D6D6A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{03D74F6C-BE8B-55F5-85C8-04E0A90D6D6A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{03D74F6C-BE8B-55F5-85C8-04E0A90D6D6A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{03D74F6C-BE8B-55F5-85C8-04E0A90D6D6A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2BB5F2BE-1244-180E-4E54-59BDF7E0B9AE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2BB5F2BE-1244-180E-4E54-59BDF7E0B9AE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2BB5F2BE-1244-180E-4E54-59BDF7E0B9AE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2BB5F2BE-1244-180E-4E54-59BDF7E0B9AE}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{03D74F6C-BE8B-55F5-85C8-04E0A90D6D6A} = {AA3137D9-3F36-C461-BC16-512087954D4F}
+		{2BB5F2BE-1244-180E-4E54-59BDF7E0B9AE} = {025CD755-29FC-D5EE-43B4-AF1FEEC65CD0}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {5EE4900D-3FA4-4BC6-9565-967E97A28E3C}
+	EndGlobalSection
+EndGlobal

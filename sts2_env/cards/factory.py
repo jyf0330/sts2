@@ -18,7 +18,6 @@ from typing import Callable, Literal
 import sts2_env.cards  # noqa: F401  # ensure card modules are imported
 from sts2_env.cards import base as card_base
 from sts2_env.cards.base import CardInstance
-from sts2_env.characters.all import ALL_CHARACTERS, get_character
 from sts2_env.core.enums import CardId, CardRarity, CardTag, CardType, TargetType
 from sts2_env.core.rng import Rng
 
@@ -490,6 +489,8 @@ def eligible_character_cards(
     is_multiplayer: bool | None = None,
 ) -> list[CardId]:
     """Return eligible class cards from the owning character's card pool."""
+    from sts2_env.characters.all import get_character
+
     rarity_filter = _coerce_rarity(rarity)
     config = get_character(character_id)
     eligible: list[CardId] = []
@@ -633,6 +634,8 @@ def eligible_transform_cards(
     is_multiplayer: bool | None = None,
 ) -> list[CardId]:
     """Return the decompiled-style transform pool for a specific original card."""
+    from sts2_env.characters.all import get_character
+
     registry = _factory_registry()
     source_module = registry.get(original.card_id, (None, None, _reference_source_module(original.card_id)))[2]
     use_colorless_pool = (

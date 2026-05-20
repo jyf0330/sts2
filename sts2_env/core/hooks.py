@@ -78,22 +78,40 @@ def modify_damage(
     """
     damage = float(base_damage)
     card_source = card_source if card_source is not None else getattr(combat, "active_card_source", None)
+    trace = getattr(combat, "_damage_lab_recorder", None)
+    if trace is not None:
+        trace.start_damage_trace(base_damage, dealer, target, props)
 
     if card_source is not None and hasattr(card_source, "enchantments"):
         damage += enchant_damage_additive(card_source, props)
 
     # Step 1: Additive modifiers
     for owner, power in _iter_power_listeners(combat):
-        damage += power.modify_damage_additive(owner, dealer, target, props)
+        before = damage
+        delta = power.modify_damage_additive(owner, dealer, target, props)
+        damage += delta
+        if trace is not None and delta != 0:
+            trace.record_damage_additive(owner, "power", power.power_id.name, delta, before, damage)
     for owner, relic in _iter_relic_listeners(combat):
-        damage += relic.modify_damage_additive(owner, dealer, target, props, card_source)
+        before = damage
+        delta = relic.modify_damage_additive(owner, dealer, target, props, card_source)
+        damage += delta
+        if trace is not None and delta != 0:
+            trace.record_damage_additive(owner, "relic", relic.relic_id.name, delta, before, damage)
 
     # Step 2: Multiplicative modifiers
     for owner, power in _iter_power_listeners(combat):
+        before = damage
         mult = power.modify_damage_multiplicative(owner, dealer, target, props)
         damage *= mult
+        if trace is not None and mult != 1.0:
+            trace.record_damage_multiplier(owner, "power", power.power_id.name, mult, before, damage)
     for owner, relic in _iter_relic_listeners(combat):
-        damage *= relic.modify_damage_multiplicative(owner, dealer, target, props, card_source)
+        before = damage
+        mult = relic.modify_damage_multiplicative(owner, dealer, target, props, card_source)
+        damage *= mult
+        if trace is not None and mult != 1.0:
+            trace.record_damage_multiplier(owner, "relic", relic.relic_id.name, mult, before, damage)
     if card_source is not None and hasattr(card_source, "enchantments"):
         damage *= enchant_damage_multiplicative(card_source, props)
 
@@ -108,9 +126,14 @@ def modify_damage(
         if c < cap:
             cap = c
     if damage > cap:
+        if trace is not None:
+            trace.record_damage_cap(target, "cap", "GLOBAL_CAP", cap, damage, cap)
         damage = cap
 
-    return max(0, math.floor(damage))
+    final_damage = max(0, math.floor(damage))
+    if trace is not None:
+        trace.finish_damage_trace(final_damage)
+    return final_damage
 
 
 def modify_power_amount_given(
@@ -246,35 +269,52 @@ def modify_block(
     """
     block = float(base_block)
     modifier_ids: set[int] = set()
+    trace = getattr(combat, "_damage_lab_recorder", None)
+    if trace is not None:
+        trace.start_block_trace(base_block, target, props)
 
     if card_source is not None and hasattr(card_source, "enchantments"):
         block += enchant_block_additive(card_source, props)
 
     # Step 1: Additive
     for owner, power in _iter_power_listeners(combat):
+        before = block
         delta = power.modify_block_additive(owner, target, props, card_source, card_play)
         block += delta
         if delta != 0:
             modifier_ids.add(id(power))
+            if trace is not None:
+                trace.record_block_additive(owner, "power", power.power_id.name, delta, before, block)
     for owner, relic in _iter_relic_listeners(combat):
+        before = block
         delta = relic.modify_block_additive(owner, target, props, card_source, card_play)
         block += delta
         if delta != 0:
             modifier_ids.add(id(relic))
+            if trace is not None:
+                trace.record_block_additive(owner, "relic", relic.relic_id.name, delta, before, block)
 
     # Step 2: Multiplicative
     for owner, power in _iter_power_listeners(combat):
+        before = block
         multiplier = power.modify_block_multiplicative(owner, target, props, card_source, card_play, combat)
         block *= multiplier
         if multiplier != 1.0:
             modifier_ids.add(id(power))
+            if trace is not None:
+                trace.record_block_multiplier(owner, "power", power.power_id.name, multiplier, before, block)
     for owner, relic in _iter_relic_listeners(combat):
+        before = block
         multiplier = relic.modify_block_multiplicative(owner, target, props, card_source, card_play, combat)
         block *= multiplier
         if multiplier != 1.0:
             modifier_ids.add(id(relic))
+            if trace is not None:
+                trace.record_block_multiplier(owner, "relic", relic.relic_id.name, multiplier, before, block)
 
     modified_block = max(0, math.floor(block))
+    if trace is not None:
+        trace.finish_block_trace(modified_block)
     if modifier_ids:
         for owner, power in _iter_power_listeners(combat):
             if id(power) in modifier_ids:
@@ -295,12 +335,22 @@ def modify_hp_lost_before_osty(
     combat: CombatState,
 ) -> int:
     result = float(amount)
+    trace = getattr(combat, "_damage_lab_recorder", None)
     for owner, relic in _iter_relic_listeners(combat):
+        before = result
         result = relic.modify_hp_lost_before_osty(owner, target, result, dealer, props)
+        if trace is not None and result != before:
+            trace.record_hp_loss_modifier("before_osty", owner, "relic", relic.relic_id.name, before, result)
     for owner, power in _iter_power_listeners(combat):
+        before = result
         result = power.modify_hp_lost_before_osty_late(owner, target, result, dealer, props)
+        if trace is not None and result != before:
+            trace.record_hp_loss_modifier("before_osty", owner, "power", power.power_id.name, before, result)
     for owner, relic in _iter_relic_listeners(combat):
+        before = result
         result = relic.modify_hp_lost_before_osty_late(owner, target, result, dealer, props)
+        if trace is not None and result != before:
+            trace.record_hp_loss_modifier("before_osty", owner, "relic", relic.relic_id.name, before, result)
     return max(0, math.floor(result))
 
 
@@ -312,12 +362,22 @@ def modify_hp_lost_after_osty(
     combat: CombatState,
 ) -> int:
     result = float(amount)
+    trace = getattr(combat, "_damage_lab_recorder", None)
     for owner, power in _iter_power_listeners(combat):
+        before = result
         result = power.modify_hp_lost(owner, target, result, dealer, props)
+        if trace is not None and result != before:
+            trace.record_hp_loss_modifier("after_osty", owner, "power", power.power_id.name, before, result)
     for owner, relic in _iter_relic_listeners(combat):
+        before = result
         result = relic.modify_hp_lost_after_osty(owner, target, result, dealer, props)
+        if trace is not None and result != before:
+            trace.record_hp_loss_modifier("after_osty", owner, "relic", relic.relic_id.name, before, result)
     for owner, power in _iter_power_listeners(combat):
+        before = result
         result = power.modify_hp_lost_late(owner, target, result, dealer, props)
+        if trace is not None and result != before:
+            trace.record_hp_loss_modifier("after_osty", owner, "power", power.power_id.name, before, result)
     return max(0, math.floor(result))
 
 
@@ -341,8 +401,12 @@ def modify_unblocked_damage_target(
     combat: CombatState,
 ) -> Creature:
     result = target
+    trace = getattr(combat, "_damage_lab_recorder", None)
     for owner, power in _iter_power_listeners(combat):
+        before = result
         result = power.modify_unblocked_damage_target(owner, result, amount, props, dealer)
+        if trace is not None and result is not before:
+            trace.record_redirect(before, result, amount, owner, power.power_id.name)
     return result
 
 

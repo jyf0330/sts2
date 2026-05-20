@@ -39,7 +39,6 @@ from sts2_env.cards.factory import (
     eligible_transform_cards,
 )
 from sts2_env.cards.registry import fire_card_late_effects, play_card_effect
-from sts2_env.characters.all import ALL_CHARACTERS, get_character
 from sts2_env.core.attack import AttackContext
 from sts2_env.core.combat_player import CombatPlayerState
 from sts2_env.core.constants import BASE_DRAW, BASE_ENERGY, MAX_HAND_SIZE
@@ -562,6 +561,8 @@ class CombatState:
         deck: Sequence[CardInstance],
         relics: Sequence[RelicInstance],
     ) -> str:
+        from sts2_env.characters.all import ALL_CHARACTERS
+
         if relics:
             starter_relic_map = {
                 "BURNING_BLOOD": "Ironclad",
@@ -611,6 +612,7 @@ class CombatState:
         max_potion_slots: int,
     ) -> PlayerState:
         from sts2_env.run.run_state import PlayerState
+        from sts2_env.characters.all import get_character
 
         if player_state is not None:
             if not player_state.deck:
@@ -645,6 +647,8 @@ class CombatState:
         player_state: PlayerState,
         creature: Creature,
     ) -> CombatPlayerState:
+        from sts2_env.characters.all import get_character
+
         setattr(player_state, "combat_state", self)
         state = CombatPlayerState(
             player_state=player_state,

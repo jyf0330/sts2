@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>伤害验证台</title>
+<style>
+  :root {
+    --bg: #f2eadf;
+    --panel: rgba(255, 250, 242, 0.92);
+    --panel-solid: #fffaf2;
+    --ink: #1d1712;
+    --muted: #67584a;
+    --accent: #b44524;
+    --accent-2: #204f5a;
+    --accent-3: #7c5a20;
+    --line: rgba(29, 23, 18, 0.10);
+    --shadow: 0 8px 32px rgba(67, 31, 13, 0.08);
+    --radius: 14px;
+    --radius-sm: 8px;
+    --font: "Segoe UI", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font);
+    color: var(--ink);
+    background: radial-gradient(circle at top left, rgba(180,69,36,0.12), transparent 28%),
+                radial-gradient(circle at top right, rgba(32,79,90,0.15), transparent 24%),
+                linear-gradient(180deg, #f7f0e4 0%, var(--bg) 100%);
+    height: 100vh; overflow: hidden;
+  }
+
+  /* ── SHELL ── */
+  .shell {
+    height: 100vh; display: flex; flex-direction: column;
+    max-width: 1560px; margin: 0 auto; padding: 0 18px;
+  }
+
+  /* ── TOP BAR ── */
+  .topbar {
+    display: flex; align-items: center; gap: 12px; padding: 10px 0;
+    border-bottom: 1px solid var(--line); flex-shrink: 0; flex-wrap: wrap;
+    min-height: 52px;
+  }
+  .topbar-brand { font-weight: 700; font-size: 17px; color: var(--accent); white-space: nowrap; letter-spacing: -0.01em; }
+  .topbar-case { display: flex; align-items: center; gap: 6px; }
+  .topbar-case label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
+  .topbar-case input { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 5px 10px; font-size: 13px; width: 160px; background: var(--panel-solid); color: var(--ink); }
+  .topbar-center { display: flex; align-items: center; gap: 4px; margin: 0 auto; }
+  .mode-btn {
+    border: 1px solid var(--line); background: transparent; padding: 6px 14px; border-radius: 999px;
+    font-size: 12px; font-weight: 700; cursor: pointer; color: var(--accent-2); white-space: nowrap;
+    transition: all 0.15s;
+  }
+  .mode-btn.active { background: linear-gradient(135deg, var(--accent), #d9673c); color: #fff; border-color: transparent; box-shadow: 0 6px 18px rgba(180,69,36,0.18); }
+  .mode-btn:hover:not(.active) { background: rgba(32,79,90,0.06); }
+  .topbar-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  select, input, textarea, button { font: inherit; }
+  .preset-select { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 5px 8px; font-size: 12px; background: var(--panel-solid); color: var(--ink); max-width: 160px; }
+  .btn { border: none; border-radius: 999px; padding: 7px 14px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; transition: all 0.15s; }
+  .btn-primary { background: linear-gradient(135deg, var(--accent), #d9673c); color: #fff; box-shadow: 0 4px 12px rgba(180,69,36,0.18); }
+  .btn-primary:hover { filter: brightness(1.08); transform: translateY(-1px); }
+  .btn-secondary { background: rgba(32,79,90,0.08); color: var(--accent-2); }
+  .btn-secondary:hover { background: rgba(32,79,90,0.14); }
+  .btn-ghost { background: transparent; color: var(--muted); }
+  .btn-ghost:hover { color: var(--ink); background: rgba(29,23,18,0.04); }
+  .btn-sm { padding: 4px 10px; font-size: 11px; }
+
+  /* ── MODE VIEWS ── */
+  .mode-view { display: none; flex: 1; overflow: hidden; }
+  .mode-view.active { display: flex; flex-direction: column; }
+
+  /* ── PLANNER: THREE COLUMNS ── */
+  .planner-body { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; flex: 1; overflow-y: auto; padding: 10px 0; min-height: 0; }
+  .col-card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 14px 16px; display: flex; flex-direction: column;
+    gap: 10px; overflow-y: auto; backdrop-filter: blur(6px);
+  }
+  .col-card h2 {
+    font-size: 14px; font-weight: 800; color: var(--accent-2); letter-spacing: 0.03em;
+    display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+  }
+  .col-card h2 .icon { font-size: 16px; }
+
+  /* compact field row */
+  .field-row { display: flex; align-items: center; gap: 8px; }
+  .field-row label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; min-width: 42px; font-weight: 700; }
+  .field-row input, .field-row select { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 5px 8px; font-size: 12px; background: var(--panel-solid); color: var(--ink); }
+  .field-row input[type="number"] { max-width: 80px; font-variant-numeric: tabular-nums; }
+  .field-row input.wide-num { max-width: 100px; }
+  .field-row select { max-width: 150px; }
+
+  .field-stack { display: flex; flex-direction: column; gap: 6px; }
+  .field-stack label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700; }
+
+  /* section inside column */
+  .col-section { border-top: 1px solid var(--line); padding-top: 8px; }
+  .col-section-title { font-size: 11px; font-weight: 800; color: var(--accent-3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+
+  /* power row */
+  .power-row { display: flex; gap: 4px; align-items: center; }
+  .power-row select { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 3px 6px; font-size: 11px; background: var(--panel-solid); }
+  .power-row input { width: 48px; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 3px 6px; font-size: 11px; background: var(--panel-solid); text-align: center; }
+  .power-row .btn-sm { padding: 2px 7px; font-size: 10px; line-height: 1; }
+
+  /* enemy mini-card */
+  .enemy-card {
+    border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 10px;
+    background: rgba(255,255,255,0.5); display: flex; flex-direction: column; gap: 6px;
+  }
+  .enemy-card-head { display: flex; justify-content: space-between; align-items: center; }
+  .enemy-card-head strong { font-size: 12px; color: var(--accent-2); }
+
+  /* multi-select */
+  .multi-select { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel-solid); font-size: 11px; max-height: 70px; }
+  .multi-select option { padding: 2px 6px; }
+
+  /* ── BOTTOM RESULTS ── */
+  .results-bar {
+    display: grid; grid-template-columns: 1fr 1fr 1fr 3fr; gap: 12px; padding: 12px 0;
+    border-top: 1px solid var(--line); flex-shrink: 0; min-height: 140px; align-items: start;
+  }
+  .result-card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 14px 16px; text-align: center;
+    display: flex; flex-direction: column; justify-content: center; gap: 4px;
+  }
+  .result-card .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 700; }
+  .result-card .value { font-size: 28px; font-weight: 800; line-height: 1.1; }
+  .result-card .value.danger { color: var(--accent); }
+  .result-card .value.ok { color: var(--accent-2); }
+  .result-card .sub { font-size: 11px; color: var(--muted); }
+  .steps-card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 12px 14px; overflow-y: auto;
+  }
+  .steps-card .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 700; margin-bottom: 6px; }
+  .step-line {
+    font-size: 12px; padding: 3px 0; border-bottom: 1px dotted var(--line);
+    color: var(--ink); line-height: 1.5;
+  }
+  .step-line:last-child { border-bottom: none; }
+  .step-line.highlight { color: var(--accent); font-weight: 700; }
+
+  /* ── TECH MODE ── */
+  .tech-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; flex: 1; overflow-y: auto; padding: 10px 0; min-height: 0; }
+  .tech-panel {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .tech-panel h2 { font-size: 14px; font-weight: 800; color: var(--accent-2); }
+  .tech-panel .hint { font-size: 11px; color: var(--muted); }
+  .tech-panel textarea {
+    flex: 1; min-height: 200px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+    background: #17120f; color: #f6ead8; font-family: Consolas, "SFMono-Regular", monospace;
+    font-size: 12px; line-height: 1.6; padding: 10px; resize: vertical;
+  }
+  .tech-panel pre {
+    margin: 0; white-space: pre-wrap; word-break: break-word; border-radius: var(--radius-sm);
+    padding: 10px; background: #17120f; color: #f6ead8; font-family: Consolas, "SFMono-Regular", monospace;
+    font-size: 12px; line-height: 1.6; min-height: 60px; max-height: 150px; overflow: auto;
+  }
+  .tech-btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .wide-col { grid-column: 1 / -1; }
+
+  /* status / error */
+  .status-badge { font-size: 11px; color: var(--muted); }
+  .error-badge { font-size: 11px; color: var(--accent); font-weight: 700; }
+
+  .empty-state { font-size: 12px; color: var(--muted); padding: 8px; text-align: center; }
+
+  /* collapsible */
+  .fold-toggle { font-size: 11px; color: var(--accent-2); cursor: pointer; font-weight: 700; user-select: none; }
+  .fold-toggle:hover { text-decoration: underline; }
+  .fold-body { display: none; }
+  .fold-body.open { display: block; }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 1200px) {
+    .planner-body { grid-template-columns: 1fr; }
+    .results-bar { grid-template-columns: 1fr 1fr 1fr; }
+    .steps-card { grid-column: 1 / -1; }
+    .tech-grid { grid-template-columns: 1fr; }
+    body { overflow-y: auto; }
+    .shell { height: auto; }
+  }
+  @media (max-width: 900px) {
+    .topbar { flex-direction: column; align-items: flex-start; }
+    .topbar-center { margin: 0; }
+    .results-bar { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <!-- ═══ TOP BAR ═══ -->
+  <header class="topbar">
+    <span class="topbar-brand">伤害验证台</span>
+    <div class="topbar-case">
+      <label for="case-name">用例</label>
+      <input id="case-name" type="text" placeholder="未命名用例" />
+    </div>
+    <div class="topbar-center">
+      <button class="mode-btn active" id="mode-planner">策划验证</button>
+      <button class="mode-btn" id="mode-tech">技术调试</button>
+    </div>
+    <div class="topbar-right">
+      <select class="preset-select" id="preset-select">
+        <option value="">— 预设用例 —</option>
+      </select>
+      <button class="btn btn-primary" id="run-button">计算伤害</button>
+      <button class="btn btn-secondary" id="reset-button">重置</button>
+      <button class="btn btn-ghost" id="copy-button">复制 JSON</button>
+      <span class="status-badge" id="status-text">就绪</span>
+    </div>
+  </header>
+
+  <!-- ═══ PLANNER VIEW ═══ -->
+  <main class="mode-view active" id="planner-view">
+    <div class="planner-body">
+      <!-- LEFT: Attacker -->
+      <section class="col-card" id="col-attacker">
+        <h2><span class="icon">⚔</span> 攻击方 / 英雄</h2>
+        <div class="field-row"><label>英雄</label><select id="hero-character"></select></div>
+        <div class="field-row"><label>最大生命</label><input id="hero-max-hp" type="number" min="1" step="1" class="wide-num" /></div>
+        <div class="field-row"><label>当前生命</label><input id="hero-current-hp" type="number" min="0" step="1" class="wide-num" /></div>
+        <div class="field-row"><label>格挡</label><input id="hero-block" type="number" min="0" step="1" class="wide-num" /></div>
+        <div class="field-row"><label>能量</label><input id="hero-energy" type="number" min="0" step="1" class="wide-num" /></div>
+
+        <div class="col-section">
+          <div class="col-section-title">状态效果</div>
+          <div id="player-power-list"></div>
+          <button class="btn btn-ghost btn-sm" id="add-player-power" style="margin-top:4px;">+ 添加状态</button>
+        </div>
+
+        <div class="col-section">
+          <div class="col-section-title">遗物（Ctrl+点击多选）</div>
+          <select id="hero-relics" multiple size="3" class="multi-select" style="width:100%;"></select>
+        </div>
+      </section>
+
+      <!-- MIDDLE: Action -->
+      <section class="col-card" id="col-action">
+        <h2><span class="icon">🗡</span> 动作 / 伤害配置</h2>
+        <div class="field-row"><label>动作类型</label><select id="operation-type"></select></div>
+        <div class="field-row"><label>执行者</label><select id="operation-actor"></select></div>
+        <div class="field-row"><label>目标</label><select id="operation-target"></select></div>
+        <div class="field-row" id="row-base-damage"><label>基础伤害</label><input id="base-damage" type="number" min="0" step="1" class="wide-num" /></div>
+        <div class="field-row" id="row-base-block"><label>基础格挡</label><input id="base-block" type="number" min="0" step="1" class="wide-num" /></div>
+        <div class="field-row" id="row-power-id"><label>施加状态</label><select id="operation-power-id"></select></div>
+        <div class="field-row" id="row-power-amount"><label>状态数值</label><input id="operation-power-amount" type="number" min="0" step="1" class="wide-num" /></div>
+        <div class="field-stack" id="row-props">
+          <label>Value Props（Ctrl+点击多选）</label>
+          <select id="operation-props" multiple size="3" class="multi-select" style="width:100%;"></select>
+        </div>
+        <div class="col-section" id="fold-advanced-action" style="display:none;">
+          <span class="fold-toggle" id="toggle-advanced-action">▸ 高级选项</span>
+          <div class="fold-body" id="fold-body-advanced-action"></div>
+        </div>
+      </section>
+
+      <!-- RIGHT: Defender -->
+      <section class="col-card" id="col-defender">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h2><span class="icon">🛡</span> 防御方 / 怪物</h2>
+          <button class="btn btn-ghost btn-sm" id="add-enemy-button">+ 添加怪物</button>
+        </div>
+        <div id="enemy-list"></div>
+      </section>
+    </div>
+
+    <!-- BOTTOM RESULTS -->
+    <section class="results-bar" id="results-bar">
+      <div class="result-card">
+        <span class="label">最终伤害</span>
+        <span class="value ok" id="r-final-damage">—</span>
+        <span class="sub" id="r-damage-type">等待计算</span>
+      </div>
+      <div class="result-card">
+        <span class="label">剩余生命</span>
+        <span class="value" id="r-remaining-hp">—</span>
+        <span class="sub" id="r-hp-change"></span>
+      </div>
+      <div class="result-card">
+        <span class="label">击杀</span>
+        <span class="value ok" id="r-killed">—</span>
+        <span class="sub" id="r-block-info"></span>
+      </div>
+      <div class="steps-card">
+        <span class="label">计算过程</span>
+        <div id="r-steps"><span class="empty-state">点击「计算伤害」查看完整计算过程</span></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ═══ TECH VIEW ═══ -->
+  <main class="mode-view" id="tech-view">
+    <div class="tech-grid">
+      <div class="tech-panel">
+        <h2>技术调试模式</h2>
+        <p class="hint">原始 JSON 输入 / 输出 / diff / error，保留给开发者使用。</p>
+        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700;">inputJson</label>
+        <textarea id="tech-input-json"></textarea>
+        <div class="tech-btn-row">
+          <button class="btn btn-primary" id="tech-run-button">重新计算</button>
+          <button class="btn btn-secondary" id="tech-sync-button">回显到策划表单</button>
+          <button class="btn btn-ghost" id="tech-reset-button">恢复示例</button>
+        </div>
+        <span class="status-badge" id="tech-status">等待输入</span>
+      </div>
+      <div class="tech-panel">
+        <h2>输出 & 差异</h2>
+        <p class="hint">完整 result JSON、diff、error。</p>
+        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700;">outputJson</label>
+        <textarea id="tech-output-json" readonly></textarea>
+        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700;">diff</label>
+        <pre id="tech-diff-output"></pre>
+        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700;">error</label>
+        <pre id="tech-error-output"></pre>
+      </div>
+      <div class="tech-panel wide-col">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div><h2>批量调试</h2><p class="hint">输入 suite JSON 批量执行，保留回归调试能力。</p></div>
+          <button class="btn btn-secondary" id="batch-run-button">执行 Suite</button>
+        </div>
+        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700;">batch suite json</label>
+        <textarea id="batch-suite-json"></textarea>
+        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700;">batch result</label>
+        <textarea id="batch-output-json" readonly></textarea>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════
+   STATE & PRESETS
+   ═══════════════════════════════════════════════════════════ */
+const PRESETS = [
+  {
+    name: "1. 战士力量攻击普通怪",
+    description: "Ironclad +3 力量攻击 TEST_DUMMY（5 格挡），验证力量加成与格挡抵消",
+    case: {
+      name: "战士力量攻击普通怪",
+      seed: 42, character_id: "Ironclad",
+      player: { max_hp: 80, current_hp: 80, block: 0, energy: 3, powers: [{ id: "STRENGTH", amount: 3 }], relics: [] },
+      enemies: [{ monster_id: "TEST_DUMMY", monster_factory: "", max_hp: 50, current_hp: 50, block: 5, powers: [] }],
+      operations: [{ type: "deal_damage", actor: "player", target: "enemy:0", base_damage: 10, base_block: 0, power_id: "", amount: 0, props: ["MOVE"] }]
+    }
+  },
+  {
+    name: "2. 易伤倍增测试",
+    description: "Silent 攻击带 2 层易伤的 TEST_DUMMY（无格挡），验证易伤 ×1.5 倍增",
+    case: {
+      name: "易伤倍增测试",
+      seed: 99, character_id: "Silent",
+      player: { max_hp: 70, current_hp: 70, block: 0, energy: 3, powers: [], relics: [] },
+      enemies: [{ monster_id: "TEST_DUMMY", monster_factory: "", max_hp: 40, current_hp: 40, block: 0, powers: [{ id: "VULNERABLE", amount: 2 }] }],
+      operations: [{ type: "deal_damage", actor: "player", target: "enemy:0", base_damage: 8, base_block: 0, power_id: "", amount: 0, props: ["MOVE"] }]
+    }
+  },
+  {
+    name: "3. 格挡减免测试",
+    description: "Ironclad 基础 15 伤害攻击格挡 20 的 TEST_DUMMY，验证格挡完全抵消与溢出",
+    case: {
+      name: "格挡减免测试",
+      seed: 77, character_id: "Ironclad",
+      player: { max_hp: 80, current_hp: 80, block: 0, energy: 3, powers: [], relics: [] },
+      enemies: [{ monster_id: "TEST_DUMMY", monster_factory: "", max_hp: 60, current_hp: 60, block: 20, powers: [] }],
+      operations: [{ type: "deal_damage", actor: "player", target: "enemy:0", base_damage: 15, base_block: 0, power_id: "", amount: 0, props: ["MOVE"] }]
+    }
+  }
+];
+
+let state = {
+  mode: "planner",
+  catalog: { character_ids: [], card_ids: [], relic_ids: [], powers: [], value_props: [], monster_factories: [], operation_types: [] },
+  caseData: null,
+  lastResult: null,
+  lastError: "",
+};
+
+/* ═══════════════════════════════════════════════════════════
+   HELPERS
+   ═══════════════════════════════════════════════════════════ */
+function clone(v) { return JSON.parse(JSON.stringify(v)); }
+function fmt(v) { return JSON.stringify(v, null, 2); }
+function parseSafe(t) { try { return JSON.parse(t); } catch (e) { return null; } }
+function norm(v, fallback = 0) { const n = Number.parseInt(String(v), 10); return Number.isFinite(n) ? n : fallback; }
+function esc(s) { return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;"); }
+
+function setMode(m) {
+  state.mode = m;
+  document.getElementById("mode-planner").classList.toggle("active", m === "planner");
+  document.getElementById("mode-tech").classList.toggle("active", m === "tech");
+  document.getElementById("planner-view").classList.toggle("active", m === "planner");
+  document.getElementById("tech-view").classList.toggle("active", m === "tech");
+}
+
+function fillSelect(el, values, opts = {}) {
+  let html = opts.blankLabel ? `<option value="">${esc(opts.blankLabel)}</option>` : "";
+  for (const v of values) {
+    const sel = opts.selected !== undefined && v === opts.selected ? " selected" : "";
+    html += `<option value="${esc(v)}"${sel}>${esc(v)}</option>`;
+  }
+  el.innerHTML = html;
+}
+
+function fillMulti(el, values, selectedVals) {
+  const set = new Set(selectedVals || []);
+  el.innerHTML = values.map(v => `<option value="${esc(v)}"${set.has(v) ? " selected" : ""}>${esc(v)}</option>`).join("");
+}
+
+function setStatus(msg, isError) {
+  const el = document.getElementById("status-text");
+  el.textContent = msg;
+  el.className = isError ? "error-badge" : "status-badge";
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DOM REFS
+   ═══════════════════════════════════════════════════════════ */
+const $ = id => document.getElementById(id);
+const heroCharacter = $("hero-character");
+const heroMaxHp = $("hero-max-hp");
+const heroCurrentHp = $("hero-current-hp");
+const heroBlock = $("hero-block");
+const heroEnergy = $("hero-energy");
+const heroRelics = $("hero-relics");
+const playerPowerList = $("player-power-list");
+const enemyList = $("enemy-list");
+const operationType = $("operation-type");
+const operationActor = $("operation-actor");
+const operationTarget = $("operation-target");
+const baseDamage = $("base-damage");
+const baseBlock = $("base-block");
+const operationPowerId = $("operation-power-id");
+const operationPowerAmount = $("operation-power-amount");
+const operationProps = $("operation-props");
+const caseNameInput = $("case-name");
+const presetSelect = $("preset-select");
+const techInputJson = $("tech-input-json");
+const techOutputJson = $("tech-output-json");
+const techDiffOutput = $("tech-diff-output");
+const techErrorOutput = $("tech-error-output");
+const techStatus = $("tech-status");
+const batchSuiteJson = $("batch-suite-json");
+const batchOutputJson = $("batch-output-json");
+
+/* ═══════════════════════════════════════════════════════════
+   RENDER PLANNER FORM
+   ═══════════════════════════════════════════════════════════ */
+function renderAll() {
+  const c = state.caseData;
+  const p = c.player || {};
+  const op = c.operations?.[0] || {};
+
+  fillSelect(heroCharacter, state.catalog.character_ids, { selected: c.character_id || "Ironclad" });
+  fillSelect(operationType, state.catalog.operation_types, { selected: op.type || "deal_damage" });
+  fillSelect(operationPowerId, state.catalog.powers, { blankLabel: "— 不施加 —", selected: op.power_id || "" });
+  fillMulti(heroRelics, state.catalog.relic_ids, p.relics || []);
+  fillMulti(operationProps, state.catalog.value_props, op.props || ["MOVE"]);
+
+  heroMaxHp.value = p.max_hp ?? 80;
+  heroCurrentHp.value = p.current_hp ?? p.max_hp ?? 80;
+  heroBlock.value = p.block ?? 0;
+  heroEnergy.value = p.energy ?? 3;
+  baseDamage.value = op.base_damage ?? 0;
+  baseBlock.value = op.base_block ?? 0;
+  operationPowerAmount.value = op.amount ?? 0;
+  caseNameInput.value = c.name || "";
+
+  renderEnemies();
+  renderPlayerPowers();
+  renderActorTargets();
+  updateResults(state.lastResult, state.lastError);
+  updateOperationFields();
+}
+
+function renderEnemies() {
+  const enemies = state.caseData.enemies || [];
+  if (!enemies.length) {
+    enemyList.innerHTML = '<div class="empty-state">暂无怪物，点击「+ 添加怪物」</div>';
+    return;
+  }
+  enemyList.innerHTML = enemies.map((en, i) => `
+    <div class="enemy-card" data-enemy-card data-enemy-index="${i}">
+      <div class="enemy-card-head">
+        <strong>怪物 ${i + 1}${en.monster_factory ? " · " + en.monster_factory : ""}</strong>
+        <button class="btn btn-ghost btn-sm" data-remove-enemy="${i}">✕</button>
+      </div>
+      <div class="field-row"><label>工厂</label><select data-enemy-field="monster_factory" data-enemy-index="${i}">
+        <option value="">— 基础怪物 —</option>
+        ${state.catalog.monster_factories.map(f => `<option value="${esc(f)}"${f === (en.monster_factory||"") ? " selected" : ""}>${esc(f)}</option>`).join("")}
+      </select></div>
+      <div class="field-row"><label>ID</label><input type="text" data-enemy-field="monster_id" data-enemy-index="${i}" value="${esc(en.monster_id||"")}" /></div>
+      <div class="field-row"><label>最大HP</label><input type="number" min="1" data-enemy-field="max_hp" data-enemy-index="${i}" value="${norm(en.max_hp,50)}" /></div>
+      <div class="field-row"><label>当前HP</label><input type="number" min="0" data-enemy-field="current_hp" data-enemy-index="${i}" value="${norm(en.current_hp, norm(en.max_hp,50))}" /></div>
+      <div class="field-row"><label>格挡</label><input type="number" min="0" data-enemy-field="block" data-enemy-index="${i}" value="${norm(en.block,0)}" /></div>
+      <div class="col-section" style="border-top-color:rgba(32,79,90,0.2);">
+        <div class="col-section-title">状态效果</div>
+        <div data-enemy-power-list="${i}">${renderEnemyPowerRows(i, en.powers || [])}</div>
+        <button class="btn btn-ghost btn-sm" data-add-enemy-power="${i}" style="margin-top:4px;">+ 添加状态</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+function renderEnemyPowerRows(enemyIdx, powers) {
+  if (!powers.length) return '<div class="empty-state">暂无状态</div>';
+  return powers.map((pw, pi) => `
+    <div class="power-row" style="margin-bottom:3px;" data-power-row data-power-prefix="enemy:${enemyIdx}" data-power-index="${pi}">
+      <select data-power-field="id" data-power-prefix="enemy:${enemyIdx}" data-power-index="${pi}">
+        ${state.catalog.powers.map(p => `<option value="${esc(p)}"${p === pw.id ? " selected" : ""}>${esc(p)}</option>`).join("")}
+      </select>
+      <input type="number" min="0" data-power-field="amount" data-power-prefix="enemy:${enemyIdx}" data-power-index="${pi}" value="${norm(pw.amount,0)}" />
+      <button class="btn btn-ghost btn-sm" data-remove-power="enemy:${enemyIdx}:${pi}">✕</button>
+    </div>
+  `).join("");
+}
+
+function renderPlayerPowers() {
+  const powers = state.caseData.player?.powers || [];
+  if (!powers.length) {
+    playerPowerList.innerHTML = '<div class="empty-state">暂无状态</div>';
+    return;
+  }
+  playerPowerList.innerHTML = powers.map((pw, i) => `
+    <div class="power-row" style="margin-bottom:3px;" data-power-row data-power-prefix="player" data-power-index="${i}">
+      <select data-power-field="id" data-power-prefix="player" data-power-index="${i}">
+        ${state.catalog.powers.map(p => `<option value="${esc(p)}"${p === pw.id ? " selected" : ""}>${esc(p)}</option>`).join("")}
+      </select>
+      <input type="number" min="0" data-power-field="amount" data-power-prefix="player" data-power-index="${i}" value="${norm(pw.amount,0)}" />
+      <button class="btn btn-ghost btn-sm" data-remove-power="player:${i}">✕</button>
+    </div>
+  `).join("");
+}
+
+function renderActorTargets() {
+  const refs = ["player", ...state.caseData.enemies.map((_, i) => `enemy:${i}`)];
+  const curActor = state.caseData.operations?.[0]?.actor || "player";
+  const curTarget = state.caseData.operations?.[0]?.target || refs.find(r => r !== curActor) || "enemy:0";
+  fillSelect(operationActor, refs, { selected: curActor });
+  const targets = refs.filter(r => r !== operationActor.value);
+  fillSelect(operationTarget, targets.length ? targets : refs, { selected: targets.includes(curTarget) ? curTarget : targets[0] });
+}
+
+function updateOperationFields() {
+  const t = operationType.value || "deal_damage";
+  $("row-base-damage").style.display = t === "deal_damage" ? "flex" : "none";
+  $("row-base-block").style.display = t === "gain_block" ? "flex" : "none";
+  $("row-power-id").style.display = t === "apply_power" ? "flex" : "none";
+  $("row-power-amount").style.display = t === "apply_power" ? "flex" : "none";
+  $("row-props").style.display = t !== "apply_power" ? "" : "none";
+}
+
+/* ═══════════════════════════════════════════════════════════
+   COLLECT PLANNER → CASE
+   ═══════════════════════════════════════════════════════════ */
+function collectCase() {
+  const c = clone(state.caseData);
+  c.name = caseNameInput.value || "未命名用例";
+  c.character_id = heroCharacter.value || "Ironclad";
+  c.player = {
+    max_hp: norm(heroMaxHp.value, 80),
+    current_hp: norm(heroCurrentHp.value, norm(heroMaxHp.value, 80)),
+    block: norm(heroBlock.value, 0),
+    energy: norm(heroEnergy.value, 3),
+    powers: collectPowers("player", c.player?.powers || []),
+    relics: Array.from(heroRelics.selectedOptions).map(o => o.value),
+  };
+  c.enemies = Array.from(enemyList.querySelectorAll("[data-enemy-card]")).map(card => {
+    const i = norm(card.dataset.enemyIndex, 0);
+    const exist = c.enemies[i] || {};
+    return {
+      monster_factory: getEnemyField(i, "monster_factory") || "",
+      monster_id: getEnemyField(i, "monster_id") || exist.monster_id || "",
+      max_hp: norm(getEnemyField(i, "max_hp"), norm(exist.max_hp, 50)),
+      current_hp: norm(getEnemyField(i, "current_hp"), norm(exist.current_hp, 50)),
+      block: norm(getEnemyField(i, "block"), norm(exist.block, 0)),
+      powers: collectPowers("enemy:" + i, exist.powers || []),
+    };
+  });
+  const op = c.operations?.[0] || {};
+  c.operations = [{
+    type: operationType.value || "deal_damage",
+    actor: operationActor.value || "player",
+    target: operationTarget.value || "enemy:0",
+    base_damage: norm(baseDamage.value, 0),
+    base_block: norm(baseBlock.value, 0),
+    power_id: operationPowerId.value || "",
+    amount: norm(operationPowerAmount.value, 0),
+    props: Array.from(operationProps.selectedOptions).map(o => o.value),
+  }];
+  return c;
+}
+
+function collectPowers(prefix, existing) {
+  const rows = document.querySelectorAll(`[data-power-row][data-power-prefix="${prefix}"]`);
+  if (!rows.length) return existing.map(p => ({ id: p.id, amount: norm(p.amount, 0) }));
+  return Array.from(rows).map(row => {
+    const idx = norm(row.dataset.powerIndex, 0);
+    const idEl = row.querySelector('[data-power-field="id"]');
+    const amtEl = row.querySelector('[data-power-field="amount"]');
+    return {
+      id: idEl?.value || existing[idx]?.id || state.catalog.powers[0] || "",
+      amount: norm(amtEl?.value, norm(existing[idx]?.amount, 0))
+    };
+  }).filter(p => p.id);
+}
+
+function getEnemyField(index, field) {
+  const el = enemyList.querySelector(`[data-enemy-index="${index}"][data-enemy-field="${field}"]`);
+  return el ? el.value : "";
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SYNC PLANNER <-> TECH
+   ═══════════════════════════════════════════════════════════ */
+function syncToTech() {
+  state.caseData = collectCase();
+  techInputJson.value = fmt(state.caseData);
+}
+
+function syncFromTech(jsonText) {
+  const parsed = parseSafe(jsonText);
+  if (!parsed) throw new Error("JSON 解析失败");
+  state.caseData = normalizeCase(parsed);
+  renderAll();
+  techInputJson.value = fmt(state.caseData);
+}
+
+function normalizeCase(c) {
+  c = clone(c || {});
+  c.character_id = c.character_id || "Ironclad";
+  c.player = c.player || {};
+  c.player.max_hp = norm(c.player.max_hp, 80);
+  c.player.current_hp = norm(c.player.current_hp, c.player.max_hp);
+  c.player.block = norm(c.player.block, 0);
+  c.player.energy = norm(c.player.energy, 3);
+  c.player.powers = Array.isArray(c.player.powers) ? c.player.powers : [];
+  c.player.relics = Array.isArray(c.player.relics) ? c.player.relics : [];
+  c.enemies = (Array.isArray(c.enemies) && c.enemies.length) ? c.enemies : [{ monster_id: "TEST_DUMMY", monster_factory: "", max_hp: 50, current_hp: 50, block: 0, powers: [] }];
+  c.enemies = c.enemies.map(e => ({
+    monster_factory: e.monster_factory || "", monster_id: e.monster_id || "",
+    max_hp: norm(e.max_hp, 50), current_hp: norm(e.current_hp, norm(e.max_hp, 50)),
+    block: norm(e.block, 0), powers: Array.isArray(e.powers) ? e.powers : [],
+  }));
+  c.operations = (Array.isArray(c.operations) && c.operations.length) ? c.operations : [{ type: "deal_damage", actor: "player", target: "enemy:0", base_damage: 10, base_block: 0, power_id: "", amount: 0, props: ["MOVE"] }];
+  return c;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   COMPUTE
+   ═══════════════════════════════════════════════════════════ */
+async function runCompute() {
+  try {
+    state.caseData = collectCase();
+    syncToTech();
+    setStatus("计算中...");
+    techStatus.textContent = "计算中...";
+    techErrorOutput.textContent = "";
+    const resp = await fetch("api/validate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(state.caseData) });
+    const result = await resp.json();
+    state.lastResult = result;
+    state.lastError = "";
+    techOutputJson.value = fmt(result);
+    updateTechDiff(result);
+    updateResults(result, "");
+    setStatus(resp.ok ? "计算完成" : "计算失败");
+    techStatus.textContent = resp.ok ? "计算完成" : "计算失败";
+  } catch (e) {
+    state.lastResult = null;
+    state.lastError = String(e);
+    techErrorOutput.textContent = String(e);
+    techOutputJson.value = String(e);
+    techDiffOutput.textContent = "";
+    setStatus(String(e), true);
+    techStatus.textContent = "错误";
+    updateResults(null, String(e));
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   UPDATE RESULTS DISPLAY
+   ═══════════════════════════════════════════════════════════ */
+function updateResults(result, errText) {
+  const rfd = $("r-final-damage"), rhp = $("r-remaining-hp"), rkl = $("r-killed");
+  const rst = $("r-steps"), rdt = $("r-damage-type"), rhpc = $("r-hp-change"), rbi = $("r-block-info");
+
+  if (errText) {
+    rfd.textContent = "错误"; rfd.className = "value danger";
+    rhp.textContent = "—"; rhp.className = "value";
+    rkl.textContent = "—"; rkl.className = "value ok";
+    rdt.textContent = ""; rhpc.textContent = ""; rbi.textContent = "";
+    rst.innerHTML = `<div class="step-line" style="color:var(--accent);">${esc(errText)}</div>`;
+    return;
+  }
+  if (!result) {
+    rfd.textContent = "—"; rfd.className = "value ok";
+    rhp.textContent = "—"; rhp.className = "value";
+    rkl.textContent = "—"; rkl.className = "value ok";
+    rdt.textContent = ""; rhpc.textContent = ""; rbi.textContent = "";
+    rst.innerHTML = '<span class="empty-state">点击「计算伤害」查看完整计算过程</span>';
+    return;
+  }
+
+  const op = result.operations?.[0];
+  const de = op?.damage_events?.[0];
+  const bt = op?.block_trace;
+
+  if (de) {
+    const app = de.application || {};
+    const trace = de.damage_trace || {};
+    const fd = trace.final_damage ?? 0;
+    const lost = app.hp_lost ?? 0;
+    const after = app.hp_after ?? 0;
+    const killed = app.was_killed;
+    const blocked = app.blocked ?? 0;
+
+    rfd.textContent = String(fd);
+    rfd.className = "value ok";
+    rdt.textContent = blocked > 0 ? `格挡抵消 ${blocked}` : (fd === 0 ? "完全格挡" : "");
+
+    if (app.hp_before !== undefined) {
+      rhp.textContent = `${after} / ${app.hp_before}`;
+      rhpc.textContent = lost > 0 ? `扣血 ${lost}` : "无扣血";
+    } else {
+      rhp.textContent = String(after);
+    }
+    rhp.className = "value";
+
+    rkl.textContent = killed ? "是 ☠" : "否";
+    rkl.className = killed ? "value danger" : "value ok";
+    rbi.textContent = `格挡 ${app.block_before ?? 0} → ${app.block_after ?? 0}`;
+
+    rst.innerHTML = buildDamageSteps(trace, app);
+  } else if (bt) {
+    rfd.textContent = "格挡操作"; rfd.className = "value ok";
+    rdt.textContent = `基础 ${bt.base_block ?? 0}`;
+    rhp.textContent = "—"; rhp.className = "value";
+    rkl.textContent = "—"; rkl.className = "value ok";
+    rbi.textContent = `最终格挡 ${bt.final_block ?? 0}`;
+    rst.innerHTML = buildBlockSteps(bt);
+  } else {
+    rfd.textContent = "—"; rfd.className = "value ok";
+    rhp.textContent = "—"; rhp.className = "value";
+    rkl.textContent = "—"; rkl.className = "value ok";
+    rst.innerHTML = '<span class="empty-state">操作未产生伤害或格挡</span>';
+  }
+}
+
+function buildDamageSteps(trace, app) {
+  const lines = [];
+  lines.push(`<span class="step-line">基础伤害 <b>${trace.base_damage ?? 0}</b></span>`);
+  for (const item of trace.additive || []) {
+    const sign = item.delta >= 0 ? "+" : "";
+    lines.push(`<span class="step-line">${item.source_id} ${sign}${item.delta} → <b>${fmtNum(item.after)}</b></span>`);
+  }
+  for (const item of trace.multiplicative || []) {
+    lines.push(`<span class="step-line">${item.source_id} ×${item.multiplier} → <b>${fmtNum(item.after)}</b></span>`);
+  }
+  for (const item of trace.caps || []) {
+    lines.push(`<span class="step-line">${item.source_id} 上限 ${item.cap} → <b>${fmtNum(item.after)}</b></span>`);
+  }
+  const blocked = app.blocked ?? 0;
+  if (blocked > 0) {
+    lines.push(`<span class="step-line">格挡抵消 <b>${blocked}</b>，剩余伤害 <b>${fmtNum(app.remaining_after_block ?? (trace.final_damage ?? 0) - blocked)}</b></span>`);
+  }
+  lines.push(`<span class="step-line highlight">最终扣血 <b>${app.hp_lost ?? 0}</b></span>`);
+  lines.push(`<span class="step-line">剩余生命 <b>${app.hp_after ?? "—"}</b>${app.was_killed ? " · 已击杀" : ""}</span>`);
+  return lines.join("");
+}
+
+function buildBlockSteps(trace) {
+  const lines = [];
+  lines.push(`<span class="step-line">基础格挡 <b>${trace.base_block ?? 0}</b></span>`);
+  for (const item of trace.additive || []) {
+    const sign = item.delta >= 0 ? "+" : "";
+    lines.push(`<span class="step-line">${item.source_id} ${sign}${item.delta} → <b>${fmtNum(item.after)}</b></span>`);
+  }
+  for (const item of trace.multiplicative || []) {
+    lines.push(`<span class="step-line">${item.source_id} ×${item.multiplier} → <b>${fmtNum(item.after)}</b></span>`);
+  }
+  lines.push(`<span class="step-line highlight">最终格挡 <b>${trace.final_block ?? 0}</b></span>`);
+  return lines.join("");
+}
+
+function fmtNum(v) {
+  if (typeof v !== "number") return String(v);
+  return Number.isInteger(v) ? String(v) : String(Math.round(v * 100) / 100);
+}
+
+function updateTechDiff(result) {
+  if (!result) { techDiffOutput.textContent = ""; return; }
+  const changes = [];
+  const de = result.operations?.[0]?.damage_events?.[0];
+  const app = de?.application || {};
+  if (de) {
+    changes.push(`target.hp: ${app.hp_before ?? "?"} → ${app.hp_after ?? "?"}`);
+    changes.push(`target.block: ${app.block_before ?? "?"} → ${app.block_after ?? "?"}`);
+    changes.push(`hp_lost: ${app.hp_lost ?? "?"}`);
+  }
+  const fs = result.final_state || {};
+  if (fs.player) changes.push(`final.player.hp: ${fs.player.current_hp}, block: ${fs.player.block}`);
+  techDiffOutput.textContent = changes.join("\n") || "无变化";
+}
+
+/* ═══════════════════════════════════════════════════════════
+   BATCH SUITE
+   ═══════════════════════════════════════════════════════════ */
+async function runBatch() {
+  try {
+    const suite = parseSafe(batchSuiteJson.value || "{}");
+    const resp = await fetch("api/validate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(suite) });
+    const result = await resp.json();
+    batchOutputJson.value = fmt(result);
+    techOutputJson.value = fmt(result);
+    if (result.summary) techStatus.textContent = `Batch: ${result.summary.passed}/${result.summary.total}`;
+  } catch (e) {
+    batchOutputJson.value = String(e);
+    techErrorOutput.textContent = String(e);
+    techStatus.textContent = "Batch 失败";
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MUTATIONS
+   ═══════════════════════════════════════════════════════════ */
+function addEnemy() {
+  state.caseData.enemies.push({ monster_id: "TEST_DUMMY", monster_factory: "", max_hp: 50, current_hp: 50, block: 0, powers: [] });
+  renderAll(); syncToTech();
+}
+
+function removeEnemy(i) {
+  state.caseData.enemies.splice(i, 1);
+  if (!state.caseData.enemies.length) state.caseData.enemies.push({ monster_id: "TEST_DUMMY", monster_factory: "", max_hp: 50, current_hp: 50, block: 0, powers: [] });
+  if (state.caseData.operations?.[0]?.target === `enemy:${i}`) state.caseData.operations[0].target = "enemy:0";
+  renderAll(); syncToTech();
+}
+
+function addPlayerPower() {
+  state.caseData.player.powers.push({ id: state.catalog.powers[0] || "STRENGTH", amount: 1 });
+  renderAll(); syncToTech();
+}
+
+function addEnemyPower(i) {
+  const en = state.caseData.enemies[i];
+  if (!en) return;
+  en.powers = en.powers || [];
+  en.powers.push({ id: state.catalog.powers[0] || "VULNERABLE", amount: 1 });
+  renderAll(); syncToTech();
+}
+
+function removePower(prefix, idx) {
+  if (prefix === "player") { state.caseData.player.powers.splice(idx, 1); }
+  else if (prefix.startsWith("enemy:")) {
+    const ei = norm(prefix.split(":")[1], 0);
+    const en = state.caseData.enemies[ei];
+    if (en) en.powers.splice(idx, 1);
+  }
+  renderAll(); syncToTech();
+}
+
+function resetToDefault() {
+  loadPreset(0);
+}
+
+function loadPreset(idx) {
+  if (idx < 0 || idx >= PRESETS.length) return;
+  state.caseData = normalizeCase(PRESETS[idx].case);
+  state.lastResult = null;
+  state.lastError = "";
+  renderAll();
+  syncToTech();
+  techOutputJson.value = "";
+  techDiffOutput.textContent = "";
+  techErrorOutput.textContent = "";
+  updateResults(null, "");
+  setStatus(`已加载: ${PRESETS[idx].name}`);
+  techStatus.textContent = "就绪";
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CATALOG
+   ═══════════════════════════════════════════════════════════ */
+async function loadCatalog() {
+  const resp = await fetch("api/catalog");
+  state.catalog = await resp.json();
+  // fill preset selector
+  presetSelect.innerHTML = '<option value="">— 预设用例 —</option>' + PRESETS.map((p, i) => `<option value="${i}">${p.name}</option>`).join("");
+  renderAll();
+}
+
+/* ═══════════════════════════════════════════════════════════
+   EVENTS
+   ═══════════════════════════════════════════════════════════ */
+function bindEvents() {
+  $("mode-planner").addEventListener("click", () => { setMode("planner"); syncToTech(); });
+  $("mode-tech").addEventListener("click", () => { syncToTech(); setMode("tech"); });
+  $("run-button").addEventListener("click", runCompute);
+  $("reset-button").addEventListener("click", resetToDefault);
+  $("copy-button").addEventListener("click", () => {
+    syncToTech();
+    navigator.clipboard.writeText(techInputJson.value).then(() => setStatus("JSON 已复制到剪贴板")).catch(() => setStatus("复制失败", true));
+  });
+  $("tech-run-button").addEventListener("click", () => { try { syncFromTech(techInputJson.value); } catch(e) { techErrorOutput.textContent = String(e); } runCompute(); });
+  $("tech-sync-button").addEventListener("click", () => { try { syncFromTech(techInputJson.value); setStatus("已从 JSON 回显到策划表单"); techStatus.textContent = "已回显"; techErrorOutput.textContent = ""; } catch(e) { techErrorOutput.textContent = String(e); techStatus.textContent = "解析失败"; } });
+  $("tech-reset-button").addEventListener("click", resetToDefault);
+  $("batch-run-button").addEventListener("click", runBatch);
+  $("add-enemy-button").addEventListener("click", addEnemy);
+  $("add-player-power").addEventListener("click", addPlayerPower);
+  presetSelect.addEventListener("change", () => {
+    const idx = Number(presetSelect.value);
+    if (!isNaN(idx)) loadPreset(idx);
+  });
+
+  // delegate clicks
+  document.addEventListener("click", e => {
+    const t = e.target;
+    if (!(t instanceof HTMLElement)) return;
+    if (t.dataset.removeEnemy !== undefined) { removeEnemy(norm(t.dataset.removeEnemy, 0)); return; }
+    if (t.dataset.addEnemyPower !== undefined) { addEnemyPower(norm(t.dataset.addEnemyPower, 0)); return; }
+    if (t.dataset.removePower) { const [prefix, rawIdx] = t.dataset.removePower.split(":"); removePower(prefix, norm(rawIdx, 0)); return; }
+    if (t.id === "toggle-advanced-action") {
+      const body = $("fold-body-advanced-action");
+      body.classList.toggle("open");
+      t.textContent = body.classList.contains("open") ? "▾ 高级选项" : "▸ 高级选项";
+    }
+  });
+
+  // live sync planner → tech on input
+  document.addEventListener("input", e => {
+    if (e.target.closest("#planner-view")) { syncToTech(); }
+  });
+  document.addEventListener("change", e => {
+    if (e.target.closest("#planner-view")) {
+      syncToTech();
+      if (e.target === operationType) updateOperationFields();
+      if (e.target === operationActor) renderActorTargets();
+    }
+  });
+
+  // tech json live sync to planner
+  techInputJson.addEventListener("input", () => {
+    try { state.caseData = normalizeCase(parseSafe(techInputJson.value || "{}")); renderAll(); techErrorOutput.textContent = ""; techStatus.textContent = "JSON 已同步"; }
+    catch (e) { /* ignore parse errors during typing */ }
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════
+   BOOTSTRAP
+   ═══════════════════════════════════════════════════════════ */
+async function bootstrap() {
+  setMode("planner");
+  // sample suite for batch mode
+  batchSuiteJson.value = fmt({
+    cases: [{
+      name: "sample-pass",
+      player: { max_hp: 80, current_hp: 80, block: 0, powers: [{ id: "STRENGTH", amount: 3 }], relics: [], character_id: "Ironclad" },
+      enemies: [{ monster_id: "TEST_DUMMY", max_hp: 50, current_hp: 50, block: 5, powers: [{ id: "VULNERABLE", amount: 2 }] }],
+      operations: [{ type: "deal_damage", actor: "player", target: "enemy:0", base_damage: 10, props: ["MOVE"] }],
+      expect: { operations: [{ damage_events: [{ damage_trace: { final_damage: 19 }, application: { hp_lost: 14 } }] }] }
+    }]
+  });
+  bindEvents();
+  await loadCatalog();
+  loadPreset(0); // default: first preset
+  updateResults(null, "");
+  setStatus("就绪 — 选择预设用例或修改参数后点击「计算伤害」");
+}
+
+bootstrap().catch(e => {
+  setStatus(String(e), true);
+  techErrorOutput.textContent = String(e);
+});
+</script>
+</body>
+</html>

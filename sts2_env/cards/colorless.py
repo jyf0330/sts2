@@ -15,7 +15,6 @@ from sts2_env.cards.factory import (
     eligible_registered_cards,
 )
 from sts2_env.cards.registry import register_effect
-from sts2_env.characters.all import ALL_CHARACTERS, get_character
 from sts2_env.core.enums import (
     CardId, CardType, TargetType, CardRarity, PowerStackType, PowerType, ValueProp, PowerId,
 )
@@ -390,6 +389,8 @@ def shockwave(card: CardInstance, combat: CombatState, target: Creature | None) 
 
 @register_effect(CardId.SPLASH)
 def splash(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
+    from sts2_env.characters.all import ALL_CHARACTERS
+
     own_character = combat.character_id.lower()
     candidate_ids: list[CardId] = []
     for cfg in ALL_CHARACTERS:
@@ -584,6 +585,7 @@ def hand_of_greed(card: CardInstance, combat: CombatState, target: Creature | No
 
 @register_effect(CardId.HIDDEN_GEM)
 def hidden_gem(card: CardInstance, combat: CombatState, target: Creature | None) -> None:
+    from sts2_env.characters.all import get_character
     valid_draw_cards = [
         c for c in combat.draw_pile
         if (
