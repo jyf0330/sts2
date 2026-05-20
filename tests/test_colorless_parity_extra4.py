@@ -5,6 +5,7 @@ import sts2_env.powers  # noqa: F401
 from sts2_env.cards.base import CardInstance
 from sts2_env.cards.colorless import (
     make_beacon_of_hope,
+    make_calamity_card,
     make_catastrophe,
     make_coordinate_card,
     make_dark_shackles,
@@ -17,6 +18,7 @@ from sts2_env.cards.colorless import (
     make_impatience,
     make_intercept_card,
     make_jackpot,
+    make_nostalgia_card,
     make_prep_time,
     make_production,
     make_prolong,
@@ -34,6 +36,10 @@ from sts2_env.monsters.act1_weak import create_shrinker_beetle
 from sts2_env.run.run_state import PlayerState
 
 
+CALAMITY_POWER_AMOUNT = 1
+NOSTALGIA_POWER_AMOUNT = 1
+
+
 def _make_combat() -> CombatState:
     combat = CombatState(
         player_hp=80,
@@ -49,6 +55,71 @@ def _make_combat() -> CombatState:
 
 
 class TestColorlessParityExtra4:
+    def test_calamity_generates_owner_attack_after_owner_attack_only(self):
+        combat = _make_combat()
+        ally = combat.add_ally_player(
+            PlayerState(player_id=2, character_id="Ironclad", max_hp=60, current_hp=60)
+        )
+        ally_state = combat.combat_player_state_for(ally)
+        assert ally_state is not None
+
+        ally_attack = make_strike_ironclad()
+        ally_attack.owner = ally
+        ally_state.hand = [ally_attack]
+        ally_state.zone_map["hand"] = ally_state.hand
+        ally_state.energy = 1
+
+        owner_attack = make_strike_ironclad()
+        combat.hand = [make_calamity_card(), owner_attack]
+        combat.energy = 4
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.CALAMITY) == CALAMITY_POWER_AMOUNT
+
+        assert combat.play_card_from_creature(ally, 0, 0)
+        assert ally_state.hand == []
+
+        assert combat.play_card(0, 0)
+        assert len(combat.hand) == CALAMITY_POWER_AMOUNT
+        assert all(card.card_type == CardType.ATTACK for card in combat.hand)
+        assert all(card.rarity not in {CardRarity.BASIC, CardRarity.ANCIENT, CardRarity.EVENT} for card in combat.hand)
+
+    def test_nostalgia_redirects_only_owner_qualifying_cards_to_draw_top(self):
+        combat = _make_combat()
+        ally = combat.add_ally_player(
+            PlayerState(player_id=2, character_id="Ironclad", max_hp=60, current_hp=60)
+        )
+        ally_state = combat.combat_player_state_for(ally)
+        assert ally_state is not None
+
+        ally_attack = make_strike_ironclad()
+        ally_attack.owner = ally
+        ally_state.hand = [ally_attack]
+        ally_state.zone_map["hand"] = ally_state.hand
+        ally_state.energy = 1
+
+        owner_attack = make_strike_ironclad()
+        owner_skill = make_defend_ironclad()
+        combat.hand = [make_nostalgia_card(), owner_attack, owner_skill]
+        combat.draw_pile = []
+        combat.discard_pile = []
+        combat.energy = 4
+
+        assert combat.play_card(0)
+        assert combat.player.get_power_amount(PowerId.NOSTALGIA) == NOSTALGIA_POWER_AMOUNT
+
+        assert combat.play_card_from_creature(ally, 0, 0)
+        assert ally_attack in ally_state.discard
+        assert ally_attack not in combat.draw_pile
+
+        assert combat.play_card(0, 0)
+        assert combat.draw_pile == [owner_attack]
+        assert owner_attack not in combat.discard_pile
+
+        assert combat.play_card(0)
+        assert owner_skill in combat.discard_pile
+        assert combat.draw_pile == [owner_attack]
+
     def test_catastrophe_autoplays_two_draw_pile_cards_preferring_playable(self):
         combat = _make_combat()
         first = make_strike_ironclad()
