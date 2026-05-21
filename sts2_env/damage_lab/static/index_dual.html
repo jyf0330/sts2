@@ -56,6 +56,7 @@
   }
   .mode-btn.active { background: linear-gradient(135deg, var(--accent), #d9673c); color: #fff; border-color: transparent; box-shadow: 0 6px 18px rgba(180,69,36,0.18); }
   .mode-btn:hover:not(.active) { background: rgba(32,79,90,0.06); }
+  .is-hidden { display: none !important; }
   .topbar-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   select, input, textarea, button { font: inherit; }
   .preset-select { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 5px 8px; font-size: 12px; background: var(--panel-solid); color: var(--ink); max-width: 160px; }
@@ -72,23 +73,31 @@
   .mode-view { display: none; flex: 1; overflow: hidden; }
   .mode-view.active { display: flex; flex-direction: column; }
 
-  /* ── QUICK: SIMPLE CENTERED FORM ── */
-  .quick-body { flex: 1; overflow-y: auto; padding: 20px 0; min-height: 0; display: flex; flex-direction: column; align-items: center; }
-  .quick-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 28px 32px; max-width: 520px; width: 100%; }
-  .quick-card h2 { font-size: 18px; font-weight: 800; color: var(--accent-2); margin-bottom: 8px; }
-  .quick-card .subtitle { font-size: 12px; color: var(--muted); margin-bottom: 20px; }
-  .quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  /* ── QUICK: DENSE VALIDATION FORM ── */
+  .quick-body { flex: 1; overflow: auto; padding: 10px 0; min-height: 0; display: flex; flex-direction: column; align-items: center; }
+  .quick-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; max-width: 1220px; width: 100%; }
+  .quick-card h2 { font-size: 16px; font-weight: 800; color: var(--accent-2); margin-bottom: 4px; }
+  .quick-card .subtitle { font-size: 11px; color: var(--muted); margin-bottom: 10px; }
+  .quick-layout { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: start; }
+  .quick-form { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .quick-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; align-items: end; }
   .quick-field { display: flex; flex-direction: column; gap: 4px; }
   .quick-field.full { grid-column: 1 / -1; }
+  .quick-field.span-2 { grid-column: span 2; }
+  .quick-field.span-3 { grid-column: span 3; }
+  .quick-grid > .span-2 { grid-column: span 2; }
+  .quick-grid > .span-3 { grid-column: span 3; }
   .quick-field label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent-3); font-weight: 700; }
-  .quick-field input { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 10px; font-size: 14px; background: var(--panel-solid); color: var(--ink); font-variant-numeric: tabular-nums; }
-  .quick-field input:focus { outline: 2px solid rgba(180,69,36,0.25); outline-offset: -1px; }
-  .quick-section { border-top: 1px solid var(--line); padding-top: 14px; margin-top: 4px; }
-  .quick-section-title { font-size: 11px; font-weight: 800; color: var(--accent-3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px; }
-  .quick-result { margin-top: 20px; padding: 16px; border-radius: var(--radius-sm); background: rgba(32,79,90,0.06); text-align: center; }
-  .quick-result .big { font-size: 36px; font-weight: 800; color: var(--accent-2); line-height: 1.2; }
-  .quick-result .detail { font-size: 13px; color: var(--muted); margin-top: 4px; line-height: 1.6; }
-  .btn-lg { padding: 12px 32px; font-size: 15px; letter-spacing: 0.02em; }
+  .quick-field input, .quick-field select { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 6px 8px; font-size: 12px; background: var(--panel-solid); color: var(--ink); font-variant-numeric: tabular-nums; min-width: 0; width: 100%; }
+  .quick-field select[multiple] { height: 32px; padding: 2px 6px; }
+  .quick-field input:focus, .quick-field select:focus { outline: 2px solid rgba(180,69,36,0.25); outline-offset: -1px; }
+  .quick-section { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 0; }
+  .quick-section-title { font-size: 11px; font-weight: 800; color: var(--accent-3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 7px; }
+  .quick-actions { display: flex; gap: 8px; align-items: center; margin-top: 2px; }
+  .quick-result { width: 260px; min-height: 168px; padding: 14px; border-radius: var(--radius-sm); background: rgba(32,79,90,0.06); text-align: center; display: flex; flex-direction: column; justify-content: center; }
+  .quick-result .big { font-size: 28px; font-weight: 800; color: var(--accent-2); line-height: 1.2; }
+  .quick-result .detail { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.5; text-align: left; }
+  .btn-lg { padding: 9px 22px; font-size: 13px; letter-spacing: 0.02em; }
 
   /* ── PLANNER: THREE COLUMNS ── */
   .planner-body { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; flex: 1; overflow-y: auto; padding: 10px 0; min-height: 0; }
@@ -198,6 +207,8 @@
 
   /* ── RESPONSIVE ── */
   @media (max-width: 1200px) {
+    .quick-layout { grid-template-columns: 1fr; }
+    .quick-result { width: 100%; min-height: 110px; }
     .planner-body { grid-template-columns: 1fr; }
     .results-bar { grid-template-columns: 1fr 1fr 1fr; }
     .steps-card { grid-column: 1 / -1; }
@@ -208,6 +219,8 @@
   @media (max-width: 900px) {
     .topbar { flex-direction: column; align-items: flex-start; }
     .topbar-center { margin: 0; }
+    .quick-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .quick-field.span-2, .quick-field.span-3 { grid-column: span 2; }
     .results-bar { grid-template-columns: 1fr 1fr; }
   }
 </style>
@@ -223,7 +236,7 @@
     </div>
     <div class="topbar-center">
       <button class="mode-btn active" id="mode-quick">快速验证</button>
-      <button class="mode-btn" id="mode-planner">策划验证</button>
+      <button class="mode-btn is-hidden" id="mode-planner" type="button" aria-hidden="true" tabindex="-1">策划验证</button>
       <button class="mode-btn" id="mode-tech">技术调试</button>
     </div>
     <div class="topbar-right">
@@ -243,40 +256,70 @@
     <div class="quick-body">
       <div class="quick-card">
         <h2>快速验伤</h2>
-        <p class="subtitle">所有字段已预填默认值，修改后一键计算。</p>
-        <div class="quick-grid">
-          <div class="quick-field"><label>英雄职业</label><input id="q-character" type="text" value="Ironclad" /></div>
-          <div class="quick-field"><label>英雄最大生命</label><input id="q-player-maxhp" type="number" value="80" min="1" /></div>
-          <div class="quick-field"><label>英雄当前生命</label><input id="q-player-curhp" type="number" value="80" min="0" /></div>
-          <div class="quick-field"><label>英雄格挡</label><input id="q-player-block" type="number" value="0" min="0" /></div>
-          <div class="quick-field"><label>英雄力量 (STRENGTH)</label><input id="q-player-str" type="number" value="3" min="0" /></div>
-          <div class="quick-field"><label>英雄易伤层数</label><input id="q-player-vuln" type="number" value="0" min="0" /></div>
-        </div>
-        <div class="quick-section">
-          <div class="quick-section-title">怪物</div>
-          <div class="quick-grid">
-            <div class="quick-field"><label>怪物ID</label><input id="q-monster-id" type="text" value="TEST_DUMMY" /></div>
-            <div class="quick-field"><label>怪物最大生命</label><input id="q-monster-maxhp" type="number" value="50" min="1" /></div>
-            <div class="quick-field"><label>怪物当前生命</label><input id="q-monster-curhp" type="number" value="50" min="0" /></div>
-            <div class="quick-field"><label>怪物格挡</label><input id="q-monster-block" type="number" value="5" min="0" /></div>
-            <div class="quick-field"><label>怪物力量 (STRENGTH)</label><input id="q-monster-str" type="number" value="0" min="0" /></div>
-            <div class="quick-field"><label>怪物易伤 (VULNERABLE)</label><input id="q-monster-vuln" type="number" value="2" min="0" /></div>
+        <p class="subtitle">和策划验证共用字段，但压成高密度录入面板，常用参数不用切页。</p>
+        <div class="quick-layout">
+          <div class="quick-form">
+            <div class="quick-section">
+              <div class="quick-section-title">英雄</div>
+              <div class="quick-grid">
+                <div class="quick-field"><label>职业</label><select id="q-character"></select></div>
+                <div class="quick-field"><label>最大HP</label><input id="q-player-maxhp" type="number" value="80" min="1" /></div>
+                <div class="quick-field"><label>当前HP</label><input id="q-player-curhp" type="number" value="80" min="0" /></div>
+                <div class="quick-field"><label>格挡</label><input id="q-player-block" type="number" value="0" min="0" /></div>
+                <div class="quick-field"><label>能量</label><input id="q-player-energy" type="number" value="3" min="0" /></div>
+                <div class="quick-field"><label>遗物</label><select id="q-player-relics" multiple></select></div>
+              </div>
+            </div>
+
+            <div class="quick-section">
+              <div class="quick-section-title">怪物</div>
+              <div class="quick-grid">
+                <div class="quick-field"><label>工厂</label><select id="q-monster-factory"></select></div>
+                <div class="quick-field"><label>ID</label><input id="q-monster-id" type="text" value="TEST_DUMMY" /></div>
+                <div class="quick-field"><label>最大HP</label><input id="q-monster-maxhp" type="number" value="50" min="1" /></div>
+                <div class="quick-field"><label>当前HP</label><input id="q-monster-curhp" type="number" value="50" min="0" /></div>
+                <div class="quick-field"><label>格挡</label><input id="q-monster-block" type="number" value="5" min="0" /></div>
+                <div class="quick-field"><label>目标序号</label><input id="q-target-index" type="number" value="0" min="0" /></div>
+              </div>
+            </div>
+
+            <div class="quick-section">
+              <div class="quick-section-title">动作</div>
+              <div class="quick-grid">
+                <div class="quick-field"><label>类型</label><select id="q-operation-type"></select></div>
+                <div class="quick-field"><label>执行者</label><select id="q-actor"></select></div>
+                <div class="quick-field"><label>目标</label><select id="q-target"></select></div>
+                <div class="quick-field"><label>基础伤害</label><input id="q-base-damage" type="number" value="10" min="0" /></div>
+                <div class="quick-field"><label>基础格挡</label><input id="q-base-block" type="number" value="0" min="0" /></div>
+                <div class="quick-field"><label>Props</label><select id="q-operation-props" multiple></select></div>
+              </div>
+            </div>
+
+            <div class="quick-section">
+              <div class="quick-section-title">状态</div>
+              <div class="quick-grid">
+                <div class="quick-field"><label>英雄状态1</label><select id="q-player-power-1-id"></select></div>
+                <div class="quick-field"><label>数值</label><input id="q-player-power-1-amount" type="number" value="3" min="0" /></div>
+                <div class="quick-field"><label>英雄状态2</label><select id="q-player-power-2-id"></select></div>
+                <div class="quick-field"><label>数值</label><input id="q-player-power-2-amount" type="number" value="0" min="0" /></div>
+                <div class="quick-field"><label>施加状态</label><select id="q-operation-power-id"></select></div>
+                <div class="quick-field"><label>施加数值</label><input id="q-operation-power-amount" type="number" value="0" min="0" /></div>
+                <div class="quick-field"><label>怪物状态1</label><select id="q-monster-power-1-id"></select></div>
+                <div class="quick-field"><label>数值</label><input id="q-monster-power-1-amount" type="number" value="2" min="0" /></div>
+                <div class="quick-field"><label>怪物状态2</label><select id="q-monster-power-2-id"></select></div>
+                <div class="quick-field"><label>数值</label><input id="q-monster-power-2-amount" type="number" value="0" min="0" /></div>
+                <div class="quick-actions span-2">
+                  <button class="btn btn-primary btn-lg" id="quick-run-button">一键计算伤害</button>
+                  <button class="btn btn-secondary btn-lg is-hidden" id="quick-sync-button" type="button" aria-hidden="true" tabindex="-1">同步到策划</button>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-        <div class="quick-section">
-          <div class="quick-section-title">动作</div>
-          <div class="quick-grid">
-            <div class="quick-field"><label>基础伤害</label><input id="q-base-damage" type="number" value="10" min="0" /></div>
-            <div class="quick-field"><label>执行者</label><input id="q-actor" type="text" value="player" /></div>
-            <div class="quick-field full"><label>目标</label><input id="q-target" type="text" value="enemy:0" /></div>
+
+          <div class="quick-result" id="quick-result">
+            <div class="big">—</div>
+            <div class="detail">填写参数后点击上方按钮查看结果</div>
           </div>
-        </div>
-        <div style="text-align:center; margin-top:20px;">
-          <button class="btn btn-primary btn-lg" id="quick-run-button">⚡ 一键计算伤害</button>
-        </div>
-        <div class="quick-result" id="quick-result">
-          <div class="big">—</div>
-          <div class="detail">填写参数后点击上方按钮查看结果</div>
         </div>
       </div>
     </div>
@@ -721,43 +764,125 @@ function normalizeCase(c) {
 /* ═══════════════════════════════════════════════════════════
    QUICK COMPUTE
    ═══════════════════════════════════════════════════════════ */
+function setSelectedValue(el, value) {
+  if (!el) return;
+  const v = value ?? "";
+  const hasOption = Array.from(el.options || []).some(o => o.value === String(v));
+  if (hasOption || !el.options?.length) el.value = String(v);
+}
+
+function setSelectedMany(el, values) {
+  if (!el) return;
+  const selected = new Set(values || []);
+  Array.from(el.options || []).forEach(o => { o.selected = selected.has(o.value); });
+}
+
+function quickPower(idField, amountField) {
+  const id = $(idField)?.value || "";
+  const amount = norm($(amountField)?.value, 0);
+  return id && amount > 0 ? [{ id, amount }] : [];
+}
+
+function fillQuickCatalog() {
+  fillSelect($("q-character"), state.catalog.character_ids, { selected: "Ironclad" });
+  fillSelect($("q-monster-factory"), state.catalog.monster_factories, { blankLabel: "— 基础怪物 —" });
+  fillSelect($("q-operation-type"), state.catalog.operation_types, { selected: "deal_damage" });
+  fillSelect($("q-actor"), ["player", "enemy:0"], { selected: "player" });
+  fillSelect($("q-target"), ["enemy:0", "player"], { selected: "enemy:0" });
+  fillSelect($("q-player-power-1-id"), state.catalog.powers, { blankLabel: "— 无 —", selected: "STRENGTH" });
+  fillSelect($("q-player-power-2-id"), state.catalog.powers, { blankLabel: "— 无 —", selected: "VULNERABLE" });
+  fillSelect($("q-monster-power-1-id"), state.catalog.powers, { blankLabel: "— 无 —", selected: "VULNERABLE" });
+  fillSelect($("q-monster-power-2-id"), state.catalog.powers, { blankLabel: "— 无 —", selected: "STRENGTH" });
+  fillSelect($("q-operation-power-id"), state.catalog.powers, { blankLabel: "— 不施加 —" });
+  fillMulti($("q-player-relics"), state.catalog.relic_ids, []);
+  fillMulti($("q-operation-props"), state.catalog.value_props, ["MOVE"]);
+}
+
+function syncQuickFromCase(c) {
+  if (!c) return;
+  const p = c.player || {};
+  const e = c.enemies?.[0] || {};
+  const op = c.operations?.[0] || {};
+  const playerPowers = p.powers || [];
+  const enemyPowers = e.powers || [];
+
+  setSelectedValue($("q-character"), c.character_id || "Ironclad");
+  $("q-player-maxhp").value = p.max_hp ?? 80;
+  $("q-player-curhp").value = p.current_hp ?? p.max_hp ?? 80;
+  $("q-player-block").value = p.block ?? 0;
+  $("q-player-energy").value = p.energy ?? 3;
+  setSelectedMany($("q-player-relics"), p.relics || []);
+
+  setSelectedValue($("q-monster-factory"), e.monster_factory || "");
+  $("q-monster-id").value = e.monster_id || "TEST_DUMMY";
+  $("q-monster-maxhp").value = e.max_hp ?? 50;
+  $("q-monster-curhp").value = e.current_hp ?? e.max_hp ?? 50;
+  $("q-monster-block").value = e.block ?? 0;
+  $("q-target-index").value = String((op.target || "enemy:0").split(":")[1] || 0);
+
+  setSelectedValue($("q-operation-type"), op.type || "deal_damage");
+  setSelectedValue($("q-actor"), op.actor || "player");
+  setSelectedValue($("q-target"), op.target || "enemy:0");
+  $("q-base-damage").value = op.base_damage ?? 0;
+  $("q-base-block").value = op.base_block ?? 0;
+  setSelectedMany($("q-operation-props"), op.props || ["MOVE"]);
+  setSelectedValue($("q-operation-power-id"), op.power_id || "");
+  $("q-operation-power-amount").value = op.amount ?? 0;
+
+  setSelectedValue($("q-player-power-1-id"), playerPowers[0]?.id || "STRENGTH");
+  $("q-player-power-1-amount").value = playerPowers[0]?.amount ?? 0;
+  setSelectedValue($("q-player-power-2-id"), playerPowers[1]?.id || "VULNERABLE");
+  $("q-player-power-2-amount").value = playerPowers[1]?.amount ?? 0;
+  setSelectedValue($("q-monster-power-1-id"), enemyPowers[0]?.id || "VULNERABLE");
+  $("q-monster-power-1-amount").value = enemyPowers[0]?.amount ?? 0;
+  setSelectedValue($("q-monster-power-2-id"), enemyPowers[1]?.id || "STRENGTH");
+  $("q-monster-power-2-amount").value = enemyPowers[1]?.amount ?? 0;
+}
+
 function collectQuickCase() {
-  const powers = (id, amt) => amt > 0 ? [{ id, amount: amt }] : [];
-  const pp = powers("STRENGTH", norm($("q-player-str").value, 0)).concat(
-             powers("VULNERABLE", norm($("q-player-vuln").value, 0)));
-  const ep = powers("STRENGTH", norm($("q-monster-str").value, 0)).concat(
-             powers("VULNERABLE", norm($("q-monster-vuln").value, 0));
+  const pp = quickPower("q-player-power-1-id", "q-player-power-1-amount").concat(
+             quickPower("q-player-power-2-id", "q-player-power-2-amount"));
+  const ep = quickPower("q-monster-power-1-id", "q-monster-power-1-amount").concat(
+             quickPower("q-monster-power-2-id", "q-monster-power-2-amount"));
   return {
-    name: "快速验伤",
+    name: caseNameInput.value || "快速验伤",
     seed: 42,
     character_id: $("q-character").value || "Ironclad",
     player: {
       max_hp: norm($("q-player-maxhp").value, 80),
       current_hp: norm($("q-player-curhp").value, 80),
       block: norm($("q-player-block").value, 0),
-      energy: 3,
+      energy: norm($("q-player-energy").value, 3),
       powers: pp,
-      relics: [],
+      relics: Array.from($("q-player-relics").selectedOptions).map(o => o.value),
     },
     enemies: [{
       monster_id: $("q-monster-id").value || "TEST_DUMMY",
-      monster_factory: "",
+      monster_factory: $("q-monster-factory").value || "",
       max_hp: norm($("q-monster-maxhp").value, 50),
       current_hp: norm($("q-monster-curhp").value, 50),
       block: norm($("q-monster-block").value, 0),
       powers: ep,
     }],
     operations: [{
-      type: "deal_damage",
+      type: $("q-operation-type").value || "deal_damage",
       actor: $("q-actor").value || "player",
       target: $("q-target").value || "enemy:0",
       base_damage: norm($("q-base-damage").value, 10),
-      base_block: 0,
-      power_id: "",
-      amount: 0,
-      props: ["MOVE"],
+      base_block: norm($("q-base-block").value, 0),
+      power_id: $("q-operation-power-id").value || "",
+      amount: norm($("q-operation-power-amount").value, 0),
+      props: Array.from($("q-operation-props").selectedOptions).map(o => o.value),
     }],
   };
+}
+
+function syncQuickToPlanner() {
+  state.caseData = normalizeCase(collectQuickCase());
+  renderAll();
+  syncToTech();
+  setMode("planner");
+  setStatus("快速验证参数已同步到策划验证");
 }
 
 function showQuickResult(ok, text, detail) {
@@ -1024,6 +1149,7 @@ function loadPreset(idx) {
   state.lastResult = null;
   state.lastError = "";
   renderAll();
+  syncQuickFromCase(state.caseData);
   syncToTech();
   techOutputJson.value = "";
   techDiffOutput.textContent = "";
@@ -1041,6 +1167,7 @@ async function loadCatalog() {
   state.catalog = await resp.json();
   // fill preset selector
   presetSelect.innerHTML = '<option value="">— 预设用例 —</option>' + PRESETS.map((p, i) => `<option value="${i}">${p.name}</option>`).join("");
+  fillQuickCatalog();
   renderAll();
 }
 
@@ -1052,6 +1179,7 @@ function bindEvents() {
   $("mode-planner").addEventListener("click", () => { setMode("planner"); syncToTech(); });
   $("mode-tech").addEventListener("click", () => { syncToTech(); setMode("tech"); });
   $("quick-run-button").addEventListener("click", runQuickCompute);
+  $("quick-sync-button").addEventListener("click", syncQuickToPlanner);
   $("run-button").addEventListener("click", runCompute);
   $("reset-button").addEventListener("click", resetToDefault);
   $("copy-button").addEventListener("click", () => {
@@ -1092,6 +1220,9 @@ function bindEvents() {
       syncToTech();
       if (e.target === operationType) updateOperationFields();
       if (e.target === operationActor) renderActorTargets();
+    }
+    if (e.target?.id === "q-target-index") {
+      setSelectedValue($("q-target"), `enemy:${norm($("q-target-index").value, 0)}`);
     }
   });
 
