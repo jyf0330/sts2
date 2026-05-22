@@ -52,3 +52,9 @@ extracted_pck/
 
 # NuGet
 nuget.config
+
+# Claude Code
+.omx/
+
+# Decompiled output
+decompiled/obj/
